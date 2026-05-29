@@ -149,8 +149,16 @@ update CHANGED; add NEW; remove REMOVED. Each entry follows the kb-index schema 
 
 ### PHASE 8 — Update digest-log.md (skip writing if --dry-run)
 
-Prepend a run entry: timestamp, trigger, mode, files processed with checksums and actions,
-domains rebuilt, whether master was rebuilt, contradictions detected, warnings.
+If `docs/implr/kb-index/digest-log.md` does not exist, create it now with this header:
+
+```
+# digest-log
+# Append-only run history for doc-ingest. Newest entry first.
+# Format: see kb-index-schema.md § digest-log entry.
+```
+
+Then prepend a run entry: timestamp, trigger, mode, files processed with checksums and
+actions, domains rebuilt, whether master was rebuilt, contradictions detected, warnings.
 
 ### PHASE 9 — Report
 
