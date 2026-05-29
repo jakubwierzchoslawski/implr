@@ -168,7 +168,8 @@ Not affected (reviewed, excluded):
 Ask: approve all, approve selected, or reject.
 
 - **Approve all** — proceeds with all confirmed affected requirements
-- **Approve selected** — user picks which requirements to apply the CR to; others skipped
+- **Approve selected** — ba-cr lists each affected requirement by number; user states which
+  to include (e.g. "1 and 3"); others are skipped and noted in cr-log.md as excluded
 - **Reject** — CR `status` set to `rejected`; nothing downstream runs
 
 On approval: CR `status` → `approved`, `approved_at` stamped,
@@ -179,9 +180,11 @@ On approval: CR `status` → `approved`, `approved_at` stamped,
 
 Executed in order for each approved requirement:
 
-1. `/ba-requirements-gen --reprocess <source-doc>` — updates the requirement, drops
-   `status` to `under-review`, appends post-implementation warning to `requirements-log.md`
-   if a plan exists
+1. `/ba-requirements-gen --reprocess <CR-file>` — ba-requirements-gen treats the CR as
+   the triggering source document. It reads the CR alongside the affected requirement and
+   applies the change, drops `status` to `under-review`, appends a post-implementation
+   warning to `requirements-log.md` if a plan exists. The CR `cr_id` is added to the
+   requirement's `source_docs` list so the traceability chain is preserved.
 2. `/dev-planner --replan REQ-NNN` — regenerates the plan for each affected requirement
    that has an existing plan
 3. `/arch-gen --update` — triggered only if `affected_domains` includes `architecture` or
