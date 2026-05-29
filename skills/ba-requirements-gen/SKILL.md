@@ -122,6 +122,31 @@ raw binary original. Never fail the run.
 Do not read all raw docs. Deep-dive only on the specific documents that trigger one of the
 conditions above.
 
+**Inferring unstated requirements:**
+
+Real documentation describes a business domain, not system requirements. Bridge from domain
+description to requirements using these reasoning patterns:
+
+- **From user journeys:** if a doc describes "a customer selects products and completes a
+  purchase", requirements for cart management, payment initiation, order confirmation, and
+  confirmation email are all implied — none may be stated explicitly. Derive them from the
+  narrative.
+- **From entity lifecycles:** if `Invoice` is defined with statuses `draft`, `sent`, `paid`,
+  `overdue`, then requirements to transition between each state are implied even if no
+  "the system shall change invoice status" sentence exists.
+- **From integration mentions:** "the system notifies customers by email" implies an
+  email-sending requirement even without an email service specification.
+- **From NFR signals:** "must handle high traffic during sales events" → create a Performance
+  NFR. Estimate the measurable target from context clues, or flag it as needing specification
+  in the Open Questions if no figure can be reasonably inferred.
+- **When truly ambiguous:** if the requirement cannot be reasonably inferred without guessing,
+  create it as `status: draft` with a populated Open Question: cite the source document and
+  state exactly what information would resolve the ambiguity.
+
+The quality gate (2 testable ACs minimum) is the forcing function: if you cannot write
+concrete, independently verifiable ACs from the synthesis plus any cached text, you must
+either create an Open Question or produce a minimal draft explicitly flagging the gap.
+
 ### PHASE 3 — Contradictions
 
 The domain and master syntheses already surface contradictions. For each contradiction relevant
