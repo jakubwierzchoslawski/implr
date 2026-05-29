@@ -68,6 +68,7 @@ Key properties:
 | `dev-planner` | Creates implementation plans (with optional brainstorming) | `/dev-planner` |
 | `dev-executor` | Implements plans as production code | `/dev-executor` |
 | `dev-code-review` | Reviews produced code in a fresh context | `/dev-code-review` |
+| `ba-cr` | Creates and applies Change Requests to amend requirements and plans | `/ba-cr` |
 
 A future `ba-jira-populate` skill will push approved requirements into Jira; its data contract is
 already part of the requirement schema.
@@ -234,11 +235,11 @@ templates, creates `CLAUDE.md`. Idempotent.
 Indexes and digests the KB.
 
 ```
-/doc-ingest                 incremental: registry + digests + syntheses
-/doc-ingest --no-digest     registry + text cache only
-/doc-ingest --file <path>   process one file regardless of checksum
-/doc-ingest --rebuild       reprocess everything, ignore checksums
-/doc-ingest --dry-run       report only, write nothing
+- `/doc-ingest` — default incremental run (registry + digest + synthesis)
+- `/doc-ingest --no-digest` — registry only: update index.md and cache, skip digests/syntheses
+- `/doc-ingest --file <path>` — process a single file regardless of checksum
+- `/doc-ingest --dry-run` — report what would change; write nothing
+- `/doc-ingest --rebuild` — ignore all checksums; reprocess everything from scratch
 ```
 
 Supported formats: `md, pdf, docx, xlsx, csv, txt` (configurable). Unsupported files are
@@ -248,9 +249,9 @@ registered but not digested.
 Generates `docs/ARCHITECTURE.md`.
 
 ```
-/arch-gen                   generate, or diff-and-confirm if it already exists
-/arch-gen --update          explicitly refresh an existing ARCHITECTURE.md
-/arch-gen --dry-run         show what would be produced, write nothing
+- `/arch-gen` — generate (or, if ARCHITECTURE.md exists, propose a diff for confirmation)
+- `/arch-gen --update` — explicitly refresh an existing ARCHITECTURE.md (diff + confirm)
+- `/arch-gen --dry-run` — show what would be produced; write nothing
 ```
 
 Mark KB docs as architecture-relevant by placing them under `docs/kb/architecture/`, adding
@@ -261,50 +262,82 @@ also auto-detects architectural content and asks you to confirm inferred decisio
 Generates requirements from the KB.
 
 ```
-/ba-requirements-gen                    chain doc-ingest, then generate
-/ba-requirements-gen --no-ingest        use existing syntheses, skip the chain
-/ba-requirements-gen --domain <name>    only one domain
-/ba-requirements-gen --reprocess <doc>  re-derive from a specific source doc
-/ba-requirements-gen --dry-run          preview, write nothing
+- `/ba-requirements-gen` — use existing syntheses as-is; no ingest step
+- `/ba-requirements-gen --ingest` — run full doc-ingest on the KB first, then generate
+- `/ba-requirements-gen --ingest-file <path>` — ingest one specific file first, then generate
+- `/ba-requirements-gen --domain <name>` — generate only for one domain
+- `/ba-requirements-gen --reprocess <doc>` — re-derive requirements from a specific source doc
+- `/ba-requirements-gen --dry-run` — preview; write nothing, do not advance log state
 ```
 
 ### dev-planner
 Creates implementation plans from approved requirements.
 
 ```
-/dev-planner REQ-F-001                  plan one requirement
-/dev-planner REQ-F-001 REQ-N-001        plan several (dependency order respected)
-/dev-planner --all                      plan all approved requirements without a plan
-/dev-planner --replan REQ-F-001         regenerate an existing plan
-/dev-planner --brainstorm REQ-F-001     explore design options interactively first
-/dev-planner --dry-run REQ-F-001        preview, write nothing
+- `/dev-planner REQ-F-001` — plan a single requirement
+- `/dev-planner REQ-F-001 REQ-F-002 REQ-N-001` — plan several (dependency order respected)
+- `/dev-planner --all` — plan all approved requirements without a current plan
+- `/dev-planner --replan REQ-F-001` — regenerate an existing plan (preserve plan_id)
+- `/dev-planner --brainstorm REQ-F-001` — interactive design exploration before planning
+- `/dev-planner --dry-run REQ-F-001` — preview; write nothing
+
 ```
 
-`--brainstorm` presents 2–3 approaches for each real design decision, with pros/cons and a
-recommendation, and records your choices in the plan.
+`--brainstorm` combines with a requirement id or `--all`. `--dry-run` combines with any mode.
 
 ### dev-executor
 Implements plans.
 
 ```
-/dev-executor PLAN-F-001                execute one plan
-/dev-executor PLAN-F-001 PLAN-F-002     execute several in order
-/dev-executor --all                     execute all ready plans in dependency order
-/dev-executor --task PLAN-F-001 TASK-003  execute a single task (resume)
-/dev-executor --dry-run PLAN-F-001      list files that would change, write nothing
+- `/dev-executor PLAN-F-001` — execute one plan
+- `/dev-executor PLAN-F-001 PLAN-F-002` — execute several in the given order (deps validated)
+- `/dev-executor --all` — execute all `ready` plans in dependency order from plans-index.md
+- `/dev-executor --task PLAN-F-001 TASK-003` — execute a single task (resume work)
+- `/dev-executor --dry-run PLAN-F-001` — list files that would be created/modified; write nothing
 ```
 
 ### dev-code-review
 Reviews produced code in a fresh context.
 
 ```
-/dev-code-review PLAN-F-001             review one plan's output
-/dev-code-review PLAN-F-001 PLAN-F-002  review several
-/dev-code-review --all                  review all done plans without a review
+- `/dev-code-review PLAN-F-001` — review one plan's output
+- `/dev-code-review PLAN-F-001 PLAN-F-002` — review several (one report each)
+- `/dev-code-review --all` — review all `done` plans without a current review
 ```
 
 Verdicts: `approved`, `approved-with-warnings`, `changes-required`, `rejected`. Critical and
 High findings block merge.
+
+---
+
+## Changing Requirements
+
+After requirements and plans are generated, use `ba-cr` to change them. Three paths are available:
+
+**CLI path** — tell ba-cr what you want to change in plain language:
+```
+/ba-cr
+```
+ba-cr interviews you, creates a Change Request document, analyses impact across all
+requirements and plans, shows you what will change, and chains the downstream updates on
+approval.
+
+**Manual-file path** — author the CR file yourself, then apply it:
+```
+1. Copy docs/implr/templates/cr-template.md → docs/kb/change-requests/CR-NNN.md
+2. Fill in the required fields
+3. /doc-ingest          ← detects the new CR, prompts you to run ba-cr
+4. /ba-cr --file docs/kb/change-requests/CR-NNN.md
+```
+
+**KB-document path** — added a new or updated doc to the KB that changes requirements:
+```
+/ba-cr --ingest-file docs/kb/your-new-doc.md
+```
+ba-cr ingests the document, auto-generates a CR from the digest, runs impact analysis,
+and cascades updates on approval — no manual CR authoring needed.
+
+See [WORKFLOW.md](docs/WORKFLOW.md) for the full state flow diagrams for requirements, plans, and change requests.
 
 ---
 
