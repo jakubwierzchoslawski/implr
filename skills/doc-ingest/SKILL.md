@@ -8,7 +8,9 @@ description: >
   csv, and txt files; computes checksums; extracts text to a cache; produces per-document
   digests, per-domain syntheses, and a master synthesis; detects contradictions. Incremental —
   only reprocesses changed files. Also runs automatically as the first step of
-  ba-requirements-gen.
+  ba-requirements-gen. When new files are found under docs/kb/change-requests/, emits a
+  prompt to run /ba-cr --file. When new regular KB files are found and requirements already
+  exist, emits a hint to run /ba-cr --ingest-file.
 ---
 
 # doc-ingest Skill
@@ -185,6 +187,33 @@ Master synthesis ready at docs/implr/kb-index/master-synthesis.md
 
 If called as step 0 of ba-requirements-gen, suppress the trailing guidance line and return a
 compact summary.
+
+### Post-Report Prompts
+
+After completing the report, run two checks. Both fire only for NEW files (status NEW in
+Phase 2); already-indexed files are silent. Neither auto-chains ba-cr.
+
+**1. Change request detection** — if any NEW file lives under `docs/kb/change-requests/`:
+
+```
+⚠️  New change request detected: {filename}
+    Run /ba-cr --file docs/kb/change-requests/{filename} to analyse impact and apply.
+```
+
+Emit one line per new CR file.
+
+**2. New KB document hint** — if any NEW file lives under `docs/kb/` (outside
+`change-requests/`) AND `docs/implr/requirements/requirements-index.md` exists and is
+non-empty (i.e. requirements have already been generated):
+
+```
+💡 New KB document ingested: {filename}
+   If this document changes existing requirements, run:
+   /ba-cr --ingest-file {original_path}
+```
+
+Emit one line per qualifying new KB file. Suppress this hint entirely if no requirements
+exist yet — on a fresh project it would only create noise.
 
 ---
 
