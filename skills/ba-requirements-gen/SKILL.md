@@ -46,8 +46,9 @@ docs/implr/requirements/
 
 ## Parameters
 
-- `/ba-requirements-gen` — default: chain doc-ingest, then generate from new/changed content
-- `/ba-requirements-gen --no-ingest` — skip the doc-ingest chain; use existing syntheses as-is
+- `/ba-requirements-gen` — use existing syntheses as-is; no ingest step
+- `/ba-requirements-gen --ingest` — run full doc-ingest on the KB first, then generate
+- `/ba-requirements-gen --ingest-file <path>` — ingest one specific file first, then generate
 - `/ba-requirements-gen --domain <name>` — generate only for one domain
 - `/ba-requirements-gen --reprocess <doc>` — re-derive requirements from a specific source doc
 - `/ba-requirements-gen --dry-run` — preview; write nothing, do not advance log state
@@ -56,17 +57,28 @@ docs/implr/requirements/
 
 ## Execution Pipeline
 
-### PHASE 0 — Chain doc-ingest (unless --no-ingest)
+### PHASE 0 — Optionally chain doc-ingest
 
-If `auto_chain_doc_ingest` is true in config and `--no-ingest` is not set, run the doc-ingest
-skill first to ensure syntheses are current. Capture which domains changed.
+If `--ingest` was passed, run the doc-ingest skill in full before continuing. Capture which
+domains changed.
+
+If `--ingest-file <path>` was passed, run doc-ingest with `--file <path>` only. Capture
+whether the file's domain synthesis changed.
 
 ```
 🔄 Step 0: Running doc-ingest to refresh the knowledge base...
 ```
 
-If `--no-ingest`, skip and use existing syntheses. If no master synthesis exists at all, stop
-and tell the user to run doc-ingest.
+If neither flag was passed, skip ingest entirely and proceed with existing syntheses.
+
+In all cases: if no master synthesis exists at all, stop and tell the user to run
+`/doc-ingest` first.
+
+**Ambiguity propagation:** doc-ingest writes ambiguities detected during synthesis into each
+domain synthesis under an "Ambiguities Detected" section. When ba-requirements-gen reads a
+domain synthesis in PHASE 2, it checks this section. For each ambiguity it either resolves
+it from `cache/{slug}.txt` (if the cached text is unambiguous) or surfaces it as an Open
+Question citing the source document. Ambiguities are never silently discarded.
 
 ### PHASE 1 — Load state and determine scope
 

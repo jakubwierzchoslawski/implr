@@ -352,7 +352,6 @@ paths:
 
 behaviour:
   default_tdd_threshold: M        # complexity at/above which TDD is enforced
-  auto_chain_doc_ingest: true     # ba-requirements-gen runs doc-ingest first
   require_approved_status: true   # dev-planner only processes approved requirements
   contradictions_block: false     # false = open questions; true = halt on conflict
   kb_supported_formats: [md, pdf, docx, xlsx, csv, txt]
