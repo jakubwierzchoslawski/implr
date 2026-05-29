@@ -71,6 +71,19 @@ For each target requirement:
   `require_approved_status` is false in config)
 - Load it fully: acceptance criteria, data models, process sequence, dependencies, linked NFRs
 
+**`--all` skip rule:** Before processing any requirement under `--all`, check whether a
+matching plan file already exists (`docs/implr/plans/functional/PLAN-F-NNN-*.md` or
+`docs/implr/plans/non-functional/PLAN-N-NNN-*.md`) with `status: ready`, `in-progress`, or
+`done`. If yes, skip it and emit:
+
+```
+⏭  REQ-F-001 — already has PLAN-F-001 (ready). Skipping.
+   Use --replan REQ-F-001 to regenerate.
+```
+
+Only `status: blocked` does not protect an existing plan — it is treated as if no plan
+exists and planning proceeds. A plan file that does not exist at all always triggers planning.
+
 ### PHASE 1 — Resolve open questions (interactive)
 
 For each unresolved Open Questions row (`Resolved` is `☐`), present it to the user one at a time:
