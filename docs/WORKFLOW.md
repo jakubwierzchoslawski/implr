@@ -142,14 +142,28 @@ Everything else is automated.
 ## Status Lifecycles
 
 ### Requirement
+
 ```
-draft → under-review → approved
+draft → under-review → approved → superseded
                      ↘ rejected
-approved → superseded (superseded_by points to the replacement)
 ```
-Claude only ever creates `draft`. Humans promote.
+
+| Transition | Who | Condition |
+|-----------|-----|-----------|
+| `draft` → `under-review` | Human | Requirement needs discussion before approval |
+| `draft` → `approved` | Human | Requirement is correct and complete |
+| `under-review` → `approved` | Human | Open questions resolved |
+| `under-review` → `rejected` | Human | Requirement is invalid or out of scope |
+| `approved` → `under-review` | ba-requirements-gen or ba-cr | A source doc changed and the requirement may be affected |
+| `approved` → `superseded` | Human | A new requirement replaces this one (`superseded_by` set) |
+
+Claude only ever creates `draft`. Only humans promote to `approved`. ba-requirements-gen
+and ba-cr can drop `approved` → `under-review` but never to `draft` (preserving review history).
+
+---
 
 ### Plan
+
 ```
 ready → in-progress → done
   ↑                     │
@@ -157,11 +171,42 @@ ready → in-progress → done
 blocked → ready          (once the blocker is resolved)
 ```
 
+| Transition | Who | Condition |
+|-----------|-----|-----------|
+| `ready` | dev-planner | Plan created; ready for a developer to start |
+| `ready` → `in-progress` | dev-executor | Developer starts implementation |
+| `in-progress` → `done` | dev-executor | All tasks complete; code submitted for review |
+| `done` → `changes-required` | dev-code-review | Review finds blocking issues |
+| `changes-required` → `in-progress` | dev-executor | Developer picks up the changes |
+| `ready` → `blocked` | dev-planner | A required dependency has no plan yet |
+| `blocked` → `ready` | Human or dev-planner | Blocker resolved |
+
+A plan replanned by `dev-planner --replan` returns to `ready` regardless of prior status.
+
 ### Review verdict → plan effect
 | Verdict | Plan effect |
 |---------|------------|
 | approved / approved-with-warnings | plan stays `done` |
 | changes-required / rejected | plan set back to `in-progress`, blocking findings noted |
+
+---
+
+### Change Request (CR)
+
+```
+draft → approved → applied
+      ↘ rejected
+```
+
+| Transition | Who | Condition |
+|-----------|-----|-----------|
+| `draft` | ba-cr | CR created from CLI interview, manual file, or auto-generated from KB doc |
+| `draft` → `approved` | Human | Approved at the ba-cr approval gate |
+| `draft` → `rejected` | Human | Rejected at the ba-cr approval gate |
+| `approved` → `applied` | ba-cr | All downstream chains (ba-requirements-gen, dev-planner, arch-gen) completed |
+
+`rejected` is a terminal state. Create a new CR to supersede a rejected one. A CR is never
+edited after creation — it is a point-in-time record of intent.
 
 ---
 
@@ -276,3 +321,96 @@ To add a skill (for example the planned `ba-jira-populate`):
 
 Keep skills thin (instructions only) and the schemas authoritative (data structures live in one
 place that every skill references).
+
+---
+
+## Change Requests
+
+A Change Request (CR) is the structured path for amending requirements after they have
+already been generated — whether to correct a constraint, reduce scope, introduce a new rule,
+or override a prior decision.
+
+CRs live in `docs/kb/change-requests/` as first-class KB documents. They are ingested,
+digested, and synthesised by `doc-ingest` exactly like any other source document. Every
+requirement update triggered by a CR is traceable: the CR file is added to the requirement's
+`source_docs` list.
+
+### CLI path (most common)
+
+```
+1. Tell ba-cr what you want to change (free-form statement)
+   /ba-cr  →  "I want to limit Azure costs to $20–50/month"
+
+2. ba-cr interviews you for any missing required fields, then creates:
+   docs/kb/change-requests/CR-NNN-slug.md
+
+3. ba-cr chains /doc-ingest --file <CR-file> automatically
+
+4. ba-cr runs impact analysis across all requirements
+   → presents impact report with confirmed-affected requirements and their plans
+
+5. You approve: all / selected / none
+
+6. On approval, ba-cr chains in order:
+   /ba-requirements-gen --reprocess <CR-file>   (for each approved requirement)
+   /dev-planner --replan REQ-NNN                (for each with an existing plan)
+   /arch-gen --update                           (only if architecture domain touched)
+```
+
+### Manual-file path
+
+Use when you prefer to author the CR file yourself (e.g. drafting offline, team review).
+
+```
+1. Copy docs/implr/templates/cr-template.md → docs/kb/change-requests/CR-NNN-slug.md
+2. Fill in the required fields (title, change_type, before, after, rationale)
+3. /doc-ingest
+   → doc-ingest detects the new CR file and prints:
+     ⚠️  New change request detected: CR-NNN-slug.md
+         Run /ba-cr --file docs/kb/change-requests/CR-NNN-slug.md to analyse impact and apply.
+4. /ba-cr --file docs/kb/change-requests/CR-NNN-slug.md
+   → skips the interview; continues from doc-ingest chain onward
+```
+
+**Important:** doc-ingest never auto-chains ba-cr. Step 4 is always an explicit user action.
+
+### KB-document path (--ingest-file)
+
+Use when you've added a new or updated document to the KB that logically changes existing
+requirements — without writing a CR file yourself.
+
+```
+1. Add the new document to docs/kb/
+   (e.g. a new version of a pricing policy, a revised architecture spec)
+
+2. /ba-cr --ingest-file docs/kb/{your-new-doc}.md
+
+   ba-cr automatically:
+   a. Runs /doc-ingest --file on the new document
+   b. Reads the domain synthesis diff to understand what changed
+   c. Auto-generates CR-NNN with source: kb-document
+   d. Runs /doc-ingest --file on the CR file itself
+   e. Runs impact analysis → presents impact report
+   f. Waits for your approval (same gate as CLI path)
+   g. On approval: chains ba-requirements-gen --reprocess, dev-planner --replan,
+      optionally arch-gen --update
+
+Alternatively, run /doc-ingest first (to refresh the KB), then use the hint it prints:
+   💡 New KB document ingested: {filename}
+      If this document changes existing requirements, run:
+      /ba-cr --ingest-file {original_path}
+```
+
+All three paths produce the same CR artefact and cr-log entry. The only difference is how
+the CR content is captured: interview (cli-direct), manual file, or digest extraction
+(kb-document).
+
+### CR artefacts
+
+| File | Purpose |
+|------|---------|
+| `docs/kb/change-requests/CR-NNN-slug.md` | The CR document (source of truth) |
+| `docs/implr/requirements/cr-index.md` | Current-state register of all CRs |
+| `docs/implr/requirements/cr-log.md` | Append-only history of ba-cr runs |
+| `docs/implr/schemas/cr-schema.md` | Canonical CR, cr-index, cr-log structures |
+| `docs/implr/templates/cr-template.md` | Blank template for manual CR authoring |

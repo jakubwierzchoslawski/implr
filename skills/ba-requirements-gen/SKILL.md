@@ -50,7 +50,12 @@ docs/implr/requirements/
 - `/ba-requirements-gen --ingest` — run full doc-ingest on the KB first, then generate
 - `/ba-requirements-gen --ingest-file <path>` — ingest one specific file first, then generate
 - `/ba-requirements-gen --domain <name>` — generate only for one domain
-- `/ba-requirements-gen --reprocess <doc>` — re-derive requirements from a specific source doc
+- `/ba-requirements-gen --reprocess <doc>` — re-derive requirements from a specific source
+  doc. When `<doc>` is a CR file (`docs/kb/change-requests/CR-NNN-slug.md`), read the CR
+  alongside the affected requirement and apply the change described in the CR's `before`/
+  `after` fields. Add the CR's filename to the requirement's `source_docs` list so the
+  traceability chain is preserved. Drop requirement `status` to `under-review`. Append a
+  post-implementation warning to `requirements-log.md` if a plan exists.
 - `/ba-requirements-gen --dry-run` — preview; write nothing, do not advance log state
 
 ---

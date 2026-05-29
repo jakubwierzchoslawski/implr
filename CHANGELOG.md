@@ -3,7 +3,28 @@
 All notable changes to implr are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased] — 2026-05-29
+## [1.2.0] — 2026-05-30
+
+### Added
+- **ba-cr skill:** manage Change Requests to amend requirements and plans after generation.
+  Supports three paths: CLI interview (`/ba-cr`), manual-file (`/ba-cr --file <path>`),
+  and KB-document (`/ba-cr --ingest-file <path>` — ingests a new KB doc, auto-generates
+  a CR from its digest, and runs the full impact and cascade flow).
+  Chains doc-ingest, ba-requirements-gen --reprocess, dev-planner --replan, and optionally
+  arch-gen --update. Per-requirement approval gate before any changes are applied.
+- **cr-schema.md:** canonical structure for CR files, cr-index.md, and cr-log.md
+- **cr-template.md:** blank template for manual change request authoring
+- **implr-init:** scaffolds `docs/kb/change-requests/`, cr-schema, cr-template, cr-index
+- **doc-ingest:** detects new CR files in `docs/kb/change-requests/` and prompts to run
+  `/ba-cr --file`; emits a hint to run `/ba-cr --ingest-file` when new regular KB docs are
+  ingested and requirements already exist
+- **ba-requirements-gen:** documented CR file behaviour for `--reprocess` flag — adds CR
+  to requirement `source_docs` for full traceability
+- **WORKFLOW.md:** full state flow tables for requirements, plans, and CRs; "Change
+  Requests" section with all three trigger paths (CLI, manual-file, KB-document)
+- **README.md:** ba-cr in skills table; "Changing Requirements" section with all three paths
+
+## [1.1.0] — 2026-05-29
 
 ### Added
 - **implr-init:** interactive setup now collects 12 questions upfront (project name, stack,
