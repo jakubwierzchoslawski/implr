@@ -128,7 +128,16 @@ mapping each source document to the requirement IDs derived from it.
 
 ### PHASE 6 — Update requirements-log.md (skip if --dry-run)
 
-Prepend a run entry: timestamp, trigger, domains processed (with synthesis checksums),
+If `docs/implr/requirements/requirements-log.md` does not exist, create it now with this
+header:
+
+```
+# requirements-log
+# Append-only run history for ba-requirements-gen. Newest entry first.
+# Format: see requirement-schema.md § requirements-log entry.
+```
+
+Then prepend a run entry: timestamp, trigger, domains processed (with synthesis checksums),
 requirements created/updated, contradictions surfaced, open questions raised.
 
 ### PHASE 7 — Report
