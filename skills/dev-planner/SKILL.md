@@ -207,6 +207,22 @@ Decisions section.
 
 Process in topological order. For each requirement, write a complete plan following the schema.
 
+**If the requirement has `status: under-review`** (set by ba-requirements-gen after a
+post-implementation update), insert this warning block at the very top of the generated plan
+file, before any other content:
+
+```
+⚠️  SOURCE REQUIREMENT UPDATED AFTER IMPLEMENTATION
+    Requirement updated: {updated_at date from requirement frontmatter}
+    Summary of change:   {one-line summary from the requirements-log warning entry}
+    Review whether the existing implementation still satisfies the updated requirement
+    before re-executing this plan.
+```
+
+Do NOT automatically set the plan to `blocked` or trigger re-review. Surface the conflict;
+leave the decision to the human. The human then either re-approves the requirement as-is
+(no re-planning needed) or runs `/dev-planner --replan {REQ-ID}`.
+
 Design principles:
 - **Architecture alignment** — conform to ARCHITECTURE.md; placement, layering, integration per
   DEV-STANDARDS.md; use its naming conventions for every named artefact
