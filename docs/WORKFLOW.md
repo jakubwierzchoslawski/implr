@@ -203,6 +203,43 @@ skill is explicitly responsible for (dev-executor and dev-code-review update pla
 
 ---
 
+## When a New Document Changes an Existing Requirement
+
+The most important real-world scenario: a new document is added to `docs/kb/` after a
+requirement has already been planned and possibly implemented.
+
+```
+1. /doc-ingest --file docs/kb/new-policy.md
+   → detects new doc, rebuilds domain synthesis, flags any contradiction
+
+2. /ba-requirements-gen
+   → sees changed domain synthesis
+   → updates REQ-F-007: new AC added + open question for contradiction
+   → drops status from approved → under-review
+   → appends warning to requirements-log.md
+   → reports: "REQ-F-007 updated. PLAN-F-007 exists (done). Human review needed."
+
+3. Human reviews REQ-F-007 and the warning
+   Option A: new AC is additive, existing code handles it
+             → set status: approved; no re-planning needed
+   Option B: new policy changes described behaviour
+             → set status: approved; run /dev-planner --replan REQ-F-007
+
+4. /dev-planner --replan REQ-F-007    (only if Option B)
+5. /dev-executor PLAN-F-007           (implements the delta)
+6. /dev-code-review PLAN-F-007        (reviews)
+```
+
+Key rules:
+- ba-requirements-gen never drops an `approved` requirement back to `draft` — only to
+  `under-review`, preserving the review history
+- dev-planner never automatically invalidates a plan — it adds a visible warning and leaves
+  the decision to the human
+- Only material changes (new ACs, changed behaviour) trigger `under-review`; minor
+  clarifications leave `approved` untouched
+
+---
+
 ## Log Files vs Index Files
 
 Two files that sound similar but serve distinct purposes:
