@@ -103,6 +103,37 @@ Your decision:
 Write each answer back into the requirement's Open Questions table as `✅ {date}: {decision}`,
 bump `updated_at`, and continue. Only proceed once all are resolved.
 
+**Edge cases:**
+
+**Contradiction (two source documents conflict):** Present both sources and the conflict
+explicitly. Ask the user to decide. Write the decision back as `✅ {date}: {decision}`. Never
+guess the resolution.
+
+**Gap (information missing from the KB entirely):** Present the question. If the user answers
+inline, record it and continue. If the user says "proceed anyway", create the plan with
+`status: blocked` and leave the open question flagged as unresolved — never guess the answer.
+
+**Coherence failure across requirements (e.g. entity name in REQ-F-001 does not match
+REQ-F-002):** Stop. Tell the user exactly which field names or concepts need to be aligned
+and in which requirement files. Do not generate any plan for the affected requirements until
+they are corrected and re-approved.
+
+**Many open questions across multiple requirements:** Batch by requirement. Resolve all open
+questions for REQ-F-001 fully before moving to REQ-F-002. Never present questions from
+different requirements in the same exchange.
+
+**`--all` with mixed requirements:** Process requirements that have no open questions first,
+generating their plans without interruption. Then pause and present each requirement with open
+questions individually. Report clearly at the end what was planned and what still needs
+resolution:
+
+```
+✅ Planned: PLAN-F-001, PLAN-F-003
+⏸  Paused (open questions to resolve):
+   REQ-F-002 — 2 questions  →  resolve then re-run /dev-planner REQ-F-002
+   REQ-F-005 — 1 question   →  resolve then re-run /dev-planner REQ-F-005
+```
+
 ### PHASE 2 — Dependency graph and coherence
 
 Build a DAG from `dependencies`. Recursively load dependency requirements. Detect cycles — stop
