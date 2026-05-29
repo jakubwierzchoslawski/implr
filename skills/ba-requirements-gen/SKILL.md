@@ -99,9 +99,28 @@ For each in-scope domain, read its domain synthesis. Build the requirement set:
 
 Use the global NFR candidates in the master synthesis to drive NFR generation.
 
-**Deep-dive only when needed:** when a domain synthesis flags an ambiguity, or when writing
-detailed acceptance criteria or data models requires specifics, read the per-doc digest and, if
-still insufficient, the raw cached text for that document. Do not read all raw docs.
+**When synthesis is sufficient (do not deep-dive):**
+- Information needed is behavioural: user journeys, business rules, what the system must do —
+  the digest captures this fully
+- No field-level data models are needed beyond what the "Data Entities" section provides
+- No precise wording from contracts, regulations, or SLAs is required
+
+**Go to `cache/{slug}.txt` when any of these is true:**
+- The domain synthesis has an "Ambiguities Detected" section flagging this document
+- A requirement needs field-level data models not captured in the digest entities
+- An NFR needs a specific numeric target that the digest paraphrased vaguely (e.g. "high
+  performance" with no figure)
+- The digest `word_count` is very low relative to the topic's apparent complexity (signals
+  under-extraction from a sparse or complex source document)
+- The quality gate cannot be met: cannot write 2 independently testable ACs from the
+  synthesis alone
+
+**If no cache entry exists for a file you need to deep-dive:** flag the gap as an Open
+Question citing the document and the specific missing information. Never attempt to read the
+raw binary original. Never fail the run.
+
+Do not read all raw docs. Deep-dive only on the specific documents that trigger one of the
+conditions above.
 
 ### PHASE 3 — Contradictions
 
