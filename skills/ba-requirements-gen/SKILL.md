@@ -176,6 +176,21 @@ Save to:
 
 All requirements are created with `status: draft`.
 
+**When updating an existing requirement** (not creating new):
+
+- If the update is additive (new AC, new field) or contradictory (the implementation may now
+  be wrong): drop `status` from `approved` to `under-review`. Do not drop to `draft` — the
+  requirement was previously reviewed and that history is preserved.
+- If the update is a minor clarification only (no new ACs, no change to described behaviour):
+  leave `status: approved`.
+- Check whether a plan file `PLAN-F-NNN` or `PLAN-N-NNN` exists for this requirement.
+- If a plan exists, append the following warning line to `requirements-log.md`:
+
+  ```
+  ⚠️  {REQ-ID} updated post-implementation: {one-line summary of what changed}.
+      {PLAN-ID} exists (status: {plan status}). Human review needed.
+  ```
+
 ### PHASE 5 — Update requirements-index.md
 
 Recount statistics. Update functional and non-functional tables. List requirements with
@@ -209,11 +224,17 @@ Open questions:       {n} (incl. {c} contradictions)
 Needs your review:
   ⚠️  REQ-F-003 — {title} (contradiction: auth-flow.md vs security-policy.md)
 
+Post-implementation updates (requirement changed after planning/execution):
+  ⚠️  REQ-F-007 — {title} → now under-review. PLAN-F-007 exists (done). Review needed.
+
 Next steps:
   1. Review docs/implr/requirements/requirements-index.md
   2. Resolve open questions and set status: approved on ready requirements
   3. Run /dev-planner REQ-F-001  (or /dev-planner --all)
 ```
+
+(The "Post-implementation updates" section only renders when there are such updates; omit it
+when empty.)
 
 ---
 
