@@ -203,6 +203,29 @@ skill is explicitly responsible for (dev-executor and dev-code-review update pla
 
 ---
 
+## Log Files vs Index Files
+
+Two files that sound similar but serve distinct purposes:
+
+**`requirements-index.md`** — current-state register:
+- What requirements exist right now: IDs, titles, statuses, dependencies, linked plans
+- Traceability matrix (source document → requirement IDs)
+- "Needs Human Review" section for open questions and unresolved contradictions
+- Read by: dev-planner (to find approved requirements), humans tracking status
+
+**`requirements-log.md`** — append-only history:
+- Every ba-requirements-gen run, timestamped
+- Which domain syntheses were processed and their checksums at processing time
+- Which requirements were created or updated in each run
+- Contradictions surfaced and post-implementation update warnings
+- Read by: ba-requirements-gen as its incremental gate — without it, ba-requirements-gen
+  cannot know which synthesis checksums it last processed and would reprocess everything
+
+The same pattern applies to `digest-log.md` (owned by doc-ingest): it is the history record,
+not the index. `index.md` is the current state of the KB file registry.
+
+---
+
 ## Extending implr
 
 To add a skill (for example the planned `ba-jira-populate`):
