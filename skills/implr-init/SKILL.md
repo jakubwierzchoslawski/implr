@@ -37,12 +37,14 @@ assets/
     plan-schema.md
     review-schema.md
     jira-schema.md
+    cr-schema.md
   templates/
     ARCHITECTURE-template.md
     CLAUDE-template.md
     requirement-template.md
     plan-template.md
     review-template.md
+    cr-template.md
 ```
 
 Locate the skill directory, then read assets from there. Do not hardcode an absolute path —
@@ -99,6 +101,7 @@ Create these directories (no error if they already exist):
 
 ```
 docs/kb/
+docs/kb/change-requests/
 docs/implr/config/
 docs/implr/schemas/
 docs/implr/templates/
@@ -120,6 +123,11 @@ Copy every file from `assets/schemas/` into `docs/implr/schemas/`.
 Copy every file from `assets/templates/` into `docs/implr/templates/`.
 Overwrite on re-init — these are plugin-owned; user customisation lives in DEV-STANDARDS.md
 and implr.config.yaml.
+
+After copying schemas and templates, initialise these empty index files if they do not
+already exist (never overwrite):
+- `docs/implr/requirements/cr-index.md` — copy the cr-index.md structure from
+  `docs/implr/schemas/cr-schema.md` § cr-index.md (the empty table header only)
 
 ---
 
@@ -170,8 +178,9 @@ Created:
   📁 docs/implr/                      (plugin workspace)
   📄 docs/implr/config/implr.config.yaml
   📄 docs/implr/config/DEV-STANDARDS.md
-  📄 docs/implr/schemas/              (5 schema files)
-  📄 docs/implr/templates/            (5 templates)
+  📄 docs/implr/schemas/              (6 schema files)
+  📄 docs/implr/templates/            (6 templates)
+  📁 docs/kb/change-requests/         (drop CR files here for manual change requests)
   📄 CLAUDE.md
 
 Already present (left untouched):
