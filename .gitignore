@@ -1,0 +1,10 @@
+# OS
+.DS_Store
+Thumbs.db
+# editor
+.idea/
+.vscode/
+*.swp
+# build artefacts
+*.skill
+*.zip

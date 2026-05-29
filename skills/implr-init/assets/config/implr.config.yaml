@@ -1,0 +1,35 @@
+# implr configuration
+# Created by implr-init. Edit as your project evolves.
+# All implr skills read this file on every run.
+
+project:
+  name: REPLACE_ME                 # your project name, e.g. stokai
+  stack_hint: "REPLACE_ME"         # e.g. "TypeScript, NestJS, PostgreSQL, Vitest"
+                                   # used to fill gaps when DEV-STANDARDS.md is incomplete
+
+paths:
+  kb: docs/kb                      # knowledge base root (user-managed source docs)
+  architecture: docs/ARCHITECTURE.md
+  dev_standards: docs/implr/config/DEV-STANDARDS.md
+  src: src                         # where dev-executor writes implementation code
+  tests: tests                     # where dev-executor writes tests
+
+behaviour:
+  default_tdd_threshold: M         # complexity at/above which TDD is enforced (XS/S skip)
+  auto_chain_doc_ingest: true      # ba-requirements-gen runs doc-ingest first by default
+  require_approved_status: true    # dev-planner only processes approved requirements
+  contradictions_block: false      # false = generate with open questions; true = halt on conflict
+  kb_supported_formats: [md, pdf, docx, xlsx, csv, txt]
+
+jira:
+  # Used by the future ba-jira-populate skill. Safe to leave as-is until then.
+  base_url: https://your-org.atlassian.net
+  project_key: REPLACE_ME
+  api_token_env: JIRA_API_TOKEN    # env var name only; never put the token here
+  api_email_env: JIRA_API_EMAIL
+  default_issue_type: Story
+  default_priority: Medium
+  subtask_strategy: subtask        # subtask | linked_task
+  custom_fields:
+    implr_req_id: customfield_10001
+    story_points: customfield_10016
