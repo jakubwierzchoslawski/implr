@@ -33,7 +33,7 @@ echo Skills -^> %SKILLS_DEST%
 
 if not exist "%SKILLS_DEST%" mkdir "%SKILLS_DEST%"
 
-for %%S in (implr-init doc-ingest arch-gen ba-requirements-gen dev-planner dev-executor dev-code-review) do (
+for %%S in (implr-init doc-ingest arch-gen ba-requirements-gen ba-cr dev-planner dev-executor dev-code-review) do (
   if not exist "%SKILLS_SRC%\%%S" (
     echo Missing skill source: %%S
     exit /b 1
@@ -56,6 +56,7 @@ echo Scaffolding project workspace under %ROOT%\docs
 
 for %%D in (
   "docs\kb"
+  "docs\kb\change-requests"
   "docs\implr\config"
   "docs\implr\schemas"
   "docs\implr\templates"

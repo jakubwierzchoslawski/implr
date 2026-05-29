@@ -122,6 +122,62 @@ but never overwrites your `DEV-STANDARDS.md`, `implr.config.yaml`, `CLAUDE.md`, 
 
 ---
 
+## Updating implr
+
+To update from any previous version, pull the latest implr and re-run the installer from
+your project root. The installer is **idempotent** — it is safe to run on an existing project.
+
+### macOS / Linux
+
+```bash
+cd /path/to/implr
+git pull
+cd /path/to/your-project
+/path/to/implr/install.sh
+```
+
+### macOS / Windows (PowerShell)
+
+```powershell
+cd C:\path\to\implr
+git pull
+cd C:\path\to\your-project
+& C:\path\to\implr\install.ps1
+```
+
+### Windows (CMD)
+
+```bat
+cd C:\path\to\implr
+git pull
+cd C:\path\to\your-project
+C:\path\to\implr\install.bat
+```
+
+### What the update does
+
+| What | Action |
+|------|--------|
+| Skills (`.claude/skills/`) | Always replaced with the new version |
+| Schemas (`docs/implr/schemas/`) | Always replaced — plugin-owned |
+| Templates (`docs/implr/templates/`) | Always replaced — plugin-owned |
+| New folders (e.g. `docs/kb/change-requests/`) | Created if missing |
+| `docs/implr/config/implr.config.yaml` | **Never overwritten** — your config is preserved |
+| `docs/implr/config/DEV-STANDARDS.md` | **Never overwritten** — your standards are preserved |
+| `CLAUDE.md` | **Never overwritten** — your file is preserved |
+| Everything in `docs/kb/` | **Never touched** — your documents are preserved |
+
+### After updating
+
+If the new version adds new skills, they are available immediately in Claude Code after the
+installer runs — no restart needed.
+
+If the new version adds new folders or index files (e.g. `cr-index.md` in v1.2.0), the
+installer creates them. You can also run `/implr-init` inside Claude Code to pick up any
+new scaffolding interactively.
+
+---
+
 ## Required Folder Structure
 
 After install, your project looks like this. Folders marked *(you)* are yours to manage;

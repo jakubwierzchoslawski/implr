@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILLS_SRC="$SCRIPT_DIR/skills"
-SKILLS=(implr-init doc-ingest arch-gen ba-requirements-gen dev-planner dev-executor dev-code-review)
+SKILLS=(implr-init doc-ingest arch-gen ba-requirements-gen ba-cr dev-planner dev-executor dev-code-review)
 
 GLOBAL=false
 SKILLS_ONLY=false
@@ -55,6 +55,7 @@ echo "Scaffolding project workspace under $ROOT/docs"
 
 mkdir -p \
   "$ROOT/docs/kb" \
+  "$ROOT/docs/kb/change-requests" \
   "$ROOT/docs/implr/config" \
   "$ROOT/docs/implr/schemas" \
   "$ROOT/docs/implr/templates" \

@@ -17,7 +17,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SkillsSrc = Join-Path $ScriptDir "skills"
-$Skills = @("implr-init","doc-ingest","arch-gen","ba-requirements-gen","dev-planner","dev-executor","dev-code-review")
+$Skills = @("implr-init","doc-ingest","arch-gen","ba-requirements-gen","ba-cr","dev-planner","dev-executor","dev-code-review")
 
 if ($Global) {
   $SkillsDest = Join-Path $HOME ".claude/skills"
@@ -52,6 +52,7 @@ Write-Host "Scaffolding project workspace under $Root/docs"
 
 $dirs = @(
   "docs/kb",
+  "docs/kb/change-requests",
   "docs/implr/config",
   "docs/implr/schemas",
   "docs/implr/templates",
