@@ -59,7 +59,7 @@ status: draft           # draft | approved | rejected | applied
 change_type: constraint-change
                         # constraint-change | scope-reduction | scope-expansion
                         # new-rule | correction | override
-source: cli-direct      # cli-direct | manual-file
+source: cli-direct      # cli-direct | manual-file | kb-document
 affected_domains: []    # populated by ba-cr after impact analysis
 before: "$500/month Azure cost ceiling"   # auto-extracted by ba-cr from user input
 after: "$20–50/month Azure cost ceiling"  # auto-extracted by ba-cr from user input
@@ -97,6 +97,9 @@ Human's own assessment of what this will touch.
 - `jira.linked_issues` is populated after impact analysis confirms affected requirements,
   linking to their Jira IDs.
 - `affected_domains` is initially empty; ba-cr populates it after impact analysis.
+- For `kb-document` source, `before`/`after` and `rationale` are auto-extracted from the
+  new document's digest rather than from user input. No interview is conducted — the digest
+  provides the signal for what changed.
 
 ---
 
@@ -107,6 +110,7 @@ Human's own assessment of what this will touch.
 ```
 /ba-cr                              # interactive interview → create CR → full flow
 /ba-cr --file CR-NNN.md             # skip interview, apply an existing CR file
+/ba-cr --ingest-file <path>         # ingest new KB doc, auto-generate CR, full flow
 /ba-cr --impact-only CR-NNN.md      # impact analysis only, no downstream chains
 /ba-cr --dry-run                    # full flow but write nothing, chain nothing
 ```
@@ -124,10 +128,45 @@ Accept the user's free-form statement. Extract:
 Ask interactively **only for what is missing** from required fields. One question at a time.
 Minimum questions.
 
-Write `docs/kb/change-requests/CR-NNN-slug.md` with `status: draft`.
+Write `docs/kb/change-requests/CR-NNN-slug.md` with `status: draft`, `source: cli-direct`.
 Update `cr-index.md` with a new row.
 
-### Phase 1 — doc-ingest (CR file only)
+### Phase 0b — KB Document Ingest (--ingest-file path only)
+
+When invoked as `/ba-cr --ingest-file <path>`:
+
+1. Chain `/doc-ingest --file <path>` to ingest the new KB document. This produces a digest,
+   updates the domain synthesis for that document's domain, and updates the master synthesis.
+
+2. Read the resulting domain synthesis diff. Extract from the digest:
+   - `title` — derived from the document's title and its domain
+   - `change_type` — inferred from the digest's business rules and NFR signals:
+     - new numeric targets → `constraint-change`
+     - removed behaviours → `scope-reduction`
+     - new behaviours not in prior synthesis → `scope-expansion`
+     - new business rules → `new-rule`
+     - corrections to existing rules → `correction`
+   - `before` — prior domain synthesis value for the changed area (read from the existing
+     synthesis before the ingest run, or summarised as "prior behaviour per {domain}-synthesis")
+   - `after` — new value from the fresh digest
+   - `rationale` — derived from the document's stated purpose or context
+
+3. Auto-create `docs/kb/change-requests/CR-NNN-slug.md` with `source: kb-document`,
+   `status: draft`. Write the extracted values; do not interview the user.
+   Update `cr-index.md` with a new row.
+
+4. Report:
+   ```
+   📝 CR-NNN auto-generated from: {path}
+      Source: kb-document | Change type: {change_type}
+      Proceeding to impact analysis...
+   ```
+
+5. Continue directly to Phase 2 (skip Phase 1 — the KB doc is already ingested).
+   Chain `/doc-ingest --file docs/kb/change-requests/CR-NNN-slug.md` to ingest the CR file
+   itself for traceability, then proceed to Phase 2.
+
+### Phase 1 — doc-ingest (CR file only; skip for --ingest-file after step 5 above)
 
 Chain `/doc-ingest --file docs/kb/change-requests/CR-NNN-slug.md`.
 
@@ -298,9 +337,27 @@ Scaffold on initialisation:
 
 ### doc-ingest
 
-One addition: after indexing files, if any newly discovered file lives under
-`docs/kb/change-requests/`, emit the detection prompt (see Manual-File Trigger above).
-No other change to doc-ingest logic or output structure.
+Two additions to PHASE 9 — Report:
+
+**1. Change request detection** — if any NEW file lives under `docs/kb/change-requests/`,
+emit:
+```
+⚠️  New change request detected: {filename}
+    Run /ba-cr --file docs/kb/change-requests/{filename} to analyse impact and apply.
+```
+
+**2. New KB document hint** — if any NEW file lives under `docs/kb/` (outside
+`change-requests/`) and requirements already exist (`requirements-index.md` is non-empty),
+emit a non-blocking hint:
+```
+💡 New KB document ingested: {filename}
+   If this document changes existing requirements, run:
+   /ba-cr --ingest-file {original_path}
+```
+
+Neither prompt auto-chains ba-cr. Both are informational only. The hint for regular KB docs
+fires only when requirements already exist — on a fresh project with no requirements yet,
+it is suppressed.
 
 ### ba-jira-populate (future skill)
 
@@ -311,7 +368,8 @@ carries the full `jira:` block.
 ### WORKFLOW.md
 
 Add the following content (do not replace existing content):
-- "Change Requests" section: CLI path and manual-file path, with explicit step sequences
+- "Change Requests" section: CLI path, manual-file path, and KB-document path (`--ingest-file`),
+  with explicit step sequences for each
 - Full state flow diagrams for requirement, plan, and CR (see State Flows above)
 - Update the artefact graph to include the CR input path
 
@@ -359,7 +417,9 @@ Traceability chain extended:
 
 ## Out of Scope
 
-- Auto-triggering ba-cr from doc-ingest (doc-ingest only prompts, never chains ba-cr)
+- Auto-chaining ba-cr from doc-ingest (doc-ingest prompts and hints, but never chains ba-cr)
 - Merging or grouping multiple CRs into a single apply run (each CR is applied independently)
 - CR versioning or amendment (a rejected CR is terminal; create a new CR to replace it)
 - ba-jira-populate implementation (schema contract already defined; skill is future work)
+- Automatic diff computation between old and new KB document versions (ba-cr reads the
+  domain synthesis diff, not a raw file diff — structural changes in the domain are the signal)
