@@ -85,6 +85,21 @@ to generate requirements produces shallow output. So:
 This mirrors how a human BA works: read the briefing, then go to source only for the details
 that matter.
 
+### Why the text cache exists
+
+- **Extract once, read many times.** Binary and structured formats (PDF, DOCX, XLSX, CSV)
+  require external tool invocations (`pdftotext`, `python-docx`, `openpyxl`) — expensive to
+  repeat on every skill run.
+- **Checksum gate.** doc-ingest writes `cache/{slug}.txt` once per file and records the source
+  checksum. On subsequent runs, if the checksum is unchanged, the cache is read directly —
+  no tool invocation needed.
+- **One consistent read path.** `.md` and `.txt` files are straight copies into cache, but
+  having a single path (`cache/{slug}.txt`) means every downstream skill (ba-requirements-gen,
+  arch-gen) never needs to know the original format or invoke extraction tools.
+- **Never read the binary original downstream.** Skills always read from cache. If a cache
+  entry is absent for a file that is needed, the skill flags it as an Open Question rather
+  than attempting to read the raw binary.
+
 ---
 
 ## Contradiction Detection
