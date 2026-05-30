@@ -14,6 +14,9 @@ docs/kb/  →  doc-ingest  →  arch-gen  →  ba-requirements-gen
                           dev-planner  →  dev-executor  →  dev-code-review  →  reviewed code
 ```
 
+In v2.0, each skill runs as an **orchestrator** that dispatches heavy phases to dedicated
+subagents — cutting end-to-end token consumption by 3–4× while preserving quality.
+
 ---
 
 ## Table of Contents
@@ -25,12 +28,17 @@ docs/kb/  →  doc-ingest  →  arch-gen  →  ba-requirements-gen
 - [Required Folder Structure](#required-folder-structure)
 - [Quick Start](#quick-start)
 - [The Full Pipeline](#the-full-pipeline)
+- [How You Interact With implr](#how-you-interact-with-implr)
+- [Status Flows](#status-flows)
 - [Skills Reference](#skills-reference)
 - [Changing Requirements](#changing-requirements)
 - [Knowledge Base Guide](#knowledge-base-guide)
 - [Configuration](#configuration)
+- [Customising Model Tiers](#customising-model-tiers)
+- [Performance & Token Efficiency](#performance--token-efficiency)
 - [Schemas](#schemas)
 - [Auto-Managed Files](#auto-managed-files)
+- [Migrating from v1.x to v2.0](#migrating-from-v1x-to-v20)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [License](#license)
@@ -56,6 +64,8 @@ Key properties:
   planning, implementation, and review skills all enforce.
 - **Human-gated** — Claude generates; humans approve. Requirements only flow to planning once a
   person marks them approved.
+- **Token-efficient (v2.0)** — orchestrator + dedicated subagent model with tier-appropriate
+  models (Haiku/Sonnet/Opus). Typical runs cost 3–4× fewer tokens than v1.x.
 
 ---
 
@@ -64,14 +74,13 @@ Key properties:
 | Skill | Role | Command |
 |-------|------|---------|
 | `implr-init` | Scaffolds the plugin workspace | `/implr-init` |
-| `doc-ingest` | Indexes and digests the knowledge base | `/doc-ingest` |
-| `arch-gen` | Generates `ARCHITECTURE.md` from the KB | `/arch-gen` |
-| `ba-requirements-gen` | Generates functional and non-functional requirements | `/ba-requirements-gen` |
-| `ba-cr` | Creates and applies Change Requests to amend requirements and plans | `/ba-cr` |
-| `dev-planner` | Creates implementation plans (with optional brainstorming) | `/dev-planner` |
-| `dev-executor` | Implements plans as production code | `/dev-executor` |
-| `dev-code-review` | Reviews produced code in a fresh context | `/dev-code-review` |
-
+| `doc-ingest` | Indexes and digests the knowledge base (dispatches parallel extract/digest/synthesize workers) | `/doc-ingest` |
+| `arch-gen` | Generates `ARCHITECTURE.md` (dispatches `arch-drafter`) | `/arch-gen` |
+| `ba-requirements-gen` | Generates functional and non-functional requirements (parallel per-domain workers) | `/ba-requirements-gen` |
+| `ba-cr` | Creates and applies Change Requests (impact + parallel appliers) | `/ba-cr` |
+| `dev-planner` | Creates implementation plans (wave-based parallel plan workers) | `/dev-planner` |
+| `dev-executor` | Implements plans (wave-based parallel executor workers, Opus by default) | `/dev-executor` |
+| `dev-code-review` | Reviews produced code (parallel review workers, fresh context per plan) | `/dev-code-review` |
 
 A future `ba-jira-populate` skill will push approved requirements into Jira; its data contract is
 already part of the requirement schema.
@@ -80,8 +89,8 @@ already part of the requirement schema.
 
 ## Installation
 
-implr installs as a set of Claude Code skills plus a project workspace. The installer does both:
-copies the skills and scaffolds the workspace.
+implr installs as a set of Claude Code skills, a set of dedicated subagents, and a project
+workspace. The installer does all three: copies skills, copies agents, scaffolds the workspace.
 
 ### macOS / Linux
 
@@ -111,17 +120,17 @@ C:\path\to\implr\install.bat
 
 | Flag | Effect |
 |------|--------|
-| (none) | Install skills to `./.claude/skills` and scaffold `./docs/implr` |
-| `--global` / `-Global` | Install skills to `~/.claude/skills` (available in all projects) |
-| `--skills-only` / `-SkillsOnly` | Install skills only; scaffold later with `/implr-init` |
+| (none) | Install skills + agents to `./.claude/` and scaffold `./docs/implr` |
+| `--global` / `-Global` | Install skills + agents to `~/.claude/` (available in all projects) |
+| `--skills-only` / `-SkillsOnly` | Install skills + agents only; scaffold later with `/implr-init` |
 
-The installer is **idempotent**: re-running it refreshes the plugin-owned schemas and templates
-but never overwrites your `DEV-STANDARDS.md`, `implr.config.yaml`, `CLAUDE.md`, or anything in
-`docs/kb/`.
+The installer is **idempotent**: re-running it refreshes the plugin-owned skills, agents,
+schemas, and templates but never overwrites your `DEV-STANDARDS.md`, `implr.config.yaml`,
+`CLAUDE.md`, or anything in `docs/kb/`.
 
 > **Note on skill packaging.** Claude Code reads skills from unpacked folders (each containing a
 > `SKILL.md`), not from `.skill` archives. The installer copies unpacked folders, so the skills
-> appear in Claude Code immediately.
+> and agents appear in Claude Code immediately.
 
 ---
 
@@ -161,7 +170,7 @@ C:\path\to\implr\install.bat
 
 | What | Action |
 |------|--------|
-| Skills (`.claude/skills/`) | Always replaced with the new version |
+| Skills (`.claude/skills/`) and agents (`.claude/agents/`) | Always replaced with the new version |
 | Schemas (`docs/implr/schemas/`) | Always replaced — plugin-owned |
 | Templates (`docs/implr/templates/`) | Always replaced — plugin-owned |
 | New folders (e.g. `docs/kb/change-requests/`) | Created if missing |
@@ -170,14 +179,16 @@ C:\path\to\implr\install.bat
 | `CLAUDE.md` | **Never overwritten** — your file is preserved |
 | Everything in `docs/kb/` | **Never touched** — your documents are preserved |
 
+> **Upgrading from v1.x to v2.0?** See the dedicated [Migrating from v1.x to v2.0](#migrating-from-v1x-to-v20) section. Two flags were removed and one default was flipped — the migration is two commands and a re-install.
+
 ### After updating
 
-If the new version adds new skills, they are available immediately in Claude Code after the
-installer runs — no restart needed.
+If the new version adds new skills or agents, they are available immediately in Claude Code
+after the installer runs — no restart needed.
 
-If the new version adds new folders or index files (e.g. `cr-index.md` in v1.2.0), the
-installer creates them. You can also run `/implr-init` inside Claude Code to pick up any
-new scaffolding interactively.
+If the new version adds new folders or index files (e.g. `cr-index.md` in v1.2.0, `.claude/agents/`
+in v2.0), the installer creates them. You can also run `/implr-init` inside Claude Code to pick
+up any new scaffolding interactively.
 
 ---
 
@@ -188,14 +199,16 @@ everything under `docs/implr/` except config is auto-managed by the skills.
 
 ```
 your-project/
-├── .claude/skills/                 eight installed skills (SKILL.md each)
+├── .claude/
+│   ├── skills/                     eight installed skills (SKILL.md each)
+│   └── agents/                     ten dedicated subagent definitions (v2.0)
 ├── docs/
 │   ├── kb/                         (you) knowledge base — any subfolder structure
 │   │   └── change-requests/        (you) drop CR files here for manual change requests
 │   ├── ARCHITECTURE.md             generated by arch-gen
 │   └── implr/                      plugin workspace
 │       ├── config/
-│       │   ├── implr.config.yaml   (you) plugin configuration
+│       │   ├── implr.config.yaml   (you) plugin configuration (incl. v2.0 agents: block)
 │       │   └── DEV-STANDARDS.md    (you) development standards (SOLID pre-filled)
 │       ├── schemas/                canonical schemas (plugin-owned)
 │       ├── templates/              templates (plugin-owned)
@@ -227,9 +240,9 @@ cp ~/specs/*.md docs/kb/
 Then, inside Claude Code:
 
 ```
-/doc-ingest                 # index + digest the KB
+/doc-ingest --digest        # index + digest the KB (full pipeline)
 /arch-gen                   # generate docs/ARCHITECTURE.md (confirms inferred decisions)
-/ba-requirements-gen        # generate requirements (auto-runs doc-ingest first)
+/ba-requirements-gen        # generate requirements from the syntheses
 
 # review docs/implr/requirements/requirements-index.md
 # resolve open questions, set status: approved on ready requirements
@@ -238,6 +251,9 @@ Then, inside Claude Code:
 /dev-executor --all         # implement all ready plans in dependency order
 /dev-code-review --all      # review everything that was built
 ```
+
+> **v2.0 note:** `/doc-ingest` (without `--digest`) now does only a registry scan — fast.
+> Pass `--digest` whenever you want the per-doc digests + per-domain syntheses + master synthesis.
 
 ---
 
@@ -250,63 +266,175 @@ Then, inside Claude Code:
 2. DOCUMENT
    You add .md/.pdf/.docx/.xlsx/.csv/.txt files to docs/kb/
 
-3. INGEST            /doc-ingest
+3. INGEST            /doc-ingest --digest    (use --digest for the full pipeline)
    Scans the KB, computes checksums, extracts text, writes per-doc digests,
    per-domain syntheses, and a master synthesis. Detects contradictions. Incremental.
+   The skill dispatches three subagents in parallel: extract, digest, synthesize-domain.
 
 4. ARCHITECT         /arch-gen
-   Reads the master synthesis + architecture-tagged docs, drafts docs/ARCHITECTURE.md,
-   confirms any inferred decisions with you, and (on re-run) proposes a diff.
+   Reads the master synthesis + architecture-tagged docs, confirms inferred decisions with
+   you in main, then dispatches arch-drafter to produce docs/ARCHITECTURE.md.
 
 5. REQUIREMENTS      /ba-requirements-gen
-   Reads syntheses (not every raw doc), generates REQ-F-* and REQ-N-* with acceptance
-   criteria, dependencies, complexity, and TDD flags. Flags contradictions as open questions.
+   Reads syntheses (not every raw doc), dispatches one requirements-domain-worker per
+   in-scope domain in parallel, assigns sequential IDs after workers return, writes REQ-F-*
+   and REQ-N-* files. Flags contradictions as open questions.
 
 6. APPROVE  (human)
    Review the requirements index, resolve open questions, set status: approved.
 
 7. PLAN              /dev-planner   (add --brainstorm to explore design options)
-   Resolves remaining open questions, checks cross-requirement coherence, applies SOLID at
-   the design level, injects NFR constraints, and writes PLAN-F-* with task-level TDD flags.
+   Resolves remaining open questions, dispatches plan-worker per requirement in waves
+   (dependent reqs sequence; independent ones parallelise). Cross-requirement coherence
+   sweep via the built-in Explore subagent. Writes PLAN-F-* with task-level TDD flags.
 
 8. IMPLEMENT         /dev-executor
-   Writes production code and tests to your src/ and tests/, enforcing TDD for M/L/XL tasks
-   and SOLID in code. Respects plan dependency order. Notes manual actions it cannot perform.
+   Dispatches executor-worker (Opus by default) per plan in waves. Writes production code
+   and tests to your src/ and tests/, enforcing TDD for M/L/XL tasks and SOLID in code.
+   Notes manual actions it cannot perform.
 
 9. REVIEW            /dev-code-review
-   Fresh context. Verifies every acceptance criterion, checks architecture/SOLID/security,
-   audits tests, and issues a verdict with findings by severity. Blocks merge on
-   Critical/High findings.
+   Fresh context per plan via code-review-worker dispatches. Verifies every acceptance
+   criterion, checks architecture/SOLID/security, audits tests, issues a verdict.
+   Blocks merge on Critical/High findings.
 ```
+
+---
+
+## How You Interact With implr
+
+implr's skills fall into three interaction modes:
+
+- **Non-interactive** — you run the command and wait for the report. The skill never pauses
+  to ask you a question.
+- **Interactive** — the skill asks you to confirm or choose during the run.
+- **Semi-interactive** — the skill is non-interactive by default but becomes interactive
+  when invoked with a specific flag.
+
+| Skill | Mode | When the skill asks for input |
+|---|---|---|
+| `implr-init` | Interactive | Project name, paths, stack hint — once at scaffold |
+| `doc-ingest` | Non-interactive | Never |
+| `arch-gen` | Interactive | Confirms each inferred architectural decision |
+| `ba-requirements-gen` | Non-interactive | Never (open questions surfaced in files) |
+| `ba-cr` | Interactive (default) / non-interactive (`--file`) | CLI interview without `--file`/`--ingest-file` |
+| `dev-planner` | Non-interactive (default) / interactive (`--brainstorm`) | Design exploration if `--brainstorm` |
+| `dev-executor` | Non-interactive | Never (manual actions flagged in report) |
+| `dev-code-review` | Non-interactive | Never |
+
+Regardless of skill, three **human gates** block the pipeline:
+
+1. **Approve requirements** before planning — set `status: approved` on each REQ file you
+   want planned. `dev-planner` skips draft/under-review/blocked requirements unless you
+   explicitly name them.
+2. **Approve CR impact** before applying — `ba-cr` shows the impact report and waits for
+   your `yes`/`no`/`impact-only`.
+3. **Resolve Critical/High findings** before merge — `dev-code-review` blocks merge on any
+   Critical or High finding; lower severities pass with warnings.
+
+Full state diagrams and edge cases in [WORKFLOW.md](docs/WORKFLOW.md).
+
+---
+
+## Status Flows
+
+implr tracks status on three artefacts: requirements, plans, and change requests. Below is
+the short summary. The authoritative diagrams (including blocked branches and edge cases)
+live in [WORKFLOW.md](docs/WORKFLOW.md).
+
+### Requirements
+
+```
+            ┌────────────────────────────────────────────────┐
+            │                                                ▼
+draft ──► approved ──► under-review ──► approved        (blocked)
+              │                                            ▲
+              └────────────────────────────────────────────┘
+              (when open questions cannot be resolved)
+```
+
+| Transition | Triggered by | Who |
+|---|---|---|
+| `draft → approved` | Human reviews the REQ file, resolves open questions, sets `status: approved` | You |
+| `approved → under-review` | CR or `--reprocess` changes the requirement post-approval (additive/contradictory) | ba-cr / ba-requirements-gen |
+| `under-review → approved` | Human re-reviews and re-approves | You |
+| `* → blocked` | Open questions cannot be resolved; user marks blocked during dev-planner prompt | You |
+
+### Plans
+
+```
+ready ──► in-progress ──► done
+  ▲           │              │
+  │           ▼              ▼
+  └─── replan_required ◄─────┘  (via ba-cr)
+```
+
+| Transition | Triggered by | Who |
+|---|---|---|
+| `(none) → ready` | dev-planner writes a new plan for an approved requirement | dev-planner |
+| `ready → in-progress` | dev-executor begins implementing the plan | dev-executor |
+| `in-progress → done` | All tasks complete and tests pass | dev-executor |
+| `done → replan_required` | A CR mandates plan changes | ba-cr → cr-applier |
+| `replan_required → ready` | dev-planner --replan regenerates the plan | dev-planner |
+
+### Change Requests
+
+```
+draft ──► impact-analysed ──► approved ──► applied
+                │                  │
+                └─► rejected ◄─────┘
+```
+
+Three entry paths produce a CR:
+
+- **CLI** — `/ba-cr` runs an interview and writes the CR file
+- **Manual file** — you author the CR file under `docs/kb/change-requests/`, then run
+  `/ba-cr --file <path>`
+- **KB document** — a new/changed KB doc; `/ba-cr --ingest-file <path>` derives the CR
+
+| Transition | Triggered by | Who |
+|---|---|---|
+| `(none) → draft` | CR file created by one of the three paths | ba-cr or you |
+| `draft → impact-analysed` | cr-impact-analyzer dispatched and returns report | ba-cr |
+| `impact-analysed → approved` | You answer `yes` to the impact prompt | You |
+| `impact-analysed → rejected` | You answer `no` | You |
+| `approved → applied` | cr-applier dispatches finish on all affected targets | ba-cr |
+
+Full diagrams (including replan loops and approval edge cases) in
+[WORKFLOW.md](docs/WORKFLOW.md).
 
 ---
 
 ## Skills Reference
 
 ### implr-init
-Scaffolds `docs/implr/`, seeds `implr.config.yaml` and `DEV-STANDARDS.md`, copies schemas and
-templates, creates `CLAUDE.md`. Idempotent.
+Scaffolds `docs/implr/`, seeds `implr.config.yaml` (including the v2.0 `agents:` block,
+commented) and `DEV-STANDARDS.md`, copies schemas and templates, creates `CLAUDE.md`.
+Idempotent. `.claude/agents/` is shipped by the installer, not by this skill.
 
 ```
 /implr-init
 ```
 
 ### doc-ingest
-Indexes and digests the KB.
+Indexes and digests the KB. Dispatches three parallel subagent pools.
 
 ```
-- `/doc-ingest` — default incremental run (registry + digest + synthesis)
-- `/doc-ingest --no-digest` — registry only: update index.md and cache, skip digests/syntheses
-- `/doc-ingest --file <path>` — process a single file regardless of checksum
+- `/doc-ingest` — registry-only fast scan (new default in v2.0)
+- `/doc-ingest --digest` — full pipeline: extract + per-doc digest + per-domain synthesis + master
+- `/doc-ingest --file <path>` — process a single file (registry only unless --digest)
 - `/doc-ingest --dry-run` — report what would change; write nothing
-- `/doc-ingest --rebuild` — ignore all checksums; reprocess everything from scratch
+- `/doc-ingest --rebuild` — implies --digest; reprocess everything from scratch
 ```
 
 Supported formats: `md, pdf, docx, xlsx, csv, txt` (configurable). Unsupported files are
 registered but not digested.
 
+> **Removed in v2.0:** `--no-digest` (now the default; flag is redundant).
+
 ### arch-gen
-Generates `docs/ARCHITECTURE.md`.
+Generates `docs/ARCHITECTURE.md`. Interactive — confirms inferred decisions, then dispatches
+the `arch-drafter` subagent.
 
 ```
 - `/arch-gen` — generate (or, if ARCHITECTURE.md exists, propose a diff for confirmation)
@@ -322,22 +450,23 @@ also auto-detects architectural content and asks you to confirm inferred decisio
 Generates requirements from the KB.
 
 ```
-- `/ba-requirements-gen` — use existing syntheses as-is; no ingest step
-- `/ba-requirements-gen --ingest` — run full doc-ingest on the KB first, then generate
-- `/ba-requirements-gen --ingest-file <path>` — ingest one specific file first, then generate
+- `/ba-requirements-gen` — use existing syntheses as-is
 - `/ba-requirements-gen --domain <name>` — generate only for one domain
 - `/ba-requirements-gen --reprocess <doc>` — re-derive requirements from a specific source doc
 - `/ba-requirements-gen --dry-run` — preview; write nothing, do not advance log state
 ```
+
+> **Removed in v2.0:** `--ingest` and `--ingest-file`. Run `/doc-ingest --digest` first (or
+> `/doc-ingest --file <path> --digest`), then `/ba-requirements-gen`.
 
 ### ba-cr
 Creates and applies Change Requests to amend requirements and plans after generation.
 
 ```
 - `/ba-cr` — interactive CLI interview; creates a CR, analyses impact, chains updates on approval
-- `/ba-cr --file <path>` — apply a manually-authored CR file (impact analysis + approval gate)
-- `/ba-cr --ingest-file <path>` — ingest a new/updated KB document, auto-generate a CR, apply
-- `/ba-cr --impact-only <path>` — run impact analysis on an existing CR; do not apply changes
+- `/ba-cr --file <path>` — apply a manually-authored CR file (impact + approval gate)
+- `/ba-cr --ingest-file <path>` — generate a CR from a new/updated KB document
+- `/ba-cr --impact-only <path>` — run impact analysis on an existing CR; do not apply
 - `/ba-cr --dry-run` — preview impact and downstream changes; write nothing
 ```
 
@@ -353,13 +482,13 @@ Creates implementation plans from approved requirements.
 - `/dev-planner --replan REQ-F-001` — regenerate an existing plan (preserve plan_id)
 - `/dev-planner --brainstorm REQ-F-001` — interactive design exploration before planning
 - `/dev-planner --dry-run REQ-F-001` — preview; write nothing
-
 ```
 
 `--brainstorm` combines with a requirement id or `--all`. `--dry-run` combines with any mode.
 
 ### dev-executor
-Implements plans.
+Implements plans. Per-plan dispatch to `executor-worker` (Opus default — TDD + SOLID need a
+strong model).
 
 ```
 - `/dev-executor PLAN-F-001` — execute one plan
@@ -370,7 +499,7 @@ Implements plans.
 ```
 
 ### dev-code-review
-Reviews produced code in a fresh context.
+Reviews produced code in a fresh context per plan.
 
 ```
 - `/dev-code-review PLAN-F-001` — review one plan's output
@@ -405,9 +534,10 @@ approval.
 
 **KB-document path** — added a new or updated doc to the KB that changes requirements:
 ```
-/ba-cr --ingest-file docs/kb/your-new-doc.md
+/doc-ingest --file docs/kb/your-new-doc.md --digest    # ingest with digest first
+/ba-cr --ingest-file docs/kb/your-new-doc.md            # then derive the CR
 ```
-ba-cr ingests the document, auto-generates a CR from the digest, runs impact analysis,
+ba-cr reads the document's digest, auto-generates a CR, runs impact analysis,
 and cascades updates on approval — no manual CR authoring needed.
 
 See [WORKFLOW.md](docs/WORKFLOW.md) for the full state flow diagrams for requirements, plans, and change requests.
@@ -475,6 +605,64 @@ sections are marked `[FILL IN]`.
 
 ---
 
+## Customising Model Tiers
+
+Each subagent has a built-in `default_model`. Override per agent in
+`docs/implr/config/implr.config.yaml`:
+
+```yaml
+agents:
+  doc-ingest-extractor: haiku       # mechanical text extraction
+  doc-ingest-digester: sonnet       # per-doc digest
+  doc-ingest-synthesizer: sonnet    # per-domain synthesis
+  arch-drafter: sonnet              # architecture draft
+  requirements-domain-worker: sonnet
+  cr-impact-analyzer: sonnet
+  cr-applier: sonnet
+  plan-worker: sonnet
+  executor-worker: opus             # TDD + SOLID enforcement
+  code-review-worker: sonnet
+```
+
+Valid values: `haiku`, `sonnet`, `opus`. Omit a line to use the agent's built-in default.
+The installer never overwrites `implr.config.yaml`, so your overrides survive plugin
+updates.
+
+**Resolution order** at dispatch time:
+1. `agents.<agent-name>` from `implr.config.yaml`
+2. `default_model` declared in `.claude/agents/<agent-name>.md`
+
+**When to override:**
+- *Downgrade to save cost* — e.g. `executor-worker: sonnet` if your tasks are simpler than the Opus default expects
+- *Upgrade for quality* — e.g. `requirements-domain-worker: opus` on a complex domain
+- *Match your budget* — downgrade everything to Haiku for prototyping; restore defaults for production runs
+
+---
+
+## Performance & Token Efficiency
+
+implr v2.0 separates orchestration from heavy lifting:
+
+- **Skills are orchestrators** — they run in the main conversation, handle interactive
+  questions, and dispatch heavy phases to subagents.
+- **Subagents are dedicated workers** — they run in isolated contexts, with focused tool
+  allowlists and tier-appropriate models (Haiku for mechanical text extraction, Sonnet
+  for analysis, Opus reserved for TDD-discipline tasks).
+- **Phase prompts live in companion files** — under `skills/<skill>/phases/`, so the
+  SKILL.md stays small and prompt-cache friendly.
+- **Stable reads first** — every skill and phase reads schemas and config before dynamic
+  inputs, so Anthropic's 5-minute prompt cache reuses the prefix across calls.
+
+Two flag changes also cut waste:
+- `/doc-ingest` now defaults to a fast registry-only scan; pass `--digest` for the full
+  synthesis pipeline.
+- `--ingest` and `--ingest-file` were removed from `ba-requirements-gen`. Run
+  `/doc-ingest --digest` (or `/doc-ingest --file <path> --digest`) first instead.
+
+Typical end-to-end runs cost **3–4× fewer tokens** than v1.x.
+
+---
+
 ## Schemas
 
 Canonical schemas live in `docs/implr/schemas/` and are the contract every skill follows:
@@ -522,6 +710,7 @@ Do not edit these by hand — they are owned by the skills:
 | `docs/implr/plans/**` | dev-planner |
 | `docs/implr/reviews/**` | dev-code-review |
 | `docs/implr/schemas/**`, `docs/implr/templates/**` | plugin (refreshed on install) |
+| `.claude/agents/**` | plugin (refreshed on install) |
 
 `docs/kb/change-requests/` is **yours** — place manually authored CR files there. ba-cr reads
 them; doc-ingest detects them and prompts you to run `/ba-cr --file`.
@@ -531,17 +720,44 @@ requirement file directly. See [Changing Requirements](#changing-requirements).
 
 ---
 
+## Migrating from v1.x to v2.0
+
+1. **Pull the latest implr:** `git pull` in your local implr checkout.
+2. **Re-run the installer from your project root.** It will copy `.claude/agents/` alongside
+   `.claude/skills/` and refresh schemas/templates. Your `implr.config.yaml`, `DEV-STANDARDS.md`,
+   `CLAUDE.md`, and `docs/kb/` are untouched.
+3. **Replace `/ba-requirements-gen --ingest`** invocations with two steps:
+   `/doc-ingest --digest` then `/ba-requirements-gen`.
+4. **Replace `/ba-requirements-gen --ingest-file <path>`** with
+   `/doc-ingest --file <path> --digest` then `/ba-requirements-gen`.
+5. **Add `--digest`** to any `/doc-ingest` invocation where you actually want digests +
+   syntheses. Without `--digest`, the command now only refreshes the registry.
+6. **(Optional)** Edit `docs/implr/config/implr.config.yaml` and uncomment any line in the
+   `agents:` block to override model tiers (see [Customising Model Tiers](#customising-model-tiers)).
+
+Removed flags emit clear error messages pointing to the replacement command. No silent breakage.
+
+---
+
 ## Troubleshooting
 
 **Skills don't appear in Claude Code.** Claude Code reads unpacked skill folders containing a
 `SKILL.md`, not `.skill` archives. Confirm `.claude/skills/<skill>/SKILL.md` exists. Restart
 Claude Code if needed.
 
-**arch-gen says there's no master synthesis.** Run `/doc-ingest` first.
+**Agent not found at dispatch time.** Re-run the installer; `.claude/agents/` was added in
+v2.0 and existing v1.x installs do not have it. Confirm `.claude/agents/<name>.md` exists
+where `<name>` matches the error message.
+
+**arch-gen says there's no master synthesis.** Run `/doc-ingest --digest` first (in v2.0,
+plain `/doc-ingest` only refreshes the registry).
 
 **ba-requirements-gen produces shallow requirements.** Your KB documents may be too sparse, or
 `DEV-STANDARDS.md`/KB lack detail. Check the open questions in the requirement files — they point
 to the gaps.
+
+**ba-requirements-gen says `--ingest removed`.** That's v2.0 behaviour. Run
+`/doc-ingest --digest` first, then `/ba-requirements-gen`.
 
 **dev-planner skips a requirement.** It only plans requirements with `status: approved`. Promote
 the requirement in its frontmatter.
@@ -550,16 +766,17 @@ the requirement in its frontmatter.
 `docs/implr/config/DEV-STANDARDS.md` so generated code uses the right stack and conventions.
 
 **A contradiction wasn't caught.** Contradictions are detected at domain-synthesis time. Ensure
-both documents are in the same domain folder (or run `/doc-ingest --rebuild` to re-synthesise
-everything).
+both documents are in the same domain folder (or run `/doc-ingest --digest --rebuild` to
+re-synthesise everything).
 
 ---
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). In short: skills are plain `SKILL.md` instruction files;
-schemas and templates live under `skills/implr-init/assets/`. Keep skills thin, keep the schemas
-authoritative, and include before/after examples in PRs that change skill behaviour.
+dedicated agents live in `.claude/agents/<name>.md` with frontmatter and a system-prompt body;
+phase prompts live in `skills/<skill>/phases/*.md`. Keep skills thin (orchestration only); keep
+the schemas authoritative; include before/after examples in PRs that change skill behaviour.
 
 ---
 
