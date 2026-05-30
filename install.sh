@@ -12,6 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILLS_SRC="$SCRIPT_DIR/skills"
+AGENTS_SRC="$SCRIPT_DIR/.claude/agents"
 SKILLS=(implr-init doc-ingest arch-gen ba-requirements-gen ba-cr dev-planner dev-executor dev-code-review)
 
 GLOBAL=false
@@ -26,13 +27,16 @@ done
 
 if [ "$GLOBAL" = true ]; then
   SKILLS_DEST="$HOME/.claude/skills"
+  AGENTS_DEST="$HOME/.claude/agents"
 else
   SKILLS_DEST="$(pwd)/.claude/skills"
+  AGENTS_DEST="$(pwd)/.claude/agents"
 fi
 
 echo "implr installer"
 echo "==============="
 echo "Skills -> $SKILLS_DEST"
+echo "Agents -> $AGENTS_DEST"
 
 mkdir -p "$SKILLS_DEST"
 for s in "${SKILLS[@]}"; do
@@ -42,8 +46,13 @@ for s in "${SKILLS[@]}"; do
   echo "  installed $s"
 done
 
+mkdir -p "$AGENTS_DEST"
+cp -r "$AGENTS_SRC/." "$AGENTS_DEST/"
+AGENT_COUNT=$(find "$AGENTS_DEST" -maxdepth 1 -name "*.md" | wc -l | tr -d ' ')
+echo "  installed $AGENT_COUNT agents -> $AGENTS_DEST"
+
 if [ "$SKILLS_ONLY" = true ]; then
-  echo "Skills installed. Run /implr-init inside Claude Code to scaffold the project."
+  echo "Skills and agents installed. Run /implr-init inside Claude Code to scaffold the project."
   exit 0
 fi
 
@@ -114,6 +123,7 @@ fi
 echo ""
 echo "==============================================="
 echo "implr installed."
+echo "  .claude/skills/ and .claude/agents/ are ready."
 echo ""
 echo "Next steps:"
 echo "  1. Fill in [FILL IN] sections of docs/implr/config/DEV-STANDARDS.md"

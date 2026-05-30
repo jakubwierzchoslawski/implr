@@ -10,6 +10,7 @@ setlocal enabledelayedexpansion
 
 set "SCRIPT_DIR=%~dp0"
 set "SKILLS_SRC=%SCRIPT_DIR%skills"
+set "AGENTS_SRC=%SCRIPT_DIR%.claude\agents"
 set "GLOBAL=0"
 set "SKILLS_ONLY=0"
 
@@ -23,13 +24,16 @@ goto parseargs
 
 if "%GLOBAL%"=="1" (
   set "SKILLS_DEST=%USERPROFILE%\.claude\skills"
+  set "AGENTS_DEST=%USERPROFILE%\.claude\agents"
 ) else (
   set "SKILLS_DEST=%CD%\.claude\skills"
+  set "AGENTS_DEST=%CD%\.claude\agents"
 )
 
 echo implr installer
 echo ===============
 echo Skills -^> %SKILLS_DEST%
+echo Agents -^> %AGENTS_DEST%
 
 if not exist "%SKILLS_DEST%" mkdir "%SKILLS_DEST%"
 
@@ -43,8 +47,12 @@ for %%S in (implr-init doc-ingest arch-gen ba-requirements-gen ba-cr dev-planner
   echo   installed %%S
 )
 
+if not exist "%AGENTS_DEST%" mkdir "%AGENTS_DEST%"
+xcopy /e /i /q /y "%AGENTS_SRC%" "%AGENTS_DEST%" >nul
+echo   installed agents -^> %AGENTS_DEST%
+
 if "%SKILLS_ONLY%"=="1" (
-  echo Skills installed. Run /implr-init inside Claude Code to scaffold the project.
+  echo Skills and agents installed. Run /implr-init inside Claude Code to scaffold the project.
   exit /b 0
 )
 
@@ -114,6 +122,7 @@ if not exist "%ROOT%\CLAUDE.md" (
 echo.
 echo ===============================================
 echo implr installed.
+echo   .claude\skills\ and .claude\agents\ are ready.
 echo.
 echo Next steps:
 echo   1. Fill in [FILL IN] sections of docs\implr\config\DEV-STANDARDS.md
