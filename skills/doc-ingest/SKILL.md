@@ -1,235 +1,136 @@
 ---
 name: doc-ingest
 description: >
-  Indexes and digests the knowledge base under docs/kb/. Use this skill when the user adds or
-  updates documentation, wants to refresh the KB index, or asks to ingest, scan, or digest
-  documentation. Triggers on: ingest docs, ingest kb, scan documentation, refresh index, digest
-  kb, update knowledge base, new docs added. Recursively scans docs/kb/ for md, pdf, docx, xlsx,
-  csv, and txt files; computes checksums; extracts text to a cache; produces per-document
-  digests, per-domain syntheses, and a master synthesis; detects contradictions. Incremental —
-  only reprocesses changed files. Also runs automatically as the first step of
-  ba-requirements-gen. When new files are found under docs/kb/change-requests/, emits a
-  prompt to run /ba-cr --file. When new regular KB files are found and requirements already
-  exist, emits a hint to run /ba-cr --ingest-file.
+  Indexes and digests the knowledge base under docs/kb/. Use when adding/updating docs,
+  refreshing the KB index, or asking to ingest/scan/digest. Default in v2.0 is REGISTRY
+  ONLY (fast). Pass --digest for full pipeline (digests + syntheses + master). Dispatches
+  parallel subagents for extract, digest, and per-domain synthesis. Detects contradictions.
+  Incremental — only reprocesses changed files.
 ---
 
-# doc-ingest Skill
+# doc-ingest Skill (v2.0 orchestrator)
 
-You are the knowledge base librarian and analyst. You maintain a complete, incremental index of
-everything in `docs/kb/`, and you produce the layered digests and syntheses that let downstream
-skills understand the whole knowledge base without reading every raw file.
+You orchestrate the knowledge-base ingest pipeline. Heavy work runs in dedicated subagents
+(`doc-ingest-extractor`, `doc-ingest-digester`, `doc-ingest-synthesizer`). You decide scope,
+dispatch in parallel, aggregate summaries, and write the index, master synthesis, and log.
 
-You work incrementally: you never reprocess a file whose checksum is unchanged. You always keep
-the index, digests, syntheses, and log internally consistent.
+## Read first (cache-friendly)
 
----
-
-## Reference
-
-Read before processing:
-- `docs/implr/schemas/kb-index-schema.md` — the exact output structures you must produce
-- `docs/implr/config/implr.config.yaml` — for `kb_path` and `kb_supported_formats`
-
----
-
-## Outputs You Own
-
-```
-docs/implr/kb-index/
-  index.md                       file registry
-  cache/{slug}.txt               normalised text per file
-  digests/per-doc/{slug}-digest.md
-  domains/{domain}-synthesis.md
-  master-synthesis.md
-  digest-log.md
-```
-
----
+- `docs/implr/schemas/kb-index-schema.md`
+- `docs/implr/config/implr.config.yaml`
 
 ## Parameters
 
-- `/doc-ingest` — default incremental run (registry + digest + synthesis)
-- `/doc-ingest --no-digest` — registry only: update index.md and cache, skip digests/syntheses
-- `/doc-ingest --file <path>` — process a single file regardless of checksum
-- `/doc-ingest --dry-run` — report what would change; write nothing
-- `/doc-ingest --rebuild` — ignore all checksums; reprocess everything from scratch
+- `/doc-ingest` — registry only: scan, classify, write `index.md`. No digests, no syntheses.
+- `/doc-ingest --digest` — full pipeline (extract + digest + syntheses + master).
+- `/doc-ingest --file <path>` — process one file (registry only unless `--digest` also passed).
+- `/doc-ingest --rebuild` — implies `--digest`; reprocesses everything from scratch.
+- `/doc-ingest --dry-run` — report what would change; write nothing; log unchanged.
 
----
+Removed in v2.0: `--no-digest` (now the default; flag is redundant).
 
-## Supported Formats
+## Model resolution
 
-Read `kb_supported_formats` from config. Default: `md, pdf, docx, xlsx, csv, txt`.
+For each dispatch, resolve model from `agents.<agent-name>` in `implr.config.yaml`; fall
+back to the agent's `default_model`.
 
-| Format | Text extraction |
-|--------|----------------|
-| md, txt | Direct read |
-| pdf | `pdftotext` if available, else Python `pymupdf`/`pdfplumber` |
-| docx | Python `python-docx` (read paragraphs and tables) |
-| xlsx | Python `openpyxl` — render each sheet as labelled rows |
-| csv | Read as text; preserve header row |
-| other | Register in index with `format_supported: false`; skip digest |
+## Execution
 
-Use bash/python via the environment to extract text. If a tool is unavailable, register the
-file, set `format_supported: false`, add a warning, and continue — never fail the whole run.
+### Phase 1 — Scan
 
----
+Recursively list `docs/kb/`. Capture path, format, domain (first subfolder or `root`),
+mtime, md5. Use `find` + `md5sum` (POSIX) or equivalent.
 
-## Execution Pipeline
+### Phase 2 — Classify against `docs/implr/kb-index/index.md`
 
-### PHASE 1 — Scan
+NEW / CHANGED / UNCHANGED / REMOVED / UNSUPPORTED per current schema. `--rebuild` forces
+all supported to CHANGED. `--file` forces the named file to CHANGED.
 
-Recursively list all files under `docs/kb/` (the `kb` path from config). For each, capture:
-relative path, format (by extension), domain (first subfolder under `docs/kb/`, or `root`),
-last-modified time, and md5 checksum of the original bytes.
+### Phase 3 — Extract text (parallel `doc-ingest-extractor` dispatches)
 
-```bash
-# example discovery
-find docs/kb -type f | sort
-md5sum <file>
-```
+For each NEW or CHANGED supported file, dispatch `doc-ingest-extractor` with scope
+`{file_path, slug}`. Cap parallel dispatches at 5 per wave; sequence remainder into waves.
 
-### PHASE 2 — Classify against existing index
+Read each return summary. If `status: extraction_failed`, log a warning and continue. If
+`status: unsupported`, mark `format_supported: false` in the index entry.
 
-Read `docs/implr/kb-index/index.md`. For each scanned file determine:
-- NEW — not in index
-- CHANGED — in index, checksum differs
-- UNCHANGED — in index, checksum matches
-- REMOVED — in index, file no longer present
-- UNSUPPORTED — extension not in supported formats
+### Phase 4 — Per-doc digest (parallel `doc-ingest-digester` dispatches)
 
-`--rebuild` forces all supported files to CHANGED. `--file` forces the named file to CHANGED.
+**Skip entirely if `--digest` was not passed.**
 
-### PHASE 3 — Extract text to cache (NEW/CHANGED supported files)
+For each successfully extracted file, dispatch `doc-ingest-digester` with scope
+`{slug, cache_path, source_path, domain}`. Cap parallelism at 5.
 
-For each NEW or CHANGED supported file, extract text and write
-`docs/implr/kb-index/cache/{slug}.txt`. The slug is the filename without extension, kebab-cased,
-disambiguated with a short path hash if two files share a name.
+Collect digest paths, checksums, `arch_relevant` flags.
 
-### PHASE 4 — Per-document digest (skip if --no-digest)
+### Phase 5 — Domain syntheses (parallel `doc-ingest-synthesizer` dispatches)
 
-For each NEW or CHANGED supported file, read its cache text and write a digest to
-`docs/implr/kb-index/digests/per-doc/{slug}-digest.md` following the schema. Extract:
-business rules, system behaviours, data entities, integration points, NFR signals, ambiguities,
-architecture signals.
+**Skip if `--digest` was not passed.**
 
-Determine `arch_relevant`:
-- `true` if the file is under a `docs/kb/architecture/` folder, OR has `implr_tags: [architecture]`
-  in markdown frontmatter, OR has a sibling `{name}.meta.yaml` containing that tag
-- `auto` if not explicitly tagged but the content shows architecture signals (topology, layering,
-  technology decisions, integration patterns)
-- `false` otherwise
+Determine affected domains: any domain containing a NEW, CHANGED, or REMOVED file.
 
-### PHASE 5 — Domain syntheses (skip if --no-digest)
+For each affected domain, dispatch `doc-ingest-synthesizer` with scope
+`{domain, digests_glob}`. Cap parallelism at 5.
 
-Determine which domains are affected: any domain containing a NEW, CHANGED, or REMOVED file.
+### Phase 6 — Master synthesis (orchestrator, integrative)
 
-For each affected domain, rebuild `docs/implr/kb-index/domains/{domain}-synthesis.md` by reading
-all current per-doc digests in that domain. During the rebuild:
-- Consolidate and deduplicate business rules
-- **Detect contradictions across all digests in the domain** (this is how a new doc is checked
-  against existing docs — the whole domain is re-synthesised together)
-- Record cross-domain dependencies and NFR candidates
-- Compute `synthesis_checksum` from the sorted source digest checksums
+**Skip if `--digest` was not passed.**
 
-Classify each contradiction: Hard conflict, Soft conflict, Version drift, Scope overlap.
-
-### PHASE 6 — Master synthesis (skip if --no-digest)
-
-If any domain synthesis changed (its `synthesis_checksum` differs from what the master synthesis
-recorded), rebuild `docs/implr/kb-index/master-synthesis.md`:
+If any domain synthesis changed (new `synthesis_checksum` differs from what
+`master-synthesis.md` recorded), rebuild `docs/implr/kb-index/master-synthesis.md`
+in-skill:
 - System overview narrative
 - Domain map table
-- Cross-domain contradiction detection (across domain syntheses)
+- Cross-domain contradiction detection
 - Global NFR candidates with frequency
-- Complete architecture-relevant file list
+- Complete arch-relevant file list
 - Open ambiguities
 
-### PHASE 7 — Update index.md
+### Phase 7 — Update `index.md`
 
-Rewrite `index.md` with a current entry for every file. Preserve entries for UNCHANGED files;
-update CHANGED; add NEW; remove REMOVED. Each entry follows the kb-index schema exactly.
+Rewrite with current entries; preserve UNCHANGED entries; update CHANGED; add NEW;
+remove REMOVED.
 
-### PHASE 8 — Update digest-log.md (skip writing if --dry-run)
+### Phase 8 — Update `digest-log.md` (skip if `--dry-run`)
 
-If `docs/implr/kb-index/digest-log.md` does not exist, create it now with this header:
+Create with the documented header if absent. Prepend a run entry: timestamp, trigger,
+mode, files processed with checksums/actions, domains rebuilt, master rebuild flag,
+contradictions, warnings.
 
-```
-# digest-log
-# Append-only run history for doc-ingest. Newest entry first.
-# Format: see kb-index-schema.md § digest-log entry.
-```
-
-Then prepend a run entry: timestamp, trigger, mode, files processed with checksums and
-actions, domains rebuilt, whether master was rebuilt, contradictions detected, warnings.
-
-### PHASE 9 — Report
+### Phase 9 — Report
 
 ```
-📚 doc-ingest complete
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Scanned:     {n} files
-  ✅ New:        {n}
-  🔄 Changed:    {n}
-  ⏩ Unchanged:  {n}
-  🗑  Removed:    {n}
-  ⚠️  Unsupported: {n}
-
-Digests written:     {n}
-Domains rebuilt:     {list}
-Master synthesis:    rebuilt | unchanged
-Contradictions:      {n}  {list with domain + two sources if any}
-
-Warnings:
-  {any}
-
-Master synthesis ready at docs/implr/kb-index/master-synthesis.md
+📚 doc-ingest complete  (v2.0)
+Scanned: {n}   New: {n}   Changed: {n}   Unchanged: {n}   Removed: {n}   Unsupported: {n}
+Mode: registry-only | full
+Digests: {n}   Domains rebuilt: {list}   Master: rebuilt | unchanged
+Contradictions: {n} {one-line list}
+Warnings: {any}
 ```
 
-If called as step 0 of ba-requirements-gen, suppress the trailing guidance line and return a
-compact summary.
+If invoked by another skill as a chained step, suppress the trailing guidance line and
+keep the summary compact.
 
-### Post-Report Prompts
+### Post-report prompts
 
-After completing the report, run two checks. Both fire only for NEW files (status NEW in
-Phase 2); already-indexed files are silent. Neither auto-chains ba-cr.
+Fire only for NEW files.
 
-**1. Change request detection** — if any NEW file lives under `docs/kb/change-requests/`:
+- New CR files (`docs/kb/change-requests/`): emit `⚠️ New change request: <file>. Run /ba-cr --file <path>`.
+- New KB docs (outside change-requests) AND `requirements-index.md` exists non-empty:
+  emit `💡 New KB document: <file>. If it changes existing requirements: /ba-cr --ingest-file <path>`.
 
-```
-⚠️  New change request detected: {filename}
-    Run /ba-cr --file docs/kb/change-requests/{filename} to analyse impact and apply.
-```
-
-Emit one line per new CR file.
-
-**2. New KB document hint** — if any NEW file lives under `docs/kb/` (outside
-`change-requests/`) AND `docs/implr/requirements/requirements-index.md` exists and is
-non-empty (i.e. requirements have already been generated):
-
-```
-💡 New KB document ingested: {filename}
-   If this document changes existing requirements, run:
-   /ba-cr --ingest-file {original_path}
-```
-
-Emit one line per qualifying new KB file. Suppress this hint entirely if no requirements
-exist yet — on a fresh project it would only create noise.
-
----
-
-## Incremental Guarantees
+## Incremental guarantees
 
 - A file whose checksum matches the index is never re-extracted, re-digested, or re-read.
 - A domain synthesis is rebuilt only when one of its source digests changed.
 - The master synthesis is rebuilt only when a domain synthesis changed.
-- `--dry-run` writes nothing and does not advance any checksum state.
+- `--dry-run` writes nothing and does not advance log state.
 
----
+## Failure handling
 
-## Failure Handling
-
-- Missing extraction tool for a format → register file, `format_supported: false`, warn, continue.
-- Corrupt/unreadable file → skip with warning, do not fail the run.
-- `index.md` unparseable → treat all files as NEW and rebuild it, warn the user.
-- Never leave index, digests, syntheses, and log inconsistent. If a write fails partway,
-  report exactly what was and was not written.
+- Missing extraction tool → register file, `format_supported: false`, warn, continue.
+- Subagent dispatch returns `extraction_failed` → warn, continue, do not write index entry
+  as supported.
+- `index.md` unparseable → treat all files as NEW and rebuild, warn the user.
+- Never leave index/digests/syntheses/log inconsistent. On partial write, report exactly
+  what was and was not written.
