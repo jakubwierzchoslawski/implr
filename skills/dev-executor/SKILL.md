@@ -1,157 +1,89 @@
 ---
 name: dev-executor
 description: >
-  Executes implementation plans, writing production-quality code that conforms to the project
-  architecture and development standards. Use this skill when the user asks to implement a plan,
-  execute a plan, build a feature, write code for a requirement, or start development. Triggers
-  on: implement plan, execute plan, build PLAN-F, develop requirement, write code for plan,
-  implement feature. Reads PLAN-F-* files, ARCHITECTURE.md, and DEV-STANDARDS.md; enforces TDD
-  when tdd_required is true; applies SOLID in code; respects dependency order; updates plan
-  status. Only executes plans with status ready or in-progress.
+  Implements ready plans. Dispatches one executor-worker subagent (Opus by default — TDD
+  and SOLID need strong model) per plan. Independent plans dispatched in parallel waves;
+  tasks within each plan stay sequential inside the subagent. Use when implementing plans.
 ---
 
-# dev-executor Skill
+# dev-executor Skill (v2.0 orchestrator)
 
-You are a Senior Software Engineer. You implement plans precisely and completely. You produce
-production-quality code, not prototypes or scaffolding. Every file you write is ready for review.
-You apply SOLID in code, enforce TDD where required, and never deviate from ARCHITECTURE.md or
-DEV-STANDARDS.md. When you finish a plan, every acceptance criterion in the linked requirement is
-provably met.
+You orchestrate plan execution. Per-plan implementation runs in `executor-worker`
+subagents. Plan dependencies define the execution waves.
 
----
+## Read first
 
-## Reference
-
-Read before writing code:
-- The target plan file(s) in `docs/implr/plans/`
-- The linked requirement(s) in `docs/implr/requirements/` (acceptance criteria, DoD)
+- `docs/implr/schemas/plan-schema.md`
 - `docs/ARCHITECTURE.md`
 - `docs/implr/config/DEV-STANDARDS.md`
-- `docs/implr/config/implr.config.yaml` (for `src` and `tests` paths)
-
----
-
-## Outputs
-
-Production code under the configured `src` path; tests under the configured `tests` path.
-Plan status updates in the plan file and `plans-index.md`.
-
-You do not modify requirement files. You modify plan files only to update status and add a
-completion note.
-
----
+- `docs/implr/config/implr.config.yaml`
 
 ## Parameters
 
-- `/dev-executor PLAN-F-001` — execute one plan
-- `/dev-executor PLAN-F-001 PLAN-F-002` — execute several in the given order (deps validated)
-- `/dev-executor --all` — execute all `ready` plans in dependency order from plans-index.md
-- `/dev-executor --task PLAN-F-001 TASK-003` — execute a single task (resume work)
-- `/dev-executor --dry-run PLAN-F-001` — list files that would be created/modified; write nothing
+- `/dev-executor PLAN-F-001` — execute one plan.
+- `/dev-executor PLAN-F-001 PLAN-F-002` — execute several in the given order (deps validated).
+- `/dev-executor --all` — execute all `ready` plans in dependency order from `plans-index.md`.
+- `/dev-executor --task PLAN-F-001 TASK-003` — execute a single task (resume).
+- `/dev-executor --dry-run PLAN-F-001` — list files that would be created/modified.
 
----
+## Execution
 
-## Execution Pipeline
+### Phase 1 — Resolve scope
 
-### PHASE 0 — Validate
+Identify plans to execute. For `--all`, read `plans-index.md` and pick `status: ready`.
+For named plans, validate they exist and are `ready`. For `--task`, locate the named task
+inside the named plan.
 
-For each target plan: `status: ready` or `in-progress` (skip `done`; stop on `blocked` with the
-reason). Verify all dependency plans are `done`. Read ARCHITECTURE.md and DEV-STANDARDS.md; warn
-on unfilled `[FILL IN]` sections that affect execution. Load the linked requirement's acceptance
-criteria and DoD.
+### Phase 2 — Validate dependencies
 
-### PHASE 1 — Pre-execution summary
+For each plan, every dependent PLAN must be `status: done`. Block plans whose deps are not
+done; report.
 
-Report the plan, complexity, TDD flag, task count, and the lists of files to be created and
-modified. Set the plan `status: in-progress`.
+### Phase 3 — Compute execution waves
 
-### PHASE 2 — Execute tasks in order
+Topologically sort by plan dependencies. Each wave contains plans whose deps are done.
 
-For each task:
+### Phase 4 — Dispatch `executor-worker` per plan (parallel within wave)
 
-Announce it (id, title, complexity, TDD flag).
+For each wave, dispatch all in-wave plans (cap 5):
 
-**TDD tasks (`TDD: true`):** write the test file FIRST from the plan's "Tests to write first"
-list, then the implementation to pass them, then refactor without breaking tests.
+Scope: `{plan_path, resume_task, commit_mode}` (`resume_task` empty for fresh plan
+execution; `commit_mode` defaults to `auto`).
 
-**Non-TDD tasks:** write the implementation, then any tests the task specifies.
+Wait for wave completion before next wave.
 
-**Code quality (every file):**
-- Strong typing; no `any` (or language equivalent)
-- All async paths handle errors; no unhandled rejections
-- No hardcoded values; use constants/config
-- No circular imports; dependencies flow downward
-- No debug prints in production code; use the project logger
-- No commented-out code; no TODO/FIXME left in final output
-- Public functions/classes documented (params, returns)
+For `--task` mode: single dispatch with `resume_task` set to the named task; do not run
+subsequent tasks.
 
-**SOLID in code:**
-- One responsibility per class
-- Constructors accept interfaces/abstractions, never `new ConcreteCollaborator()`
-- New behaviour via new classes, not edits to existing ones where feasible
-- Interfaces as narrow as their consumers need
+For `--dry-run`: do not dispatch; instead, read each plan and list files it would touch.
 
-**Security (always, regardless of standards file):**
-- Parameterised queries only
-- Never log sensitive fields (password, token, secret, key, credential, PII)
-- Validate external inputs at the boundary
-- Hash passwords with bcrypt/argon2, cost factor >= 10
-- No secrets in source
+### Phase 5 — Aggregate returns
 
-Report completion of each task with the files written.
+Collect: tasks completed, blocked, manual actions, files created/modified, test
+pass/fail, plan status updates.
 
-### PHASE 3 — Self-review (same context)
+Update `plans-index.md` with new statuses. Append entries to `plans-log.md`.
 
-A consistency and completeness pass (not a substitute for dev-code-review):
-- Map every acceptance criterion to the code/test that satisfies it; if any is uncovered, add
-  the missing test or note it
-- Walk the plan's Definition of Done; mark each met / not-verifiable-here
-- Verify all plan interfaces are implemented exactly (no missing/extra methods, signatures match)
-- Verify types, entity names, and field names are consistent across all produced files
-
-### PHASE 4 — Update plan status
-
-Set the plan `status: done`, `executed_at` timestamp, and add a completion note at the top:
+### Phase 6 — Report
 
 ```
-> Executed: {ISO timestamp}
-> Files produced: {count}
-> Self-review: passed | {n} issues found and resolved
-> Manual actions required: {list or none}
-```
-
-Update plans-index.md: mark done, update statistics, mark any newly-unblocked dependents `ready`.
-
-### PHASE 5 — Report
-
-```
-✅ Execution complete — PLAN-F-001
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Files created:   {n}
-Files modified:  {n}
-Tests written:   {n}
-AC coverage:     {n}/{total}
-Manual actions:  {n}
-
+🛠  dev-executor complete  (v2.0)
+Plans executed: {n}    Waves: {n}
+Tasks completed: {n}    Tasks blocked: {n}
+Files: +{n} new, ~{n} modified
+Tests: {n} added, status: pass | fail
 Manual actions required:
-  1. {migration / env var / deployment step the skill cannot perform here}
+  - {list}
 
-Next: /dev-code-review PLAN-F-001  (fresh-context review before merge)
+Next steps:
+  1. Review changes in src/ and tests/
+  2. Run /dev-code-review --all (or specific plans)
 ```
 
----
+## Failure handling
 
-## Multi-plan (--all)
-
-Read plans-index.md execution order. Skip `done`/`blocked` and plans with unfinished
-dependencies. Execute eligible plans one at a time (sequential — avoid file conflicts).
-After each, re-evaluate which plans are now unblocked. Report progress between plans.
-
----
-
-## What dev-executor does NOT do
-
-- Does not modify requirement files
-- Does not run migrations, deployments, or external commands — notes them as manual actions
-- Does not make design decisions absent from the plan — follows the plan and notes any ambiguity
-- Does not skip specified tests — ever
+- Plan not ready → skip with warning unless explicitly named.
+- Executor-worker reports `tests_pass: false` → mark plan status `in-progress` (not `done`),
+  report failing tests.
+- Manual actions required → leave plan `in-progress`, surface to user.
+- Worker returns blocked task → mark plan `in-progress` with the blocking task highlighted.
