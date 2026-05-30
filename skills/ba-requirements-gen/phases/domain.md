@@ -20,8 +20,9 @@ reprocess_target: {{REPROCESS_TARGET}}        # only when mode=reprocess
 ```
 
 ## Task
-Generate REQ files in `{{staging_dir}}` with slug-only filenames (no IDs). Leave `req_id`
-empty — the orchestrator will fill it after all domain workers return.
+Generate REQ files in the `staging_dir` path from scope, with slug-only filenames (no
+IDs). Leave `req_id` empty — the orchestrator will fill it after all domain workers
+return.
 
 ## Return summary
 ```
