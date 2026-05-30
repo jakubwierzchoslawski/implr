@@ -8,3 +8,5 @@ Thumbs.db
 # build artefacts
 *.skill
 *.zip
+# Claude Code session state (.claude/agents/ IS tracked — plugin payload)
+.claude/settings.local.json
