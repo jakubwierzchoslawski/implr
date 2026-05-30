@@ -2,9 +2,9 @@
 # implr installer (macOS / Windows PowerShell / PowerShell Core)
 #
 # Usage:
-#   ./install.ps1                 install skills to ./.claude/skills and scaffold ./docs/implr
-#   ./install.ps1 -Global         install skills to ~/.claude/skills (scaffold targets ./)
-#   ./install.ps1 -SkillsOnly     install skills only, no project scaffold
+#   ./install.ps1                 install skills + agents to ./.claude/ and scaffold ./docs/implr
+#   ./install.ps1 -Global         install skills + agents to ~/.claude/ (scaffold targets ./)
+#   ./install.ps1 -SkillsOnly     install skills + agents only, no project scaffold
 #
 # Run from your project root.
 
@@ -43,6 +43,7 @@ foreach ($s in $Skills) {
   Write-Host "  installed $s"
 }
 
+if (-not (Test-Path $AgentsSrc)) { Write-Error "Missing agents source: $AgentsSrc"; exit 1 }
 New-Item -ItemType Directory -Force -Path $AgentsDest | Out-Null
 Copy-Item -Recurse -Force (Join-Path $AgentsSrc "*") $AgentsDest
 $agentCount = (Get-ChildItem -Path $AgentsDest -Filter "*.md" -File).Count

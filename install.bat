@@ -1,9 +1,9 @@
 @echo off
 REM implr installer (Windows CMD fallback)
 REM Usage:
-REM   install.bat              install skills to .\.claude\skills and scaffold .\docs\implr
-REM   install.bat --global     install skills to %USERPROFILE%\.claude\skills
-REM   install.bat --skills-only  skills only, no scaffold
+REM   install.bat              install skills + agents to .\.claude\ and scaffold .\docs\implr
+REM   install.bat --global     install skills + agents to %USERPROFILE%\.claude\
+REM   install.bat --skills-only  skills + agents only, no scaffold
 REM Run from your project root.
 
 setlocal enabledelayedexpansion
@@ -47,8 +47,16 @@ for %%S in (implr-init doc-ingest arch-gen ba-requirements-gen ba-cr dev-planner
   echo   installed %%S
 )
 
+if not exist "%AGENTS_SRC%" (
+  echo Missing agents source: %AGENTS_SRC%
+  exit /b 1
+)
 if not exist "%AGENTS_DEST%" mkdir "%AGENTS_DEST%"
 xcopy /e /i /q /y "%AGENTS_SRC%" "%AGENTS_DEST%" >nul
+if errorlevel 1 (
+  echo Failed to copy agents (xcopy errorlevel %errorlevel%)
+  exit /b 1
+)
 echo   installed agents -^> %AGENTS_DEST%
 
 if "%SKILLS_ONLY%"=="1" (

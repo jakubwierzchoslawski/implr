@@ -2,9 +2,9 @@
 # implr installer (Linux / generic bash)
 #
 # Usage:
-#   ./install.sh            install skills to ./.claude/skills and scaffold ./docs/implr
-#   ./install.sh --global   install skills to ~/.claude/skills (scaffold still targets ./)
-#   ./install.sh --skills-only   install skills only, no project scaffold
+#   ./install.sh            install skills + agents to ./.claude/ and scaffold ./docs/implr
+#   ./install.sh --global   install skills + agents to ~/.claude/ (scaffold still targets ./)
+#   ./install.sh --skills-only   install skills + agents only, no project scaffold
 #
 # Run from your project root.
 
@@ -46,6 +46,7 @@ for s in "${SKILLS[@]}"; do
   echo "  installed $s"
 done
 
+if [ ! -d "$AGENTS_SRC" ]; then echo "Missing agents source: $AGENTS_SRC"; exit 1; fi
 mkdir -p "$AGENTS_DEST"
 cp -r "$AGENTS_SRC/." "$AGENTS_DEST/"
 AGENT_COUNT=$(find "$AGENTS_DEST" -maxdepth 1 -name "*.md" | wc -l | tr -d ' ')
