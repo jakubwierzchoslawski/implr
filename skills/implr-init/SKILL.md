@@ -1,13 +1,10 @@
 ---
 name: implr-init
 description: >
-  Scaffolds the implr plugin workspace in a project. Use this skill when the user wants to
-  initialise implr, set up the plugin, create the implr folder structure, or start using implr
-  in a new project. Triggers on: implr init, initialise implr, set up implr, scaffold implr,
-  create implr structure, start implr. Creates docs/kb/, docs/implr/ (config, schemas,
-  templates, kb-index, requirements, plans, reviews), a pre-populated DEV-STANDARDS.md, the
-  implr.config.yaml, and CLAUDE.md. Idempotent — never overwrites existing files. Run once per
-  project before any other implr skill.
+  Scaffolds the implr workspace under docs/implr/ in the current project. Seeds
+  implr.config.yaml (incl. v2.0 agents: block, commented), DEV-STANDARDS.md (with SOLID
+  baseline), schemas, templates, CLAUDE.md, and the change-requests folder. Idempotent.
+  Note: .claude/agents/ is shipped by the installer, not by this skill.
 ---
 
 # implr-init Skill
