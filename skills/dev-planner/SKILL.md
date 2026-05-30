@@ -1,276 +1,109 @@
 ---
 name: dev-planner
 description: >
-  Acts as a Senior Software Architect to turn approved requirements into detailed implementation
-  plans. Use this skill when the user asks to plan implementation, create a dev plan, plan a
-  feature or requirement, or prepare requirements for development. Triggers on: plan requirement,
-  dev plan, create implementation plan, plan REQ-F, plan feature, prepare for development. Reads
-  approved requirements, ARCHITECTURE.md, and DEV-STANDARDS.md; resolves open questions
-  interactively; checks dependency coherence; applies SOLID at the design level; sets TDD per
-  task; and writes PLAN-F-* / PLAN-N-* files. Supports --brainstorm to explore design options
-  interactively. Only processes requirements with status approved.
+  Creates implementation plans from approved requirements. Dispatches one plan-worker
+  subagent per requirement in parallel (dependent reqs sequenced into waves). Optional
+  interactive --brainstorm phase runs in main before dispatch. Cross-requirement coherence
+  sweep via built-in Explore subagent. Use when planning approved requirements.
 ---
 
-# dev-planner Skill
+# dev-planner Skill (v2.0 orchestrator)
 
-You are a Senior Software Architect and Technical Lead. You convert approved requirements into
-precise implementation plans a developer can execute without ambiguity. You enforce architectural
-consistency, apply SOLID at the design level, and act as the quality gate between requirements
-and code.
+You orchestrate plan generation. `--brainstorm` runs in main; per-requirement planning runs
+in parallel `plan-worker` subagents respecting dependency waves.
 
-You never plan an unapproved requirement. You never plan a requirement with unresolved open
-questions — you resolve them with the user first. You never produce a vague plan.
+## Read first
 
----
-
-## Reference
-
-Read before planning:
-- `docs/implr/schemas/plan-schema.md` — the exact plan structure
-- `docs/ARCHITECTURE.md` — architectural constraints (path from config)
-- `docs/implr/config/DEV-STANDARDS.md` — stack, layering, naming, testing, security
-- `docs/implr/config/implr.config.yaml` — behaviour flags, TDD threshold
-- The target requirement file(s) and their dependencies
-- `docs/implr/requirements/requirements-index.md` — for the dependency graph
-
-If ARCHITECTURE.md or DEV-STANDARDS.md is missing or has unfilled `[FILL IN]` sections that
-affect the plan, warn the user before proceeding.
-
----
-
-## Outputs You Own
-
-```
-docs/implr/plans/
-  functional/PLAN-F-NNN-slug.md
-  non-functional/PLAN-N-NNN-slug.md
-  plans-index.md
-```
-
----
+- `docs/implr/schemas/plan-schema.md`
+- `docs/ARCHITECTURE.md`
+- `docs/implr/config/DEV-STANDARDS.md`
+- `docs/implr/config/implr.config.yaml`
 
 ## Parameters
 
-- `/dev-planner REQ-F-001` — plan a single requirement
-- `/dev-planner REQ-F-001 REQ-F-002 REQ-N-001` — plan several (dependency order respected)
-- `/dev-planner --all` — plan all approved requirements without a current plan
-- `/dev-planner --replan REQ-F-001` — regenerate an existing plan (preserve plan_id)
-- `/dev-planner --brainstorm REQ-F-001` — interactive design exploration before planning
-- `/dev-planner --dry-run REQ-F-001` — preview; write nothing
+- `/dev-planner REQ-F-001` — plan one requirement.
+- `/dev-planner REQ-F-001 REQ-F-002 REQ-N-001` — plan several (deps respected).
+- `/dev-planner --all` — plan all approved requirements without a current plan. **Skips
+  requirements that already have a plan** (per v1.x fix).
+- `/dev-planner --replan REQ-F-001` — regenerate an existing plan (preserve plan_id).
+- `/dev-planner --brainstorm REQ-F-001` — interactive design exploration before planning.
+- `/dev-planner --dry-run REQ-F-001` — preview; write nothing.
 
-`--brainstorm` combines with a requirement id or `--all`. `--dry-run` combines with any mode.
+## Execution
 
----
+### Phase 1 — Resolve scope and validate
 
-## Execution Pipeline
+Read each requirement; verify `status: approved` (unless `require_approved_status: false`).
+For `--all`, read `requirements-index.md` and pick approved reqs without an existing plan.
 
-### PHASE 0 — Validate input
+For each in-scope req, check dependencies — every required REQ must have an existing plan.
+If not, mark blocked. Surface blockers up front.
 
-For each target requirement:
-- File exists; `status: approved` (else skip with a clear message, unless
-  `require_approved_status` is false in config)
-- Load it fully: acceptance criteria, data models, process sequence, dependencies, linked NFRs
+### Phase 2 — Brainstorm (if `--brainstorm`)
 
-**`--all` skip rule:** Before processing any requirement under `--all`, check whether a
-matching plan file already exists (`docs/implr/plans/functional/PLAN-F-NNN-*.md` or
-`docs/implr/plans/non-functional/PLAN-N-NNN-*.md`) with `status: ready`, `in-progress`, or
-`done`. If yes, skip it and emit:
+Run interactive design exploration in main:
+- Present 2–3 design options per significant decision
+- Trade-offs explicit
+- User picks
+- Capture decisions as a structured list
 
+### Phase 3 — Open-question batching
+
+For each requirement with unresolved open questions, batch-prompt the user:
 ```
-⏭  REQ-F-001 — already has PLAN-F-001 (ready). Skipping.
-   Use --replan REQ-F-001 to regenerate.
-```
-
-Only `status: blocked` does not protect an existing plan — it is treated as if no plan
-exists and planning proceeds. A plan file that does not exist at all always triggers planning.
-
-### PHASE 1 — Resolve open questions (interactive)
-
-For each unresolved Open Questions row (`Resolved` is `☐`), present it to the user one at a time:
-
-```
-⚠️  REQ-F-007 has unresolved open questions. Resolving before planning.
-
-Question 1 of 2:
-{question}
-
-Source of ambiguity:
-{the conflict or gap, with document references}
-
-Your decision:
+REQ-F-NNN has {n} open questions:
+1. ...
+2. ...
+Resolve, or mark requirement blocked? (resolve / blocked)
 ```
 
-Write each answer back into the requirement's Open Questions table as `✅ {date}: {decision}`,
-bump `updated_at`, and continue. Only proceed once all are resolved.
+Update requirement status if user marks blocked.
 
-**Edge cases:**
+### Phase 4 — Compute dispatch waves
 
-**Contradiction (two source documents conflict):** Present both sources and the conflict
-explicitly. Ask the user to decide. Write the decision back as `✅ {date}: {decision}`. Never
-guess the resolution.
+Build the dependency graph among in-scope reqs. Topological sort into waves where each
+wave contains reqs whose dependencies are already planned.
 
-**Gap (information missing from the KB entirely):** Present the question. If the user answers
-inline, record it and continue. If the user says "proceed anyway", create the plan with
-`status: blocked` and leave the open question flagged as unresolved — never guess the answer.
+### Phase 5 — Dispatch `plan-worker` per requirement (parallel within wave)
 
-**Coherence failure across requirements (e.g. entity name in REQ-F-001 does not match
-REQ-F-002):** Stop. Tell the user exactly which field names or concepts need to be aligned
-and in which requirement files. Do not generate any plan for the affected requirements until
-they are corrected and re-approved.
+For each wave, dispatch all reqs in parallel (cap 5):
 
-**Many open questions across multiple requirements:** Batch by requirement. Resolve all open
-questions for REQ-F-001 fully before moving to REQ-F-002. Never present questions from
-different requirements in the same exchange.
+Scope per dispatch: `{requirement_path, plan_path_out, mode, existing_plan_path,
+existing_reqs_index, existing_plans_index, brainstorm_decisions}`.
 
-**`--all` with mixed requirements:** Process requirements that have no open questions first,
-generating their plans without interruption. Then pause and present each requirement with open
-questions individually. Report clearly at the end what was planned and what still needs
-resolution:
+Wait for the wave to complete before dispatching the next wave.
 
-```
-✅ Planned: PLAN-F-001, PLAN-F-003
-⏸  Paused (open questions to resolve):
-   REQ-F-002 — 2 questions  →  resolve then re-run /dev-planner REQ-F-002
-   REQ-F-005 — 1 question   →  resolve then re-run /dev-planner REQ-F-005
-```
+Aggregate returns. Collect blockers, AC coverage stats, tasks counts.
 
-### PHASE 2 — Dependency graph and coherence
+### Phase 6 — Cross-requirement coherence sweep
 
-Build a DAG from `dependencies`. Recursively load dependency requirements. Detect cycles — stop
-and report if found. Topologically sort (dependencies first).
+Dispatch the built-in `Explore` subagent (read-only) with scope:
+"Check plans at <paths> for: duplicate task definitions across plans, missing AC coverage,
+inconsistent task ordering vs requirement dependencies."
 
-Coherence check across requirements that share dependencies or data entities:
-- Entity and field names consistent
-- Process sequences connect at handoffs
-- No contradicting acceptance criteria across requirements
-- NFR constraints referenced match the actual NFR specs
+Include findings in the report; do not modify plans.
 
-Resolve incoherences interactively (same flow as Phase 1). If they cannot be resolved without
-editing source requirements, stop and tell the user exactly what to align.
+### Phase 7 — Update `plans-index.md` and `plans-log.md`
 
-### PHASE 3 — BRAINSTORM (only with --brainstorm)
+Recount, update tables, add entries.
 
-Identify design decision points — places where multiple valid approaches exist:
-- Multiple architectural patterns satisfy the requirement equally
-- Tradeoffs between complexity, performance, scalability, maintainability
-- Dependence on infrastructure not confirmed in the stack
-- Security-sensitive choices with different risk profiles
-- Places the requirement is silent on "how"
-
-For each decision point, present 2–3 approaches:
+### Phase 8 — Report
 
 ```
-🧠 BRAINSTORM — REQ-F-001
-Design Decision 1 of {n}: {decision name}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-{Context: what forces this decision}
+🧭 dev-planner complete  (v2.0)
+Plans created: {n}    Plans replanned: {n}
+Waves dispatched: {n}
+Blockers: {list}
+Average AC coverage: {pct}
+Cross-plan findings: {n}
 
-Option A — {name}
-  How: {mechanism}
-  Pros: {list}
-  Cons: {list}
-  Best when: {condition}
-
-Option B — {name}
-  ...
-
-Option C — {name}
-  ...
-
-Project stack: {stack_hint from config}
-Recommendation: Option {X} — {one-line rationale grounded in stack and standards}
-
-Your choice (A/B/C) or describe your own:
+Next steps:
+  1. Review docs/implr/plans/plans-index.md
+  2. Run /dev-executor --all  (or /dev-executor PLAN-F-NNN)
 ```
 
-Record each choice. After all decisions, present a summary and ask to proceed:
+## Failure handling
 
-```
-🧠 BRAINSTORM SUMMARY — REQ-F-001
-Decision 1: {name} → {choice}
-Decision 2: {name} → {choice}
-Estimated complexity: {X} | TDD: {bool}
-New dependency identified: {if any}
-
-Proceed to generate the plan with these decisions? (yes/no)
-```
-
-If the requirement is simple (XS/S) with no real decision points, say so and continue directly:
-```
-🧠 No significant design decisions for REQ-F-012 — proceeding to plan generation.
-```
-
-Record chosen decisions in the plan's `brainstorm_decisions` frontmatter and a Brainstorm
-Decisions section.
-
-### PHASE 4 — Generate plans
-
-Process in topological order. For each requirement, write a complete plan following the schema.
-
-**If the requirement has `status: under-review`** (set by ba-requirements-gen after a
-post-implementation update), insert this warning block at the very top of the generated plan
-file, before any other content:
-
-```
-⚠️  SOURCE REQUIREMENT UPDATED AFTER IMPLEMENTATION
-    Requirement updated: {updated_at date from requirement frontmatter}
-    Summary of change:   {one-line summary from the requirements-log warning entry}
-    Review whether the existing implementation still satisfies the updated requirement
-    before re-executing this plan.
-```
-
-Do NOT automatically set the plan to `blocked` or trigger re-review. Surface the conflict;
-leave the decision to the human. The human then either re-approves the requirement as-is
-(no re-planning needed) or runs `/dev-planner --replan {REQ-ID}`.
-
-Design principles:
-- **Architecture alignment** — conform to ARCHITECTURE.md; placement, layering, integration per
-  DEV-STANDARDS.md; use its naming conventions for every named artefact
-- **SOLID at design level** — one responsibility per component; extension via interfaces;
-  substitutable contracts; narrow interfaces; dependencies injected as abstractions
-- **TDD guidance** — for `tdd_required: true` tasks, list the tests to write first; otherwise
-  list tests to write after
-- **NFR injection** — for each linked NFR, turn its constraint into concrete task(s)
-- **AC coverage** — every acceptance criterion mapped to at least one task in the coverage table
-
-Assign plan IDs matching the requirement number (REQ-F-007 → PLAN-F-007).
-
-Save to `docs/implr/plans/functional/` or `non-functional/`. Create as `status: ready`, or
-`status: blocked` with a reason if the requirement cannot be fully specified.
-
-### PHASE 5 — Update plans-index.md
-
-Statistics, functional/non-functional tables, topological execution order, blocked plans.
-
-### PHASE 6 — Report
-
-```
-✅ Planning complete
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Plans created:  {n}
-Plans updated:  {n}
-Open questions resolved: {n}
-Brainstorm decisions recorded: {n}   (if --brainstorm)
-
-Execution order:
-  1. PLAN-F-001 — {title} [no deps]
-  2. PLAN-F-002 — {title} [depends on PLAN-F-001]
-
-Next: /dev-executor PLAN-F-001  (or /dev-executor --all)
-```
-
----
-
-## Quality Gate (before writing any plan)
-
-- [ ] Every acceptance criterion covered by at least one task
-- [ ] Every task has complexity and a TDD flag
-- [ ] All interfaces explicitly defined
-- [ ] Component design follows DEV-STANDARDS.md layering
-- [ ] SOLID applied — each component has one reason to change
-- [ ] Every linked NFR reflected in at least one task
-- [ ] No technology choice contradicts ARCHITECTURE.md or DEV-STANDARDS.md
-- [ ] Definition of Done complete and checkable
-
-If the requirement lacks detail to pass the gate, create the plan as `blocked` with a clear note
-on what is missing.
+- Requirement not approved → skip with warning unless explicitly named on command line.
+- Plan-worker reports blockers → do not mark plan as ready; surface to user.
+- Dependent plan missing → block the dependent requirement; do not stub.
