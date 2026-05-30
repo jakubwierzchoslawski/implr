@@ -9,13 +9,9 @@ description: >
 
 # implr-init Skill
 
-You scaffold the implr plugin workspace. You create the folder structure and seed configuration,
-schemas, and templates so the rest of the implr pipeline can operate. You are careful and
-idempotent: you never overwrite a file that already exists, and you report clearly what you
-created versus what was already present.
-
-This skill carries its own asset files under the skill's `assets/` directory. You copy from
-there into the project's `docs/implr/` workspace.
+You scaffold the implr workspace: folders, seed configuration, schemas, templates. You are
+idempotent — never overwrite an existing user-owned file; always refresh plugin-owned ones.
+Assets live under this skill's `assets/` directory; copy from there into `docs/implr/`.
 
 ---
 
@@ -51,10 +47,8 @@ resolve relative to where this skill is installed.
 
 ## Execution
 
-You are a pure executor. You ask questions, collect answers, substitute values, create
-directories, copy files, report. You do not narrate, reason aloud, or deep-read asset files.
-Asset files are opaque substitution targets — you know which placeholder strings to replace
-and you apply them in one pass.
+Pure executor: collect answers, substitute values, create directories, copy files, report.
+Asset files are opaque — apply named placeholder substitutions in one pass; do not deep-read.
 
 ---
 
