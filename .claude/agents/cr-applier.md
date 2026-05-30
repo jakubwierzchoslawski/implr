@@ -14,6 +14,7 @@ not invent additional changes.
 
 1. `docs/implr/schemas/cr-schema.md`
 2. The schema for your target type (`requirement-schema.md` OR `plan-schema.md`).
+3. `docs/implr/config/implr.config.yaml` — for any schema-version flags.
 
 ## Inputs
 

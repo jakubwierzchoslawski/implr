@@ -36,10 +36,17 @@ Check SOLID violations, architecture deviations, security baseline (input valida
 authn/authz, secret handling, output encoding). Audit test design (coverage of the AC,
 not just lines).
 
-Classify findings by severity per schema: Critical, High, Medium, Low, Info. Choose
-verdict per schema rules: Critical or High present → `changes-required` (or `rejected`
-for Critical without recoverable path). All Mediums/below → `approved-with-warnings`. No
-findings → `approved`.
+Classify findings by severity per schema: Critical, High, Medium, Low, Info. Verdict
+rules (deterministic):
+- **`rejected`** — at least one Critical finding AND the finding states "design must be
+  redone" / "approach is fundamentally wrong" / "no patch can fix this". Set a
+  `verdict_rationale` field in the review file naming the unrecoverable Critical.
+- **`changes-required`** — any Critical or High present, not flagged as unrecoverable.
+- **`approved-with-warnings`** — only Medium/Low/Info findings.
+- **`approved`** — no findings.
+
+If unsure between `rejected` and `changes-required`, default to `changes-required` (the
+plan can be re-executed after fixes; rejection forces re-planning).
 
 ## Output
 

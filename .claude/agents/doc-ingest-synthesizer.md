@@ -18,10 +18,13 @@ You rebuild exactly one domain synthesis. You write to
 
 ```
 domain: <domain>
-digests_glob: docs/implr/kb-index/digests/per-doc/<domain-prefix>*-digest.md
+digests_glob: docs/implr/kb-index/digests/per-doc/*-digest.md
 ```
 
-(The orchestrator gives you the glob covering the domain's digests. Use Glob to enumerate.)
+The orchestrator passes a wide glob covering every per-doc digest. Use Glob to enumerate
+matches, then for each digest read its frontmatter and keep only those whose `domain:`
+field equals the input `domain`. This avoids brittle name-prefix matching when slugs
+collide across domains.
 
 ## Work
 

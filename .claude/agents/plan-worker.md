@@ -42,6 +42,10 @@ they cover.
 If a dependent requirement's plan is missing, surface as a blocker — do not write a stub
 plan for that dependency.
 
+Compute `ac_coverage_pct` as: (count of ACs from the requirement that map to at least one
+plan task via the task's AC coverage list) / (total ACs in the requirement) × 100. A task
+that lists ACs without contributing real coverage (e.g. a doc-only task) still counts.
+
 ## Output
 
 Write to `plan_path_out`. Preserve `plan_id` and `created_at` when `mode: replan`.

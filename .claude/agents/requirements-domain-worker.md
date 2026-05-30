@@ -50,9 +50,11 @@ Apply requirement inference (user journeys, entity lifecycles, integration menti
 signals) per the schema. Set `complexity` from subtask aggregation; derive `tdd_required`
 from complexity vs `default_tdd_threshold`.
 
-For `mode: reprocess` with a CR target: read the CR alongside the affected requirement and
-apply the change described in the CR's `before`/`after` fields. Drop status to
-`under-review`.
+For `mode: reprocess`: re-derive requirements for the named source document from the
+current (already up-to-date) synthesis. **You do not apply CR diffs** — that is
+`cr-applier`'s job. If a CR has affected this domain, the orchestrator has already
+dispatched `cr-applier` separately before invoking you. You re-derive the requirement set
+from the post-CR synthesis state.
 
 ## Output
 

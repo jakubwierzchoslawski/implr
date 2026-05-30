@@ -36,6 +36,11 @@ arch-relevant KB docs by path in a Traceability section.
 For `mode: update`: produce a diff-style proposal. Highlight what changes versus the
 existing file and why. Write the new full file content.
 
+## Failure handling
+
+If `docs/implr/kb-index/master-synthesis.md` is absent, do not write any file. Return
+`status: error` with `reason: master-synthesis-missing`.
+
 ## Output
 
 Write to `docs/ARCHITECTURE.md`.

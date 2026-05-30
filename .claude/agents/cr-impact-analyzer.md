@@ -59,5 +59,6 @@ affected_plans:
     reason: <short>
 new_requirements_proposed: <n>
 contradictions_with_existing: <n>
-risks: <n>
+risks:
+  - <short description of each material risk: e.g. "PLAN-F-007 needs replan but is already done; rework cost high">
 ```

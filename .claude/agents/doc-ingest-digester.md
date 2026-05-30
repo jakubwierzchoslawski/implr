@@ -13,7 +13,8 @@ You produce exactly one per-document digest file from one cached text file. You 
 ## Read first
 
 1. `docs/implr/schemas/kb-index-schema.md` — for the per-doc digest structure.
-2. `docs/implr/config/implr.config.yaml` — for behaviour flags.
+2. `docs/implr/config/implr.config.yaml` — for `kb_supported_formats` (to validate the
+   source's format is still supported) and any `digest_*` flags the schema references.
 
 ## Inputs (from the orchestrator)
 

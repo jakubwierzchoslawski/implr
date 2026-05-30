@@ -22,7 +22,12 @@ tasks where `tdd_required: true`. You apply SOLID in code, not just at design le
 ```
 plan_path: docs/implr/plans/.../PLAN-F-NNN-<slug>.md
 resume_task: <task-id or omitted>
+commit_mode: auto | defer       # default: auto
 ```
+
+When `commit_mode: auto`, commit after each task per the standard message convention.
+When `commit_mode: defer`, leave staged changes for the orchestrator to commit in a
+batch; do not invoke `git commit`.
 
 ## Work
 
