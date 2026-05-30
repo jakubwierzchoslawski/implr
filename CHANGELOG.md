@@ -3,6 +3,81 @@
 All notable changes to implr are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.0.0] — 2026-05-30
+
+Major release: orchestrator + dedicated subagent execution model. Typical end-to-end
+pipeline runs cost **3–4× fewer tokens** than v1.x with no measurable quality loss on the
+default model assignments.
+
+### Breaking changes
+- **Removed `/ba-requirements-gen --ingest`.** Run `/doc-ingest --digest` first, then
+  `/ba-requirements-gen`. Passing `--ingest` now emits a clear error pointing to the
+  replacement command.
+- **Removed `/ba-requirements-gen --ingest-file <path>`.** Run
+  `/doc-ingest --file <path> --digest` first, then `/ba-requirements-gen`. Same error
+  handling.
+- **Flipped `/doc-ingest` default.** `/doc-ingest` now performs a fast registry-only scan;
+  the full pipeline (per-doc digests + per-domain syntheses + master synthesis) requires
+  `/doc-ingest --digest`.
+- **Removed `/doc-ingest --no-digest`.** The flag is now redundant with the new default.
+
+### Added
+- **`.claude/agents/`** ships with ten dedicated subagent definitions:
+  `doc-ingest-extractor` (haiku), `doc-ingest-digester` (sonnet),
+  `doc-ingest-synthesizer` (sonnet), `arch-drafter` (sonnet),
+  `requirements-domain-worker` (sonnet), `cr-impact-analyzer` (sonnet),
+  `cr-applier` (sonnet), `plan-worker` (sonnet), `executor-worker` (**opus** —
+  TDD + SOLID need a strong model), `code-review-worker` (sonnet). The installer copies
+  them alongside `.claude/skills/`.
+- **`skills/<skill>/phases/`** per-skill phase prompt files used as dispatch payloads
+  (`extract`, `digest`, `synthesize-domain`, `draft`, `domain`, `impact`, `apply`,
+  `plan-one`, `execute-plan`, `review-plan`).
+- **`agents:` section in `implr.config.yaml`** — per-agent model override.
+  Values: `haiku`, `sonnet`, `opus`. Omit a line to use the agent's built-in default.
+  Resolution: config value wins; falls back to `default_model` in the agent file.
+- **README §"How You Interact With implr"** — interaction-mode table per skill + the three
+  human gates.
+- **README §"Status Flows"** — short ASCII state diagrams + transition tables for
+  requirements, plans, and CRs, pointing to WORKFLOW.md for full detail.
+- **README §"Customising Model Tiers"** — when and how to override agent models.
+- **README §"Performance & Token Efficiency"** — explains the orchestrator + subagent
+  architecture and where the savings come from.
+- **README §"Migrating from v1.x to v2.0"** — six-step migration checklist.
+- **WORKFLOW.md §"Subagent Dispatch Model (v2.0)"** — per-phase dispatch table, model
+  override mechanism, dispatch payload contract, stable-reads-first convention, savings
+  rationale.
+- **CONTRIBUTING.md** — sections on authoring a dedicated agent, prompt-cache-friendly
+  ordering, and phase prompt file conventions.
+
+### Changed
+- All eight skills rewritten as **orchestrators** that dispatch heavy phases to dedicated
+  subagents. Same external command surface (minus removed flags), same outputs.
+- **`doc-ingest`** — Phase 3 (extract), Phase 4 (digest), Phase 5 (domain synthesis) all
+  run as parallel subagent dispatches (cap 5 per wave). Master synthesis stays in skill.
+- **`ba-requirements-gen`** — Phase 3 dispatches `requirements-domain-worker` in parallel
+  per domain. Workers write to a staging area with slug-only filenames; the orchestrator
+  performs **post-hoc sequential ID assignment** in Phase 5 to avoid coordination overhead.
+- **`ba-cr`** — Phase 2 dispatches `cr-impact-analyzer` (read-only); Phase 4 dispatches
+  `cr-applier` in parallel per affected requirement or plan.
+- **`dev-planner`** — Phase 5 dispatches `plan-worker` per requirement in dependency
+  waves. Phase 6 uses the built-in `Explore` subagent for cross-requirement coherence.
+- **`dev-executor`** — Phase 4 dispatches `executor-worker` per plan in waves (Opus by
+  default; tasks stay sequential inside the subagent).
+- **`dev-code-review`** — Phase 2 dispatches `code-review-worker` per plan in parallel.
+- **Installer scripts** (`install.sh`, `install.ps1`, `install.bat`) — copy
+  `.claude/agents/` alongside `.claude/skills/`, with source-existence guards and (in
+  `install.bat`) explicit errorlevel check so a failed copy no longer reports success.
+- **`implr-init`** — seed `implr.config.yaml` now includes the v2.0 `agents:` block
+  (commented, showing defaults).
+
+### Migration
+- Re-run the installer from your project root. See
+  [Migrating from v1.x to v2.0](README.md#migrating-from-v1x-to-v20) in README.
+- Removed flags emit clear error messages pointing to the replacement command. No silent
+  breakage.
+
+---
+
 ## [1.2.0] — 2026-05-30
 
 ### Added
