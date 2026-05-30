@@ -44,6 +44,63 @@ Traceability chain: `source doc → digest → domain synthesis → requirement 
 
 ---
 
+## Subagent Dispatch Model (v2.0)
+
+Every skill in v2.0 is an **orchestrator** that runs in the main conversation context. It
+handles user interaction (questions, confirmations) and dispatches heavy phases to dedicated
+subagents living under `.claude/agents/`. Each subagent has a focused system prompt, a
+restricted tool allowlist, and a tier-appropriate model.
+
+### Which phases dispatch
+
+| Skill | Phase | Subagent | Default model | Parallel? |
+|---|---|---|---|---|
+| doc-ingest | Phase 3 (extract) | doc-ingest-extractor | haiku | Yes (cap 5) |
+| doc-ingest | Phase 4 (digest) | doc-ingest-digester | sonnet | Yes (cap 5) |
+| doc-ingest | Phase 5 (domain synthesis) | doc-ingest-synthesizer | sonnet | Yes (cap 5) |
+| arch-gen | Phase 4 (draft) | arch-drafter | sonnet | No (single dispatch) |
+| ba-requirements-gen | Phase 3 (per-domain) | requirements-domain-worker | sonnet | Yes (cap 5) |
+| ba-requirements-gen | Phase 9 (coherence) | Explore (built-in) | n/a | No |
+| ba-cr | Phase 2 (impact) | cr-impact-analyzer | sonnet | No |
+| ba-cr | Phase 4 (apply) | cr-applier | sonnet | Yes (cap 5) |
+| dev-planner | Phase 5 (plan-one) | plan-worker | sonnet | Yes per wave (cap 5) |
+| dev-planner | Phase 6 (coherence) | Explore (built-in) | n/a | No |
+| dev-executor | Phase 4 (execute) | executor-worker | **opus** | Yes per wave (cap 5) |
+| dev-code-review | Phase 2 (review) | code-review-worker | sonnet | Yes (cap 5) |
+
+### Model override
+
+Users override per agent in `docs/implr/config/implr.config.yaml` under the `agents:`
+key. Values: `haiku`, `sonnet`, `opus`. Resolution: config value wins; falls back to the
+agent's `default_model` declared in `.claude/agents/<name>.md`.
+
+### Dispatch payload contract
+
+Each dispatch carries a small scope payload (file path, requirement id, domain name —
+whatever the worker needs to act on). The orchestrator never sends the full phase
+instructions inline; they live in `skills/<skill>/phases/*.md` and in the agent's system
+prompt body. This keeps payloads small and prompt-cache hits high.
+
+### Stable-reads-first convention
+
+Every skill and every phase prompt reads stable inputs (schemas, `implr.config.yaml`,
+`DEV-STANDARDS.md`) **before** any dynamic input (the file being processed, the
+requirement being planned). This makes Anthropic's 5-minute prompt cache reuse the prefix
+across dispatches within a session.
+
+### Why this saves tokens
+
+- Heavy reads (cache files, digests, requirements bodies) happen inside subagent contexts,
+  not in the main conversation.
+- Subagents have focused system prompts (1–3K tokens vs the main agent's ~10K).
+- Subagents run on cheaper model tiers where strong reasoning isn't required.
+- Independent units dispatch in parallel — same wall-clock, lower per-token spend on
+  cheaper tiers.
+
+Typical end-to-end runs cost 3–4× fewer tokens than v1.x.
+
+---
+
 ## Incremental Processing — How It Stays Fast
 
 The core idea: **checksums gate every stage**, so unchanged inputs are never reprocessed.
@@ -160,6 +217,11 @@ draft → under-review → approved → superseded
 Claude only ever creates `draft`. Only humans promote to `approved`. ba-requirements-gen
 and ba-cr can drop `approved` → `under-review` but never to `draft` (preserving review history).
 
+*In v2.0, the requirement-write transitions are performed by the `requirements-domain-worker`
+subagent (one per domain, in parallel) dispatched from the `ba-requirements-gen`
+orchestrator. The orchestrator does post-hoc sequential ID assignment after all workers
+return.*
+
 ---
 
 ### Plan
@@ -189,6 +251,11 @@ A plan replanned by `dev-planner --replan` returns to `ready` regardless of prio
 | approved / approved-with-warnings | plan stays `done` |
 | changes-required / rejected | plan set back to `in-progress`, blocking findings noted |
 
+*In v2.0, plan creation is performed by parallel `plan-worker` subagents (one per
+requirement in a dependency wave). Plan execution is performed by parallel
+`executor-worker` subagents (one per plan, tasks sequential inside). Plan review is
+performed by parallel `code-review-worker` subagents (one per plan).*
+
 ---
 
 ### Change Request (CR)
@@ -207,6 +274,10 @@ draft → approved → applied
 
 `rejected` is a terminal state. Create a new CR to supersede a rejected one. A CR is never
 edited after creation — it is a point-in-time record of intent.
+
+*In v2.0, impact analysis is performed by `cr-impact-analyzer` (read-only); applying the
+CR is performed by parallel `cr-applier` dispatches, one per affected requirement or plan.
+The `ba-cr` skill orchestrates both phases.*
 
 ---
 
@@ -344,17 +415,16 @@ requirement update triggered by a CR is traceable: the CR file is added to the r
 2. ba-cr interviews you for any missing required fields, then creates:
    docs/kb/change-requests/CR-NNN-slug.md
 
-3. ba-cr chains /doc-ingest --file <CR-file> automatically
+3. ba-cr dispatches `cr-impact-analyzer` to analyse impact across all requirements/plans
 
-4. ba-cr runs impact analysis across all requirements
-   → presents impact report with confirmed-affected requirements and their plans
+4. ba-cr presents impact report with affected requirements and their plans
 
 5. You approve: all / selected / none
 
-6. On approval, ba-cr chains in order:
-   /ba-requirements-gen --reprocess <CR-file>   (for each approved requirement)
-   /dev-planner --replan REQ-NNN                (for each with an existing plan)
-   /arch-gen --update                           (only if architecture domain touched)
+6. On approval, ba-cr dispatches parallel `cr-applier` subagents (one per affected
+   requirement, one per affected plan). Plans marked `replan_required` are queued; ba-cr
+   then offers to run `/dev-planner --replan` for them. `/arch-gen --update` is suggested
+   only if the architecture domain was touched.
 ```
 
 ### Manual-file path
