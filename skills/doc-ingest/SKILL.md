@@ -48,7 +48,9 @@ all supported to CHANGED. `--file` forces the named file to CHANGED.
 
 ### Phase 3 — Extract text (parallel `doc-ingest-extractor` dispatches)
 
-For each NEW or CHANGED supported file, dispatch `doc-ingest-extractor` with scope
+For each NEW or CHANGED supported file, compute the slug (kebab-cased filename without
+extension; if two files share a filename across domains, append a 6-char hex hash of the
+relative path for disambiguation). Then dispatch `doc-ingest-extractor` with scope
 `{file_path, slug}`. Cap parallel dispatches at 5 per wave; sequence remainder into waves.
 
 Read each return summary. If `status: extraction_failed`, log a warning and continue. If
@@ -70,7 +72,9 @@ Collect digest paths, checksums, `arch_relevant` flags.
 Determine affected domains: any domain containing a NEW, CHANGED, or REMOVED file.
 
 For each affected domain, dispatch `doc-ingest-synthesizer` with scope
-`{domain, digests_glob}`. Cap parallelism at 5.
+`{domain, digests_glob}`. **Pass the WIDE glob** `docs/implr/kb-index/digests/per-doc/*-digest.md`
+— the synthesizer filters by reading each digest's `domain:` frontmatter field, which is
+robust to slug collisions across domains. Cap parallelism at 5.
 
 ### Phase 6 — Master synthesis (orchestrator, integrative)
 
@@ -93,9 +97,16 @@ remove REMOVED.
 
 ### Phase 8 — Update `digest-log.md` (skip if `--dry-run`)
 
-Create with the documented header if absent. Prepend a run entry: timestamp, trigger,
-mode, files processed with checksums/actions, domains rebuilt, master rebuild flag,
-contradictions, warnings.
+If `docs/implr/kb-index/digest-log.md` does not exist, create it with this header:
+
+```
+# digest-log
+# Append-only run history for doc-ingest. Newest entry first.
+# Format: see kb-index-schema.md § digest-log entry.
+```
+
+Then prepend a run entry: timestamp, trigger, mode, files processed with
+checksums/actions, domains rebuilt, master rebuild flag, contradictions, warnings.
 
 ### Phase 9 — Report
 
@@ -131,6 +142,8 @@ Fire only for NEW files.
 - Missing extraction tool → register file, `format_supported: false`, warn, continue.
 - Subagent dispatch returns `extraction_failed` → warn, continue, do not write index entry
   as supported.
+- Corrupt/unreadable source file (Read fails before dispatch) → skip with warning, do not
+  fail the run.
 - `index.md` unparseable → treat all files as NEW and rebuild, warn the user.
 - Never leave index/digests/syntheses/log inconsistent. On partial write, report exactly
   what was and was not written.
