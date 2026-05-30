@@ -32,3 +32,18 @@ jira:
   custom_fields:
     implr_req_id: customfield_10001
     story_points: customfield_10016
+
+# Per-agent model selection for the orchestrator-subagent execution model (v2.0+).
+# Values: haiku | sonnet | opus.
+# Uncomment and edit any line to override an agent's default model.
+# agents:
+#   doc-ingest-extractor: haiku       # mechanical text extraction
+#   doc-ingest-digester: sonnet       # per-doc digest
+#   doc-ingest-synthesizer: sonnet    # per-domain synthesis
+#   arch-drafter: sonnet              # architecture draft
+#   requirements-domain-worker: sonnet
+#   cr-impact-analyzer: sonnet
+#   cr-applier: sonnet
+#   plan-worker: sonnet
+#   executor-worker: opus             # TDD + SOLID enforcement
+#   code-review-worker: sonnet

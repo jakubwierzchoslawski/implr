@@ -2,9 +2,9 @@
 # implr installer (macOS / Windows PowerShell / PowerShell Core)
 #
 # Usage:
-#   ./install.ps1                 install skills to ./.claude/skills and scaffold ./docs/implr
-#   ./install.ps1 -Global         install skills to ~/.claude/skills (scaffold targets ./)
-#   ./install.ps1 -SkillsOnly     install skills only, no project scaffold
+#   ./install.ps1                 install skills + agents to ./.claude/ and scaffold ./docs/implr
+#   ./install.ps1 -Global         install skills + agents to ~/.claude/ (scaffold targets ./)
+#   ./install.ps1 -SkillsOnly     install skills + agents only, no project scaffold
 #
 # Run from your project root.
 
@@ -17,17 +17,21 @@ param(
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SkillsSrc = Join-Path $ScriptDir "skills"
+$AgentsSrc = Join-Path $ScriptDir ".claude/agents"
 $Skills = @("implr-init","doc-ingest","arch-gen","ba-requirements-gen","ba-cr","dev-planner","dev-executor","dev-code-review")
 
 if ($Global) {
   $SkillsDest = Join-Path $HOME ".claude/skills"
+  $AgentsDest = Join-Path $HOME ".claude/agents"
 } else {
   $SkillsDest = Join-Path (Get-Location) ".claude/skills"
+  $AgentsDest = Join-Path (Get-Location) ".claude/agents"
 }
 
 Write-Host "implr installer"
 Write-Host "==============="
 Write-Host "Skills -> $SkillsDest"
+Write-Host "Agents -> $AgentsDest"
 
 New-Item -ItemType Directory -Force -Path $SkillsDest | Out-Null
 foreach ($s in $Skills) {
@@ -39,8 +43,14 @@ foreach ($s in $Skills) {
   Write-Host "  installed $s"
 }
 
+if (-not (Test-Path $AgentsSrc)) { Write-Error "Missing agents source: $AgentsSrc"; exit 1 }
+New-Item -ItemType Directory -Force -Path $AgentsDest | Out-Null
+Copy-Item -Recurse -Force (Join-Path $AgentsSrc "*") $AgentsDest
+$agentCount = (Get-ChildItem -Path $AgentsDest -Filter "*.md" -File).Count
+Write-Host "  installed $agentCount agents -> $AgentsDest"
+
 if ($SkillsOnly) {
-  Write-Host "Skills installed. Run /implr-init inside Claude Code to scaffold the project."
+  Write-Host "Skills and agents installed. Run /implr-init inside Claude Code to scaffold the project."
   exit 0
 }
 
@@ -115,6 +125,7 @@ if ((Test-Path $conf) -and (Select-String -Path $conf -Pattern "REPLACE_ME" -Qui
 Write-Host ""
 Write-Host "==============================================="
 Write-Host "implr installed."
+Write-Host "  .claude/skills/ and .claude/agents/ are ready."
 Write-Host ""
 Write-Host "Next steps:"
 Write-Host "  1. Fill in [FILL IN] sections of docs/implr/config/DEV-STANDARDS.md"
