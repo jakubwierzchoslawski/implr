@@ -78,6 +78,14 @@ scaffold_workspace() {
     echo "  kept existing docs/implr/requirements/cr-index.md"
   fi
 
+  # Skip if exists: resolved-contradictions.md seed
+  if [ ! -f "docs/implr/requirements/resolved-contradictions.md" ]; then
+    cp "$SCAFFOLD_SRC/seeds/resolved-contradictions.md" "docs/implr/requirements/resolved-contradictions.md"
+    echo "  created docs/implr/requirements/resolved-contradictions.md"
+  else
+    echo "  kept existing docs/implr/requirements/resolved-contradictions.md"
+  fi
+
   echo "  workspace scaffolded"
 }
 

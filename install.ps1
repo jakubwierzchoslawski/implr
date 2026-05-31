@@ -80,6 +80,14 @@ function Scaffold-Workspace {
         Write-Host "  kept existing docs\implr\requirements\cr-index.md"
     }
 
+    # Skip if exists: resolved-contradictions.md seed
+    if (-not (Test-Path "docs\implr\requirements\resolved-contradictions.md")) {
+        Copy-Item (Join-Path $ScaffoldSrc "seeds\resolved-contradictions.md") "docs\implr\requirements\resolved-contradictions.md"
+        Write-Host "  created docs\implr\requirements\resolved-contradictions.md"
+    } else {
+        Write-Host "  kept existing docs\implr\requirements\resolved-contradictions.md"
+    }
+
     Write-Host "  workspace scaffolded"
 }
 

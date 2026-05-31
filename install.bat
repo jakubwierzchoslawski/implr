@@ -122,6 +122,13 @@ if not exist "docs\implr\requirements\cr-index.md" (
     echo   kept existing docs\implr\requirements\cr-index.md
 )
 
+if not exist "docs\implr\requirements\resolved-contradictions.md" (
+    copy /y "%SCAFFOLD_SRC%\seeds\resolved-contradictions.md" "docs\implr\requirements\resolved-contradictions.md" >nul
+    echo   created docs\implr\requirements\resolved-contradictions.md
+) else (
+    echo   kept existing docs\implr\requirements\resolved-contradictions.md
+)
+
 echo   workspace scaffolded
 goto :eof
 
