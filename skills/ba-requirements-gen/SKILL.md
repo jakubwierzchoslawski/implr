@@ -42,6 +42,52 @@ sequential IDs and finalise after all workers return.
 
 ## Execution
 
+### Phase 0 — Contradiction Resolution
+
+Run before Phase 1. Resolves outstanding C-xxx contradictions so workers generate
+requirements with correct data — resolved contradictions never become Open Questions.
+
+**Step 1 — Collect C-IDs**
+
+Read every `docs/implr/kb-index/domains/*-synthesis.md` and gather all rows from their
+`Contradictions Detected` tables. Read `docs/implr/kb-index/master-synthesis.md` and gather
+rows from `Cross-Domain Contradictions`. De-duplicate by C-ID.
+
+**Step 2 — Load existing resolutions**
+
+Read `docs/implr/requirements/resolved-contradictions.md` (skip if absent).
+Build `already_handled = resolved_ids ∪ deferred_ids`.
+
+**Step 3 — Prompt for unresolved**
+
+For each C-ID not in `already_handled`, present to user:
+
+```
+C-001 [Hard conflict]
+Source A: docs/kb/spec-v1.md §3.2 — "Token TTL must be 15 minutes"
+Source B: docs/kb/spec-v2.md §1.4 — "Token TTL must be 30 minutes"
+Problem:  Auth token TTL: 15 min vs 30 min
+
+Decision (or type 'defer' + reason):
+```
+
+**Step 4 — Write resolutions**
+
+After collecting all answers, append new rows to `docs/implr/requirements/resolved-contradictions.md`
+in a single pass. Resolved decisions go to the `## Resolved` table; deferred items go to
+the `## Deferred` table. If the file does not yet exist, create it from the seed structure.
+
+If all C-IDs are already in `already_handled`: log
+`No unresolved contradictions. Skipping Phase 0.` and proceed immediately to Phase 1.
+
+**Step 5 — Build dispatch maps**
+
+After writing, read `resolved-contradictions.md` and build:
+- `resolved_map`: `{C-001: {problem: "...", decision: "..."}, ...}` — one entry per Resolved row
+- `deferred_list`: `["C-003", "C-004"]` — C-IDs from the Deferred table
+
+These are passed to every worker dispatch in Phase 3.
+
 ### Phase 1 — Load state and determine scope
 
 Read `requirements-log.md` (create with header if absent). Determine scope:
@@ -65,7 +111,11 @@ If `.staging/` already exists, delete it before proceeding.
 ### Phase 3 — Dispatch `requirements-domain-worker` per domain (parallel)
 
 For each in-scope domain, dispatch with scope `{domain, synthesis_path, master_synthesis_path,
-digests_dir, staging_dir, existing_reqs_index, mode, reprocess_target}`. Cap parallelism at 5.
+digests_dir, staging_dir, existing_reqs_index, mode, reprocess_target,
+resolved_contradictions, deferred_contradictions}`. Cap parallelism at 5.
+
+Where `resolved_contradictions` is `resolved_map` and `deferred_contradictions` is
+`deferred_list` built in Phase 0 Step 5.
 
 Each worker writes to `staging/<domain>/<slug>.md` (functional) or `staging/<domain>/n-<slug>.md`
 (non-functional) with empty `req_id` fields.
@@ -127,7 +177,8 @@ Include findings in the report.
 Domains processed: {list}
 Requirements created: {n} ({f} functional, {nfr} non-functional)
 Requirements updated: {n}
-Open questions: {n} (incl. {c} contradictions)
+Contradictions: {r} resolved, {d} deferred in Phase 0
+Open questions: {n} (from deferred contradictions and synthesis ambiguities)
 Needs your review: {list of REQ ids}
 Post-implementation updates: {list, if any}
 
