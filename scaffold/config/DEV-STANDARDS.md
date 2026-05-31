@@ -9,18 +9,15 @@
 
 ---
 
-## 1. Project Stack  [FILL IN]
+## 1. Project Stack
 
 ```
-Language:         e.g. TypeScript 5.x
-Runtime:          e.g. Node.js 20 LTS
-Framework:        e.g. NestJS 10 / Express 4 / Fastify 4
-ORM / DB client:  e.g. Prisma 5, PostgreSQL 16
-Test runner:      e.g. Vitest / Jest
-HTTP client:      e.g. native fetch / axios
-Auth:             e.g. JWT access + refresh tokens
-Cache / Queue:    e.g. Redis 7 / BullMQ
-Frontend:         e.g. React 18, Vite
+Frontend:         REPLACE_ME_FRONTEND
+Backend:          REPLACE_ME_BACKEND
+Database + ORM:   REPLACE_ME_DB
+HTTP client:      [FILL IN] e.g. axios / native fetch
+Auth:             [FILL IN] e.g. JWT access + refresh tokens
+Cache / Queue:    [FILL IN] e.g. Redis 7 / BullMQ
 ```
 
 ---
@@ -158,7 +155,7 @@ describe('UserService', () => {
 - Success envelope: { "data": ..., "meta": ..., "error": null }
 - Error envelope: { "data": null, "error": { "code": "...", "message": "..." } }
 - Pagination: cursor-based preferred for large datasets
-- Versioning: [FILL IN] e.g. URL prefix /api/v1 or header API-Version
+- Versioning: REPLACE_ME_VERSIONING
 
 ---
 
