@@ -17,6 +17,8 @@ staging_dir: docs/implr/requirements/.staging/{{DOMAIN}}/
 existing_reqs_index: docs/implr/requirements/requirements-index.md
 mode: {{MODE}}                                # create | reprocess
 reprocess_target: {{REPROCESS_TARGET}}        # only when mode=reprocess
+resolved_contradictions: {{RESOLVED_CONTRADICTIONS}}   # map {C-ID: {problem, decision}} — empty map if none
+deferred_contradictions: {{DEFERRED_CONTRADICTIONS}}   # list of C-IDs — empty list if none
 ```
 
 ## Task
@@ -32,5 +34,6 @@ files_written:
 functional_count: <n>
 non_functional_count: <n>
 open_questions: <n>
+contradictions_resolved_via_map: <n>
 contradictions_flagged: <n>
 ```

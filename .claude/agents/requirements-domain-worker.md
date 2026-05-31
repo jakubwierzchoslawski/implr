@@ -41,6 +41,9 @@ digest is unambiguous) or surface it as an Open Question citing the source docum
 When the domain synthesis `Contradictions Detected` table references a C-ID, apply this rule
 before deciding whether to create an Open Question:
 
+Normalise any C-ID from the synthesis table to uppercase with no surrounding whitespace
+before lookup (e.g. ` c-001 ` → `C-001`).
+
 | C-ID state | Action |
 |------------|--------|
 | In `resolved_contradictions` | Use the `decision` value as authoritative content. Do NOT create an Open Question. |
@@ -90,6 +93,6 @@ files_written:
 functional_count: <n>
 non_functional_count: <n>
 open_questions: <n>
-contradictions_resolved_via_map: <n>
-contradictions_flagged: <n>
+contradictions_resolved_via_map: <n>   # C-IDs found in resolved_contradictions and consumed (no Open Question created)
+contradictions_flagged: <n>           # deferred + truly unresolved items that became Open Questions
 ```
