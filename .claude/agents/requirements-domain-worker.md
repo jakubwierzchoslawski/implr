@@ -23,7 +23,7 @@ them with sequential IDs after all workers return.
 domain: <domain>
 synthesis_path: docs/implr/kb-index/domains/<domain>-synthesis.md
 master_synthesis_path: docs/implr/kb-index/master-synthesis.md
-cache_dir: docs/implr/kb-index/cache/
+digests_dir: docs/implr/kb-index/digests/per-doc/
 staging_dir: docs/implr/requirements/.staging/<domain>/
 existing_reqs_index: docs/implr/requirements/requirements-index.md   (may not exist)
 mode: create | reprocess
@@ -33,18 +33,22 @@ reprocess_target: <doc-or-cr-path>   (only when mode=reprocess)
 ## Work
 
 Read the domain synthesis. Check its "Ambiguities Detected" section. For each ambiguity
-either resolve it from `cache/<slug>.txt` (if the cache text is unambiguous) or surface
-it as an Open Question citing the source document.
+either resolve it from `docs/implr/kb-index/digests/per-doc/<slug>-digest.md` (if the
+digest is unambiguous) or surface it as an Open Question citing the source document.
 
 Generate one REQ per: distinct user-facing behaviour, business rule, data lifecycle event,
 external integration. Generate one NFR per distinct cross-cutting quality constraint
 (read the master synthesis for global NFR candidates).
 
-When the synthesis is sufficient, do not deep-dive. Go to `cache/<slug>.txt` only when:
+When the synthesis is sufficient, do not deep-dive. Go to
+`docs/implr/kb-index/digests/per-doc/<slug>-digest.md` only when:
 - The domain synthesis flags an ambiguity for that doc
 - Field-level data models are needed
-- An NFR needs a specific numeric target that the digest paraphrased
+- An NFR needs a specific numeric target that the synthesis paraphrased
 - A requirement cannot meet the quality gate (≥ 2 testable ACs) from the synthesis alone
+
+Never go to `cache/<slug>.md` directly — the digest is the complete structured extraction
+of the source and is sufficient for all requirement derivation.
 
 Apply requirement inference (user journeys, entity lifecycles, integration mentions, NFR
 signals) per the schema. Set `complexity` from subtask aggregation; derive `tdd_required`

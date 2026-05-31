@@ -20,7 +20,7 @@ You produce exactly one per-document digest file from one cached text file. You 
 
 ```
 slug: <slug>
-cache_path: docs/implr/kb-index/cache/<slug>.txt
+cache_path: docs/implr/kb-index/cache/<slug>.md
 source_path: docs/kb/<domain>/<name>.<ext>
 domain: <domain>
 ```
@@ -30,6 +30,11 @@ domain: <domain>
 Read the cache file. Produce a digest with all schema-required sections: business rules,
 system behaviours, data entities, integration points, NFR signals, ambiguities,
 architecture signals.
+
+**Completeness is the invariant.** Every distinct business rule, behaviour, entity, and
+integration point in the source must appear as its own line. Never merge or drop items to
+stay within a word budget — the digest is an enumeration, not a summary. Compression is
+the synthesizer's job.
 
 Determine `arch_relevant`:
 - `true` — file is under `docs/kb/architecture/`, OR has `implr_tags: [architecture]` in

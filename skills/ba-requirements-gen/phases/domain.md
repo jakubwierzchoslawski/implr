@@ -12,7 +12,7 @@ Dispatch prompt for `requirements-domain-worker`.
 domain: {{DOMAIN}}
 synthesis_path: docs/implr/kb-index/domains/{{DOMAIN}}-synthesis.md
 master_synthesis_path: docs/implr/kb-index/master-synthesis.md
-cache_dir: docs/implr/kb-index/cache/
+digests_dir: docs/implr/kb-index/digests/per-doc/
 staging_dir: docs/implr/requirements/.staging/{{DOMAIN}}/
 existing_reqs_index: docs/implr/requirements/requirements-index.md
 mode: {{MODE}}                                # create | reprocess

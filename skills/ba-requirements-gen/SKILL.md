@@ -58,12 +58,14 @@ Read `requirements-index.md` for existing IDs and the highest REQ-F / REQ-N numb
 docs/implr/requirements/.staging/
 ```
 
-Clear any leftover staging from a previous failed run.
+If `.staging/` already exists, delete it before proceeding.
+- Windows: `cmd /c "rd /s /q <path>"` — do NOT use `Remove-Item -Recurse -Force`; it hangs when files are locked by antivirus or an IDE.
+- Unix/macOS: `rm -rf <path>`
 
 ### Phase 3 — Dispatch `requirements-domain-worker` per domain (parallel)
 
 For each in-scope domain, dispatch with scope `{domain, synthesis_path, master_synthesis_path,
-cache_dir, staging_dir, existing_reqs_index, mode, reprocess_target}`. Cap parallelism at 5.
+digests_dir, staging_dir, existing_reqs_index, mode, reprocess_target}`. Cap parallelism at 5.
 
 Each worker writes to `staging/<domain>/<slug>.md` (functional) or `staging/<domain>/n-<slug>.md`
 (non-functional) with empty `req_id` fields.
@@ -98,9 +100,13 @@ or reprocess mode): merge per the existing rules:
 
 ### Phase 7 — Update `requirements-index.md`
 
-Recount statistics, update tables, list requirements with unresolved open questions under
-"Needs Human Review", maintain traceability matrix mapping each source doc to derived REQ
-IDs.
+Recount statistics, update tables, maintain traceability matrix mapping each source doc to
+derived REQ IDs.
+
+**"Needs Human Review" section must be derived by reading the actual final REQ files** —
+read each moved file's `open_questions` field directly. Do not use worker-return summaries
+or synthesis memory: question wording and placement in the files may differ from what
+workers reported, causing incorrect REQ↔question associations.
 
 ### Phase 8 — Update `requirements-log.md` (skip if `--dry-run`)
 

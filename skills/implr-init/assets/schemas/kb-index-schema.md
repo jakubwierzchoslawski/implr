@@ -24,9 +24,9 @@ A registry of every file discovered in the knowledge base. One YAML list entry p
 ```yaml
 - filename: auth-flow.md
   original_path: docs/kb/auth/auth-flow.md
-  cache_path: docs/implr/kb-index/cache/auth-flow.txt
+  cache_path: docs/implr/kb-index/cache/auth-flow.md
   digest_path: docs/implr/kb-index/digests/per-doc/auth-flow-digest.md
-  format: md                      # md | pdf | docx | xlsx | csv | txt | other
+  format: md                      # md | pdf | docx | xlsx | csv | txt | vtt | other
   format_supported: true
   checksum: abc123de              # md5 of the ORIGINAL file
   last_modified: 2025-01-15T10:32:00Z
@@ -58,9 +58,9 @@ A registry of every file discovered in the knowledge base. One YAML list entry p
 
 ---
 
-## 2. cache/{slug}.txt — Normalised Text Cache
+## 2. cache/{slug}.md — Normalised Text Cache
 
-Location: `docs/implr/kb-index/cache/{slug}.txt`
+Location: `docs/implr/kb-index/cache/{slug}.md`
 
 Plain-text extraction of each non-trivial source file. Created so digest logic is
 format-agnostic — it always reads text. For `.md` and `.txt` the cache may be a direct copy.
@@ -74,8 +74,9 @@ No frontmatter. Plain text only. Overwritten whenever the source checksum change
 
 Location: `docs/implr/kb-index/digests/per-doc/{slug}-digest.md`
 
-A dense, structured extraction of one source document. Substitutes for reading the raw file in
-most downstream cases.
+A complete, structured enumeration of one source document. Substitutes for reading the raw file
+in all downstream cases. Completeness is the invariant — no item may be silently dropped.
+Compression is the synthesis's job, not the digest's.
 
 ```markdown
 ---
@@ -112,7 +113,8 @@ arch_relevant: true
 - {Statement that is architecturally significant}
 ```
 
-Target length: 300–600 words. Dense and structured, never prose narrative.
+Length: as long as the source requires. One line per item — terse but complete. Never drop an
+item to stay within a word budget. No prose narrative.
 If a section has no content, write `- None`.
 
 ---

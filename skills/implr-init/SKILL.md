@@ -186,7 +186,7 @@ Remaining [FILL IN] sections in DEV-STANDARDS.md (open in your editor):
 
 Next steps:
   1. Complete the remaining [FILL IN] sections of docs/implr/config/DEV-STANDARDS.md
-  2. Add your documentation (.md, .pdf, .docx, .xlsx, .csv, .txt) to docs/kb/
+  2. Add your documentation (.md, .pdf, .docx, .xlsx, .csv, .txt, .vtt) to docs/kb/
   3. Run /doc-ingest to index and digest your knowledge base
   4. Run /arch-gen to generate docs/ARCHITECTURE.md
   5. Run /ba-requirements-gen to generate requirements

@@ -108,7 +108,7 @@ default model assignments.
   to `implr.config.yaml`, `DEV-STANDARDS.md`, and `CLAUDE.md`. Report lists remaining
   `[FILL IN]` sections so users know exactly what still needs manual editing.
 - **ba-requirements-gen:** explicit rules for when synthesis is sufficient vs. when to
-  deep-dive into `cache/{slug}.txt`. Five inference-reasoning patterns for deriving unstated
+  deep-dive into `cache/{slug}.md`. Five inference-reasoning patterns for deriving unstated
   requirements from user journeys, entity lifecycles, integration mentions, and NFR signals.
 - **ba-requirements-gen:** post-implementation update detection — when a new document changes
   an existing approved requirement, status drops to `under-review`, a warning is appended to
@@ -153,7 +153,7 @@ default model assignments.
 - Seven skills: implr-init, doc-ingest, arch-gen, ba-requirements-gen, dev-planner,
   dev-executor, dev-code-review.
 - Incremental knowledge-base ingestion with per-doc digests, per-domain syntheses, and a
-  master synthesis. Supports md, pdf, docx, xlsx, csv, txt.
+  master synthesis. Supports md, pdf, docx, xlsx, csv, txt, vtt.
 - Contradiction detection at domain and master-synthesis level.
 - Architecture generation from the knowledge base with inferred-decision confirmation and
   diff-on-update.

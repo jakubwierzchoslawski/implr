@@ -15,7 +15,7 @@ docs/kb/**                      source documents (you own these)
    │
    ▼  doc-ingest
 docs/implr/kb-index/
-   ├── cache/{slug}.txt         normalised text per file
+   ├── cache/{slug}.md         normalised text per file
    ├── digests/per-doc/         one structured digest per file
    ├── domains/{domain}-synthesis.md   consolidated per domain + contradictions
    └── master-synthesis.md      system-wide view (bounded size)
@@ -132,30 +132,28 @@ rebuilds the master synthesis, and ba-requirements-gen reprocesses only that dom
 A large knowledge base cannot all fit usefully in one context window. Reading 50 raw documents
 to generate requirements produces shallow output. So:
 
-- **doc-ingest** reads raw documents once and distils each into a dense digest.
+- **doc-ingest** reads raw documents once and produces a complete structured digest per file —
+  every business rule, behaviour, entity, and integration point enumerated.
 - **Domain syntheses** consolidate digests per domain and catch contradictions.
 - **The master synthesis** is a bounded, system-wide briefing.
-- **ba-requirements-gen** reads the master synthesis and domain syntheses — not every raw file —
-  and only deep-dives into a specific raw document when a digest flags an ambiguity it must
-  resolve.
+- **ba-requirements-gen** workers read domain and master syntheses. When a synthesis is
+  insufficient they fall back to the per-doc digest — never to the raw cache. The digest is
+  the complete structured extraction; the cache is the raw text used only by the digester.
 
-This mirrors how a human BA works: read the briefing, then go to source only for the details
-that matter.
+This mirrors how a human BA works: read the briefing, then go to the structured notes only
+for the details that matter — not back to the original raw document.
 
 ### Why the text cache exists
 
-- **Extract once, read many times.** Binary and structured formats (PDF, DOCX, XLSX, CSV)
-  require external tool invocations (`pdftotext`, `python-docx`, `openpyxl`) — expensive to
-  repeat on every skill run.
-- **Checksum gate.** doc-ingest writes `cache/{slug}.txt` once per file and records the source
-  checksum. On subsequent runs, if the checksum is unchanged, the cache is read directly —
-  no tool invocation needed.
-- **One consistent read path.** `.md` and `.txt` files are straight copies into cache, but
-  having a single path (`cache/{slug}.txt`) means every downstream skill (ba-requirements-gen,
-  arch-gen) never needs to know the original format or invoke extraction tools.
-- **Never read the binary original downstream.** Skills always read from cache. If a cache
-  entry is absent for a file that is needed, the skill flags it as an Open Question rather
-  than attempting to read the raw binary.
+- **Extract once.** Binary and structured formats (PDF, DOCX, XLSX, CSV) require extraction
+  tools — expensive to repeat. The cache is written once and only re-extracted when the source
+  checksum changes.
+- **Digester's input only.** The cache is the input to `doc-ingest-digester` and nothing else.
+  Downstream skills (`ba-requirements-gen`, `arch-gen`) never read cache directly — they read
+  digests, which are the complete structured extraction of each source file.
+- **Checksum gate.** `cache/{slug}.md` is written with the source checksum recorded. On
+  subsequent runs, if the checksum is unchanged the cache is skipped and the existing digest
+  is reused — no re-extraction needed.
 
 ---
 

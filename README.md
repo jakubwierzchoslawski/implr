@@ -89,22 +89,27 @@ already part of the requirement schema.
 
 ## Installation
 
-implr installs as a set of Claude Code skills, a set of dedicated subagents, and a project
-workspace. The installer does all three: copies skills, copies agents, scaffolds the workspace.
+The installer copies skills and agents into your project's `.claude/` folder. The workspace
+(`docs/implr/`, config, schemas) is set up separately by running `/implr-init` inside
+Claude Code — this gives you the interactive setup experience where you fill in your project
+name, stack, and standards.
+
+> **Important:** Run the installer from your **target project's root directory**, not from
+> inside the implr folder.
 
 ### macOS / Linux
 
 ```bash
-git clone https://github.com/your-org/implr.git
-cd /path/to/your-project
+git clone https://github.com/your-org/implr.git   # one-time: get implr
+cd /path/to/your-project                           # go to YOUR project root
 /path/to/implr/install.sh
 ```
 
-### macOS / Windows (PowerShell)
+### Windows (PowerShell — recommended)
 
 ```powershell
-git clone https://github.com/your-org/implr.git
-cd C:\path\to\your-project
+git clone https://github.com/your-org/implr.git   # one-time: get implr
+cd C:\path\to\your-project                         # go to YOUR project root
 & C:\path\to\implr\install.ps1
 ```
 
@@ -116,17 +121,26 @@ cd C:\path\to\your-project
 C:\path\to\implr\install.bat
 ```
 
+### What the installer creates
+
+```
+your-project/
+└── .claude/
+    ├── skills/    eight implr skills
+    └── agents/    ten dedicated subagents
+```
+
+That's it. Open your project in Claude Code and run `/implr-init` to scaffold `docs/implr/`.
+
 ### Install options
 
 | Flag | Effect |
 |------|--------|
-| (none) | Install skills + agents to `./.claude/` and scaffold `./docs/implr` |
-| `--global` / `-Global` | Install skills + agents to `~/.claude/` (available in all projects) |
-| `--skills-only` / `-SkillsOnly` | Install skills + agents only; scaffold later with `/implr-init` |
+| (none) | Install skills + agents to `./.claude/` |
+| `--global` / `-Global` | Install to `~/.claude/` (available in all projects) |
 
-The installer is **idempotent**: re-running it refreshes the plugin-owned skills, agents,
-schemas, and templates but never overwrites your `DEV-STANDARDS.md`, `implr.config.yaml`,
-`CLAUDE.md`, or anything in `docs/kb/`.
+The installer is **idempotent** — re-running it refreshes skills and agents without touching
+anything else.
 
 > **Note on skill packaging.** Claude Code reads skills from unpacked folders (each containing a
 > `SKILL.md`), not from `.skill` archives. The installer copies unpacked folders, so the skills
@@ -148,7 +162,7 @@ cd /path/to/your-project
 /path/to/implr/install.sh
 ```
 
-### macOS / Windows (PowerShell)
+### Windows (PowerShell — recommended)
 
 ```powershell
 cd C:\path\to\implr
@@ -171,24 +185,19 @@ C:\path\to\implr\install.bat
 | What | Action |
 |------|--------|
 | Skills (`.claude/skills/`) and agents (`.claude/agents/`) | Always replaced with the new version |
-| Schemas (`docs/implr/schemas/`) | Always replaced — plugin-owned |
-| Templates (`docs/implr/templates/`) | Always replaced — plugin-owned |
-| New folders (e.g. `docs/kb/change-requests/`) | Created if missing |
-| `docs/implr/config/implr.config.yaml` | **Never overwritten** — your config is preserved |
-| `docs/implr/config/DEV-STANDARDS.md` | **Never overwritten** — your standards are preserved |
-| `CLAUDE.md` | **Never overwritten** — your file is preserved |
+| `docs/implr/config/implr.config.yaml` | **Never touched** — your config is preserved |
+| `docs/implr/config/DEV-STANDARDS.md` | **Never touched** — your standards are preserved |
+| `CLAUDE.md` | **Never touched** — your file is preserved |
 | Everything in `docs/kb/` | **Never touched** — your documents are preserved |
 
 > **Upgrading from v1.x to v2.0?** See the dedicated [Migrating from v1.x to v2.0](#migrating-from-v1x-to-v20) section. Two flags were removed and one default was flipped — the migration is two commands and a re-install.
 
 ### After updating
 
-If the new version adds new skills or agents, they are available immediately in Claude Code
-after the installer runs — no restart needed.
-
-If the new version adds new folders or index files (e.g. `cr-index.md` in v1.2.0, `.claude/agents/`
-in v2.0), the installer creates them. You can also run `/implr-init` inside Claude Code to pick
-up any new scaffolding interactively.
+New skills and agents are available in Claude Code immediately after the installer runs — no
+restart needed. If a new version adds workspace changes (new folders, schemas, templates), run
+`/implr-init` inside Claude Code to pick them up — it is idempotent and will not overwrite your
+config or standards.
 
 ---
 
@@ -200,55 +209,78 @@ everything under `docs/implr/` except config is auto-managed by the skills.
 ```
 your-project/
 ├── .claude/
-│   ├── skills/                     eight installed skills (SKILL.md each)
-│   └── agents/                     ten dedicated subagent definitions (v2.0)
+│   ├── skills/                         eight installed skills (SKILL.md each)
+│   └── agents/                         ten dedicated subagent definitions (v2.0)
 ├── docs/
-│   ├── kb/                         (you) knowledge base — any subfolder structure
-│   │   └── change-requests/        (you) drop CR files here for manual change requests
-│   ├── ARCHITECTURE.md             generated by arch-gen
-│   └── implr/                      plugin workspace
+│   ├── kb/                             (you) knowledge base — any subfolder structure
+│   │   └── change-requests/            (you) drop CR files here for manual change requests
+│   ├── ARCHITECTURE.md                 generated by arch-gen
+│   └── implr/                          plugin workspace
 │       ├── config/
-│       │   ├── implr.config.yaml   (you) plugin configuration (incl. v2.0 agents: block)
-│       │   └── DEV-STANDARDS.md    (you) development standards (SOLID pre-filled)
-│       ├── schemas/                canonical schemas (plugin-owned)
-│       ├── templates/              templates (plugin-owned)
-│       ├── kb-index/               index, digests, syntheses (doc-ingest)
-│       ├── requirements/           REQ-F-*, REQ-N-* (ba-requirements-gen)
-│       ├── plans/                  PLAN-F-*, PLAN-N-* (dev-planner)
-│       └── reviews/                REVIEW-F-* (dev-code-review)
-├── src/                            (you) implementation (dev-executor writes here)
-├── tests/                          (you) tests (dev-executor writes here)
-└── CLAUDE.md                       project briefing for Claude Code
+│       │   ├── implr.config.yaml       (you) plugin configuration (incl. v2.0 agents: block)
+│       │   └── DEV-STANDARDS.md        (you) development standards (SOLID pre-filled)
+│       ├── schemas/                    six canonical schemas (plugin-owned)
+│       ├── templates/                  six templates (plugin-owned)
+│       ├── kb-index/                   index, digests, syntheses (doc-ingest)
+│       ├── requirements/
+│       │   ├── functional/             REQ-F-* files (ba-requirements-gen)
+│       │   ├── non-functional/         REQ-N-* files (ba-requirements-gen)
+│       │   └── cr-index.md            change-request index (ba-cr)
+│       ├── plans/
+│       │   ├── functional/             PLAN-F-* files (dev-planner)
+│       │   └── non-functional/         PLAN-N-* files (dev-planner)
+│       └── reviews/                    REVIEW-F-*, REVIEW-N-* files (dev-code-review)
+├── src/                                (you) implementation (dev-executor writes here)
+├── tests/                              (you) tests (dev-executor writes here)
+└── CLAUDE.md                           project briefing for Claude Code
 ```
 
 ---
 
 ## Quick Start
 
+**Step 1 — Install (from your project root):**
+
 ```bash
-# 1. Install (from your project root)
+# macOS / Linux
 /path/to/implr/install.sh
 
-# 2. Fill in your standards
-#    Edit docs/implr/config/DEV-STANDARDS.md — complete the [FILL IN] sections
+# Windows (PowerShell)
+& C:\path\to\implr\install.ps1
 
-# 3. Add documentation to the knowledge base
+# Windows (CMD)
+C:\path\to\implr\install.bat
+```
+
+This copies skills and agents into `.claude/`. Nothing else happens yet.
+
+**Step 2 — Scaffold the workspace (inside Claude Code):**
+
+```
+/implr-init
+```
+
+This asks you 14 setup questions (project name, stack, paths, conventions), then creates
+`docs/implr/` with your config, schemas, and templates pre-filled.
+
+**Step 3 — Add your documentation:**
+
+```bash
 cp ~/specs/*.md docs/kb/
-#    organise into subfolders by domain if you like: docs/kb/auth/, docs/kb/billing/, ...
+# organise into subfolders by domain: docs/kb/auth/, docs/kb/billing/, ...
 ```
 
-Then, inside Claude Code:
+**Step 4 — Run the pipeline (inside Claude Code):**
 
 ```
-/doc-ingest --digest        # index + digest the KB (full pipeline)
-/arch-gen                   # generate docs/ARCHITECTURE.md (confirms inferred decisions)
-/ba-requirements-gen        # generate requirements from the syntheses
+/doc-ingest --digest        # index + digest the KB
+/arch-gen                   # generate docs/ARCHITECTURE.md
+/ba-requirements-gen        # generate requirements
 
-# review docs/implr/requirements/requirements-index.md
-# resolve open questions, set status: approved on ready requirements
+# review docs/implr/requirements/ — resolve open questions, set status: approved
 
 /dev-planner --all          # plan all approved requirements
-/dev-executor --all         # implement all ready plans in dependency order
+/dev-executor --all         # implement all ready plans
 /dev-code-review --all      # review everything that was built
 ```
 
@@ -261,10 +293,10 @@ Then, inside Claude Code:
 
 ```
 1. SETUP
-   /implr-init (or the installer) scaffolds docs/implr and seeds config + standards
+   Installer copies skills + agents to .claude/; /implr-init scaffolds docs/implr/ and seeds config + standards
 
 2. DOCUMENT
-   You add .md/.pdf/.docx/.xlsx/.csv/.txt files to docs/kb/
+   You add .md/.pdf/.docx/.xlsx/.csv/.txt/.vtt files to docs/kb/
 
 3. INGEST            /doc-ingest --digest    (use --digest for the full pipeline)
    Scans the KB, computes checksums, extracts text, writes per-doc digests,
@@ -313,7 +345,7 @@ implr's skills fall into three interaction modes:
 
 | Skill | Mode | When the skill asks for input |
 |---|---|---|
-| `implr-init` | Interactive | Project name, paths, stack hint — once at scaffold |
+| `implr-init` | Interactive | 14 setup questions (project name, stack, paths, TDD threshold, API conventions, Git branch prefix, optional Jira) — once at first init; silent on re-init |
 | `doc-ingest` | Non-interactive | Never |
 | `arch-gen` | Interactive | Confirms each inferred architectural decision |
 | `ba-requirements-gen` | Non-interactive | Never (open questions surfaced in files) |
@@ -408,9 +440,11 @@ Full diagrams (including replan loops and approval edge cases) in
 ## Skills Reference
 
 ### implr-init
-Scaffolds `docs/implr/`, seeds `implr.config.yaml` (including the v2.0 `agents:` block,
-commented) and `DEV-STANDARDS.md`, copies schemas and templates, creates `CLAUDE.md`.
-Idempotent. `.claude/agents/` is shipped by the installer, not by this skill.
+Scaffolds `docs/implr/` and all its subdirectories, then asks 14 setup questions (project
+name, stack, paths, TDD threshold, API conventions, Git branch prefix, optional Jira) to
+pre-fill `implr.config.yaml` and `DEV-STANDARDS.md`. Also creates `CLAUDE.md` and initialises
+the `cr-index.md`. On re-init, skips the questions and refreshes only plugin-owned files
+(schemas and templates). `.claude/agents/` is shipped by the installer, not by this skill.
 
 ```
 /implr-init
@@ -427,7 +461,7 @@ Indexes and digests the KB. Dispatches three parallel subagent pools.
 - `/doc-ingest --rebuild` — implies --digest; reprocess everything from scratch
 ```
 
-Supported formats: `md, pdf, docx, xlsx, csv, txt` (configurable). Unsupported files are
+Supported formats: `md, pdf, docx, xlsx, csv, txt, vtt` (configurable). Unsupported files are
 registered but not digested.
 
 > **Removed in v2.0:** `--no-digest` (now the default; flag is redundant).
@@ -564,7 +598,7 @@ docs/kb/
 - Files directly under `docs/kb/` belong to the `root` domain.
 - Each subfolder is a domain; contradiction detection runs within each domain and across
   domains at the master-synthesis level.
-- Mix formats freely: `.md`, `.pdf`, `.docx`, `.xlsx`, `.csv`, `.txt`.
+- Mix formats freely: `.md`, `.pdf`, `.docx`, `.xlsx`, `.csv`, `.txt`, `.vtt`.
 - When a decision changes, prefer adding a new document over editing the old one — implr detects
   the new file incrementally and flags any contradiction with the existing one.
 
@@ -590,7 +624,7 @@ behaviour:
   default_tdd_threshold: M        # complexity at/above which TDD is enforced
   require_approved_status: true   # dev-planner only processes approved requirements
   contradictions_block: false     # false = open questions; true = halt on conflict
-  kb_supported_formats: [md, pdf, docx, xlsx, csv, txt]
+  kb_supported_formats: [md, pdf, docx, xlsx, csv, txt, vtt]
 
 jira:
   base_url: https://your-org.atlassian.net
@@ -705,9 +739,11 @@ Do not edit these by hand — they are owned by the skills:
 |---------------|-------|
 | `docs/implr/kb-index/**` | doc-ingest |
 | `docs/ARCHITECTURE.md` | arch-gen |
-| `docs/implr/requirements/**` | ba-requirements-gen |
+| `docs/implr/requirements/functional/**` | ba-requirements-gen |
+| `docs/implr/requirements/non-functional/**` | ba-requirements-gen |
 | `docs/implr/requirements/cr-index.md` | ba-cr |
-| `docs/implr/plans/**` | dev-planner |
+| `docs/implr/plans/functional/**` | dev-planner |
+| `docs/implr/plans/non-functional/**` | dev-planner |
 | `docs/implr/reviews/**` | dev-code-review |
 | `docs/implr/schemas/**`, `docs/implr/templates/**` | plugin (refreshed on install) |
 | `.claude/agents/**` | plugin (refreshed on install) |
