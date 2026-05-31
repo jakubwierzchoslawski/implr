@@ -28,6 +28,8 @@ staging_dir: docs/implr/requirements/.staging/<domain>/
 existing_reqs_index: docs/implr/requirements/requirements-index.md   (may not exist)
 mode: create | reprocess
 reprocess_target: <doc-or-cr-path>   (only when mode=reprocess)
+resolved_contradictions: {C-001: {problem: "...", decision: "..."}, ...}   (empty map if none)
+deferred_contradictions: ["C-003", "C-004"]                                 (empty list if none)
 ```
 
 ## Work
@@ -35,6 +37,15 @@ reprocess_target: <doc-or-cr-path>   (only when mode=reprocess)
 Read the domain synthesis. Check its "Ambiguities Detected" section. For each ambiguity
 either resolve it from `docs/implr/kb-index/digests/per-doc/<slug>-digest.md` (if the
 digest is unambiguous) or surface it as an Open Question citing the source document.
+
+When the domain synthesis `Contradictions Detected` table references a C-ID, apply this rule
+before deciding whether to create an Open Question:
+
+| C-ID state | Action |
+|------------|--------|
+| In `resolved_contradictions` | Use the `decision` value as authoritative content. Do NOT create an Open Question. |
+| In `deferred_contradictions` | Create an Open Question: `Source: <C-ID> (deferred)`, question text = problem summary. |
+| Not referenced (regular ambiguity) | Existing behaviour — create an Open Question citing the source document. |
 
 Generate one REQ per: distinct user-facing behaviour, business rule, data lifecycle event,
 external integration. Generate one NFR per distinct cross-cutting quality constraint
@@ -79,5 +90,6 @@ files_written:
 functional_count: <n>
 non_functional_count: <n>
 open_questions: <n>
+contradictions_resolved_via_map: <n>
 contradictions_flagged: <n>
 ```
