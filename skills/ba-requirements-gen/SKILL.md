@@ -60,7 +60,11 @@ Build `already_handled = resolved_ids ∪ deferred_ids`.
 
 **Step 3 — Prompt for unresolved**
 
-For each C-ID not in `already_handled`, present to user:
+If `already_handled` contains all collected C-IDs: log
+`No unresolved contradictions. Skipping Phase 0 interactive prompts.` and proceed
+directly to Step 5.
+
+Otherwise, for each C-ID not in `already_handled`, present to user:
 
 ```
 C-001 [Hard conflict]
@@ -73,11 +77,7 @@ Decision (or type 'defer' + reason):
 
 **Step 4 — Write resolutions**
 
-If all C-IDs are already in `already_handled`: log
-`No unresolved contradictions. Skipping Phase 0 interactive prompts.` and proceed
-directly to Step 5.
-
-Otherwise, append new rows to `docs/implr/requirements/resolved-contradictions.md` in a
+Append new rows to `docs/implr/requirements/resolved-contradictions.md` in a
 single pass. Resolved decisions go to the `## Resolved` table; deferred items go to the
 `## Deferred` table. If the file does not yet exist, create it at
 `docs/implr/requirements/resolved-contradictions.md` with this structure:
@@ -98,8 +98,7 @@ single pass. Resolved decisions go to the `## Resolved` table; deferred items go
 **Step 5 — Build dispatch maps**
 
 After writing (or confirming the file is up to date), re-read the complete
-`docs/implr/requirements/resolved-contradictions.md` to build maps that include decisions
-from all prior runs, not only the current session:
+`docs/implr/requirements/resolved-contradictions.md` to build maps reflecting the complete current state of the file (current session plus any prior runs):
 - `resolved_map`: `{C-001: {problem: "...", decision: "..."}, ...}` — one entry per Resolved row
 - `deferred_list`: `["C-003", "C-004"]` — C-IDs from the Deferred table
 
@@ -143,6 +142,9 @@ Each worker writes to `staging/<domain>/<slug>.md` (functional) or `staging/<dom
 
 Sum functional_count, non_functional_count, open_questions, contradictions across all
 worker returns.
+Note: `contradictions_resolved_via_map` from worker returns is informational only; the
+authoritative resolved (`{r}`) and deferred (`{d}`) counts for the Phase 10 report come
+from `resolved_map` and `deferred_list` built in Phase 0 Step 5.
 
 If `contradictions_block: true` in config AND any contradictions present, halt and report
 to user before any rename/move.
