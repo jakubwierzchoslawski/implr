@@ -389,8 +389,9 @@ not the index. `index.md` is the current state of the KB file registry.
 To add a skill (for example the planned `ba-jira-populate`):
 
 1. Create `skills/<name>/SKILL.md` with frontmatter (name, description with trigger phrases).
-2. If it needs schemas or templates, add them under `skills/implr-init/assets/` so implr-init
-   and the installer place them in `docs/implr/`.
+2. If it needs schemas or templates, add them under `scaffold/schemas/` or `scaffold/seeds/`.
+   The installer copies `scaffold/schemas/` to `docs/implr/schemas/` and `scaffold/seeds/` files
+   to `docs/implr/` as skip-if-exists seeds.
 3. Reference `docs/implr/` paths from the SKILL.md — never bundle data inside the skill.
 4. Add the skill to the installer's skill list and to the README skills table.
 5. Validate before release.
