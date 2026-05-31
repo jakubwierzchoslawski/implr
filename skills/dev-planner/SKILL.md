@@ -15,7 +15,7 @@ in parallel `plan-worker` subagents respecting dependency waves.
 ## Read first
 
 - `docs/implr/schemas/plan-schema.md`
-- `docs/ARCHITECTURE.md`
+- `docs/ARCHITECTURE.md`  (stop if missing — tell user to run `/arch-gen` first)
 - `docs/implr/config/DEV-STANDARDS.md`
 - `docs/implr/config/implr.config.yaml`
 
@@ -104,6 +104,10 @@ Next steps:
 
 ## Failure handling
 
+- `docs/ARCHITECTURE.md` missing → stop immediately:
+  ```
+  ❌ docs/ARCHITECTURE.md not found. Run /arch-gen first, then re-run dev-planner.
+  ```
 - Requirement not approved → skip with warning unless explicitly named on command line.
 - Plan-worker reports blockers → do not mark plan as ready; surface to user.
 - Dependent plan missing → block the dependent requirement; do not stub.
