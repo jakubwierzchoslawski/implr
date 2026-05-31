@@ -125,12 +125,18 @@ C:\path\to\implr\install.bat
 
 ```
 your-project/
-└── .claude/
-    ├── skills/    eight implr skills
-    └── agents/    ten dedicated subagents
+├── .claude/
+│   ├── skills/    eight implr skills
+│   └── agents/    ten dedicated subagents
+├── docs/
+│   ├── kb/                      (add your documents here)
+│   │   └── change-requests/
+│   └── implr/                   plugin workspace (schemas, templates, config with placeholders)
+└── CLAUDE.md                    project briefing template
 ```
 
-That's it. Open your project in Claude Code and run `/implr-init` to scaffold `docs/implr/`.
+Open your project in Claude Code and run `/implr-init` to fill in your project name,
+stack, and standards.
 
 ### Install options
 
@@ -260,8 +266,9 @@ This copies skills and agents into `.claude/`. Nothing else happens yet.
 /implr-init
 ```
 
-This asks you 14 setup questions (project name, stack, paths, conventions), then creates
-`docs/implr/` with your config, schemas, and templates pre-filled.
+This asks you 8 setup questions (project name, frontend/backend/db stack, paths, TDD
+threshold, API versioning), substitutes your answers into the config files, and creates
+`<src>/frontend/` and `<src>/backend/` subdirectories.
 
 **Step 3 — Add your documentation:**
 
@@ -293,7 +300,7 @@ cp ~/specs/*.md docs/kb/
 
 ```
 1. SETUP
-   Installer copies skills + agents to .claude/; /implr-init scaffolds docs/implr/ and seeds config + standards
+   Installer copies skills + agents to .claude/ and scaffolds docs/implr/ with schemas, templates, and config placeholders; /implr-init fills in project name, stack, and standards
 
 2. DOCUMENT
    You add .md/.pdf/.docx/.xlsx/.csv/.txt/.vtt files to docs/kb/
@@ -345,7 +352,7 @@ implr's skills fall into three interaction modes:
 
 | Skill | Mode | When the skill asks for input |
 |---|---|---|
-| `implr-init` | Interactive | 14 setup questions (project name, stack, paths, TDD threshold, API conventions, Git branch prefix, optional Jira) — once at first init; silent on re-init |
+| `implr-init` | Interactive | 8 setup questions (project name, frontend/backend/db stack, paths, TDD threshold, API versioning) — re-asked on every run to re-apply substitutions |
 | `doc-ingest` | Non-interactive | Never |
 | `arch-gen` | Interactive | Confirms each inferred architectural decision |
 | `ba-requirements-gen` | Non-interactive | Never (open questions surfaced in files) |
@@ -440,11 +447,12 @@ Full diagrams (including replan loops and approval edge cases) in
 ## Skills Reference
 
 ### implr-init
-Scaffolds `docs/implr/` and all its subdirectories, then asks 14 setup questions (project
-name, stack, paths, TDD threshold, API conventions, Git branch prefix, optional Jira) to
-pre-fill `implr.config.yaml` and `DEV-STANDARDS.md`. Also creates `CLAUDE.md` and initialises
-the `cr-index.md`. On re-init, skips the questions and refreshes only plugin-owned files
-(schemas and templates). `.claude/agents/` is shipped by the installer, not by this skill.
+Asks 8 setup questions (project name, frontend/backend/db stack, paths, TDD threshold, API
+versioning) and substitutes answers into `docs/implr/config/implr.config.yaml`,
+`docs/implr/config/DEV-STANDARDS.md`, and `CLAUDE.md`. Also creates `<src>/frontend/` and
+`<src>/backend/` subdirectories. The installer handles all directory creation and file
+copying; this skill is config-only. Re-running re-asks all questions so you can update
+your stack.
 
 ```
 /implr-init
