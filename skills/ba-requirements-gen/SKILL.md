@@ -3,7 +3,7 @@ name: ba-requirements-gen
 description: >
   Generates functional and non-functional requirements from the digested knowledge base.
   Reads syntheses, dispatches one requirements-domain-worker subagent per in-scope domain
-  in parallel, assigns sequential IDs after workers return, surfaces contradictions, writes
+  in parallel, assigns sequential IDs after workers return, resolves contradictions in Phase 0, writes
   REQ-F-* and REQ-N-* files. Removed in v2.0: --ingest and --ingest-file flags (run
   /doc-ingest --digest first). Triggers on: generate requirements, create requirements,
   ba requirements, analyse kb, requirements gen.
@@ -73,18 +73,37 @@ Decision (or type 'defer' + reason):
 
 **Step 4 — Write resolutions**
 
-After collecting all answers, append new rows to `docs/implr/requirements/resolved-contradictions.md`
-in a single pass. Resolved decisions go to the `## Resolved` table; deferred items go to
-the `## Deferred` table. If the file does not yet exist, create it from the seed structure.
-
 If all C-IDs are already in `already_handled`: log
-`No unresolved contradictions. Skipping Phase 0.` and proceed immediately to Phase 1.
+`No unresolved contradictions. Skipping Phase 0 interactive prompts.` and proceed
+directly to Step 5.
+
+Otherwise, append new rows to `docs/implr/requirements/resolved-contradictions.md` in a
+single pass. Resolved decisions go to the `## Resolved` table; deferred items go to the
+`## Deferred` table. If the file does not yet exist, create it at
+`docs/implr/requirements/resolved-contradictions.md` with this structure:
+
+```markdown
+# Resolved Contradictions
+> Maintained by ba-requirements-gen. To change a decision, edit this file and re-run `/ba-requirements-gen`.
+
+## Resolved
+| C-ID | Type | Source A | Source B | Problem | Decision | Resolved |
+|------|------|----------|----------|---------|----------|----------|
+
+## Deferred
+| C-ID | Type | Source A | Source B | Problem | Notes | Deferred |
+|------|------|----------|----------|---------|-------|----------|
+```
 
 **Step 5 — Build dispatch maps**
 
-After writing, read `resolved-contradictions.md` and build:
+After writing (or confirming the file is up to date), re-read the complete
+`docs/implr/requirements/resolved-contradictions.md` to build maps that include decisions
+from all prior runs, not only the current session:
 - `resolved_map`: `{C-001: {problem: "...", decision: "..."}, ...}` — one entry per Resolved row
 - `deferred_list`: `["C-003", "C-004"]` — C-IDs from the Deferred table
+
+Keys in `resolved_map` are normalised to uppercase with no surrounding whitespace (e.g. `C-001`) to ensure reliable lookup.
 
 These are passed to every worker dispatch in Phase 3.
 
@@ -195,7 +214,7 @@ Next steps:
 - ≥ 1 subtask
 - ≥ 1 source doc referenced
 - NFRs have a quantified Measurable Target
-- Known contradictions captured as open questions
+- Deferred contradictions captured as open questions (resolved contradictions are applied as authoritative content — never as open questions)
 - ≥ 1 Out of Scope entry
 - complexity and tdd_required set; dependencies populated with reasons
 
