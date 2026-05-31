@@ -159,21 +159,28 @@ for the details that matter — not back to the original raw document.
 
 ## Contradiction Detection
 
-Contradictions are found at synthesis time, not requirement time.
+Contradictions are found at synthesis time, resolved before requirement generation.
 
 1. When a document changes, its digest is rebuilt.
 2. The domain synthesis is rebuilt by reading **all** digests in that domain together — so a new
    document is automatically compared against every existing document in its domain.
-3. Contradictions are classified: Hard conflict, Soft conflict, Version drift, Scope overlap.
+3. Contradictions are classified: Hard conflict, Soft conflict, Version drift, Scope overlap,
+   and assigned a C-xxx ID.
 4. Cross-domain contradictions are caught when the master synthesis is rebuilt from domain
    syntheses.
-5. ba-requirements-gen reads these pre-detected contradictions and writes them into the
-   affected requirement's Open Questions, citing both source documents — it does not need to
-   re-read both raw files.
+5. When you run `/ba-requirements-gen`, **Phase 0** reads all C-xxx IDs from the domain and
+   master syntheses, presents each unresolved one to you with both conflicting sources, and
+   records your decision in `docs/implr/requirements/resolved-contradictions.md`.
+6. Workers receive the resolved decisions map. Resolved contradictions are used as authoritative
+   content — they do not become Open Questions. Deferred contradictions become Open Questions
+   with the C-ID preserved in the Source column (`Source: C-003 (deferred)`).
 
-By default contradictions do not block requirement generation (`contradictions_block: false`);
-the requirement is created with the most defensible interpretation plus an open question. Set
-the flag to `true` to halt and ask instead.
+`resolved-contradictions.md` is append-only. Re-running `/ba-requirements-gen` only prompts
+for contradictions not already in the file. To change a decision, edit the file manually and
+re-run.
+
+To halt on any deferred contradictions that become Open Questions, set
+`contradictions_block: true` in `docs/implr/config/implr.config.yaml`.
 
 ---
 

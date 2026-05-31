@@ -230,7 +230,8 @@ your-project/
 │       ├── requirements/
 │       │   ├── functional/             REQ-F-* files (ba-requirements-gen)
 │       │   ├── non-functional/         REQ-N-* files (ba-requirements-gen)
-│       │   └── cr-index.md            change-request index (ba-cr)
+│       │   ├── cr-index.md            change-request index (ba-cr)
+│       │   └── resolved-contradictions.md  contradiction decisions (ba-requirements-gen)
 │       ├── plans/
 │       │   ├── functional/             PLAN-F-* files (dev-planner)
 │       │   └── non-functional/         PLAN-N-* files (dev-planner)
@@ -314,9 +315,10 @@ cp ~/specs/*.md docs/kb/
    you in main, then dispatches arch-drafter to produce docs/ARCHITECTURE.md.
 
 5. REQUIREMENTS      /ba-requirements-gen
-   Reads syntheses (not every raw doc), dispatches one requirements-domain-worker per
-   in-scope domain in parallel, assigns sequential IDs after workers return, writes REQ-F-*
-   and REQ-N-* files. Flags contradictions as open questions.
+   Reads syntheses (not every raw doc). Phase 0: resolves C-xxx contradictions interactively,
+   persists decisions in resolved-contradictions.md. Then dispatches one requirements-domain-worker
+   per in-scope domain in parallel, assigns sequential IDs after workers return, writes REQ-F-*
+   and REQ-N-* files. Resolved contradictions never become open questions.
 
 6. APPROVE  (human)
    Review the requirements index, resolve open questions, set status: approved.
@@ -354,7 +356,7 @@ implr's skills fall into three interaction modes:
 | `implr-init` | Interactive | 8 setup questions (project name, frontend/backend/db stack, paths, TDD threshold, API versioning) — re-asked on every run to re-apply substitutions |
 | `doc-ingest` | Non-interactive | Never |
 | `arch-gen` | Interactive | Confirms each inferred architectural decision |
-| `ba-requirements-gen` | Non-interactive | Never (open questions surfaced in files) |
+| `ba-requirements-gen` | Interactive (Phase 0 only) | Resolves each unresolved contradiction once before generating requirements |
 | `ba-cr` | Interactive (default) / non-interactive (`--file`) | CLI interview without `--file`/`--ingest-file` |
 | `dev-planner` | Non-interactive (default) / interactive (`--brainstorm`) | Design exploration if `--brainstorm` |
 | `dev-executor` | Non-interactive | Never (manual actions flagged in report) |
