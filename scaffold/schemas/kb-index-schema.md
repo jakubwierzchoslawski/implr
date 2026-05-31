@@ -276,7 +276,6 @@ ones. To change a decision, edit the file manually and re-run `/ba-requirements-
 |-------|---------------|---------------------|---------------------|---------------------------------|---------------------------|------------|
 | C-003 | Scope overlap | docs/kb/roadmap.md  | docs/kb/mvp.md      | Feature X: in MVP scope or not? | Needs product owner input | 2026-05-31 |
 ```
-```
 
 ### Column definitions
 
