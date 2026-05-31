@@ -103,10 +103,12 @@ for s in "${SKILLS[@]}"; do
 done
 
 if [ ! -d "$AGENTS_SRC" ]; then echo "ERROR: Missing agents source: $AGENTS_SRC"; exit 1; fi
+if [ ! -d "$SCAFFOLD_SRC" ]; then echo "ERROR: Missing scaffold source: $SCAFFOLD_SRC"; exit 1; fi
 mkdir -p "$AGENTS_DEST"
 cp -f "$AGENTS_SRC/"*.md "$AGENTS_DEST/"
 echo "  installed agents"
 
+# Workspace scaffolding always targets the current project (CWD), regardless of --global.
 scaffold_workspace
 
 echo ""
