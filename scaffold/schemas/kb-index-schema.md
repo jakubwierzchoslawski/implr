@@ -250,3 +250,53 @@ warnings:
 
 The `checksum` and `action` per file is what subsequent runs compare against to decide what to
 reprocess.
+
+---
+
+## 7. requirements/resolved-contradictions.md — Contradiction Resolution Log
+
+Location: `docs/implr/requirements/resolved-contradictions.md`
+
+Records human decisions on every C-xxx contradiction detected during synthesis. Consumed by
+`ba-requirements-gen` Phase 0 and passed to `requirements-domain-worker` subagents. The file
+is append-only — re-running `ba-requirements-gen` adds new rows but never overwrites existing
+ones. To change a decision, edit the file manually and re-run `/ba-requirements-gen`.
+
+```markdown
+# Resolved Contradictions
+> Maintained by ba-requirements-gen. To change a decision, edit this file and re-run `/ba-requirements-gen`.
+
+## Resolved
+| C-ID  | Type          | Source A                | Source B                | Problem                          | Decision                      | Resolved   |
+|-------|---------------|-------------------------|-------------------------|----------------------------------|-------------------------------|------------|
+| C-001 | Hard conflict | docs/kb/spec-v1.md §3.2 | docs/kb/spec-v2.md §1.4 | Auth token TTL: 15 min vs 30 min | Use 30-minute auth token TTL  | 2026-05-31 |
+
+## Deferred
+| C-ID  | Type          | Source A            | Source B            | Problem                         | Notes                     | Deferred   |
+|-------|---------------|---------------------|---------------------|---------------------------------|---------------------------|------------|
+| C-003 | Scope overlap | docs/kb/roadmap.md  | docs/kb/mvp.md      | Feature X: in MVP scope or not? | Needs product owner input | 2026-05-31 |
+```
+```
+
+### Column definitions
+
+**Resolved table**
+
+| Column | Source | Notes |
+|--------|--------|-------|
+| C-ID | domain/master synthesis | Assigned at synthesis time |
+| Type | synthesis Contradictions Detected | Hard conflict / Soft conflict / Version drift / Scope overlap |
+| Source A | synthesis | File path + section if available |
+| Source B | synthesis | File path + section if available |
+| Problem | synthesis contradiction description | Short summary copied verbatim |
+| Decision | user input during Phase 0 | Authoritative; passed to workers |
+| Resolved | ISO date Phase 0 ran | |
+
+**Deferred table**
+
+Same columns except `Decision` → `Notes` (user's deferral reason) and `Resolved` → `Deferred`.
+
+### Idempotency
+
+`ba-requirements-gen` Phase 0 skips any C-ID already present in either table. Only new
+C-IDs trigger prompts. File is never truncated or overwritten — only appended.
