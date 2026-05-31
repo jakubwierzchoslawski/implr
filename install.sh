@@ -12,6 +12,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILLS_SRC="$SCRIPT_DIR/skills"
 AGENTS_SRC="$SCRIPT_DIR/.claude/agents"
+SCAFFOLD_SRC="$SCRIPT_DIR/scaffold"
 SKILLS=(implr-init doc-ingest arch-gen ba-requirements-gen ba-cr dev-planner dev-executor dev-code-review)
 
 GLOBAL=false
@@ -21,6 +22,64 @@ for arg in "$@"; do
     *) echo "Unknown argument: $arg"; exit 1 ;;
   esac
 done
+
+scaffold_workspace() {
+  echo ""
+  echo "Scaffolding workspace..."
+
+  # Create workspace directories (idempotent)
+  for d in \
+    "docs/kb" \
+    "docs/kb/change-requests" \
+    "docs/implr/config" \
+    "docs/implr/schemas" \
+    "docs/implr/templates" \
+    "docs/implr/kb-index/cache" \
+    "docs/implr/kb-index/digests/per-doc" \
+    "docs/implr/kb-index/domains" \
+    "docs/implr/requirements/functional" \
+    "docs/implr/requirements/non-functional" \
+    "docs/implr/plans/functional" \
+    "docs/implr/plans/non-functional" \
+    "docs/implr/reviews"
+  do
+    mkdir -p "$d"
+  done
+
+  # Always overwrite: schemas and templates (plugin-owned)
+  cp -f "$SCAFFOLD_SRC"/schemas/*.md "docs/implr/schemas/"
+  cp -f "$SCAFFOLD_SRC"/templates/*.md "docs/implr/templates/"
+  echo "  schemas and templates installed"
+
+  # Skip if exists: config files (user-owned after first write)
+  for f in implr.config.yaml DEV-STANDARDS.md; do
+    dest="docs/implr/config/$f"
+    if [ ! -f "$dest" ]; then
+      cp "$SCAFFOLD_SRC/config/$f" "$dest"
+      echo "  created $dest"
+    else
+      echo "  kept existing $dest"
+    fi
+  done
+
+  # Skip if exists: CLAUDE.md at project root
+  if [ ! -f "CLAUDE.md" ]; then
+    cp "$SCAFFOLD_SRC/templates/CLAUDE-template.md" "CLAUDE.md"
+    echo "  created CLAUDE.md"
+  else
+    echo "  kept existing CLAUDE.md"
+  fi
+
+  # Skip if exists: cr-index.md seed
+  if [ ! -f "docs/implr/requirements/cr-index.md" ]; then
+    cp "$SCAFFOLD_SRC/seeds/cr-index.md" "docs/implr/requirements/cr-index.md"
+    echo "  created docs/implr/requirements/cr-index.md"
+  else
+    echo "  kept existing docs/implr/requirements/cr-index.md"
+  fi
+
+  echo "  workspace scaffolded"
+}
 
 if [ "$GLOBAL" = true ]; then
   SKILLS_DEST="$HOME/.claude/skills"
@@ -48,6 +107,8 @@ mkdir -p "$AGENTS_DEST"
 cp -f "$AGENTS_SRC/"*.md "$AGENTS_DEST/"
 echo "  installed agents"
 
+scaffold_workspace
+
 echo ""
 echo "==============================================="
 echo "implr installed."
@@ -55,5 +116,5 @@ echo "  Skills and agents are in .claude/"
 echo ""
 echo "Next step:"
 echo "  Open your project in Claude Code and run: /implr-init"
-echo "  This scaffolds docs/implr/ and sets up your config."
+echo "  This configures your project name, stack, and standards."
 echo "==============================================="
