@@ -73,7 +73,7 @@ Key properties:
 
 | Skill | Role | Command |
 |-------|------|---------|
-| `implr-init` | Scaffolds the plugin workspace | `/implr-init` |
+| `implr-init` | Configures the plugin workspace (project name, stack, standards) | `/implr-init` |
 | `doc-ingest` | Indexes and digests the knowledge base (dispatches parallel extract/digest/synthesize workers) | `/doc-ingest` |
 | `arch-gen` | Generates `ARCHITECTURE.md` (dispatches `arch-drafter`) | `/arch-gen` |
 | `ba-requirements-gen` | Generates functional and non-functional requirements (parallel per-domain workers) | `/ba-requirements-gen` |
@@ -89,10 +89,9 @@ already part of the requirement schema.
 
 ## Installation
 
-The installer copies skills and agents into your project's `.claude/` folder. The workspace
-(`docs/implr/`, config, schemas) is set up separately by running `/implr-init` inside
-Claude Code — this gives you the interactive setup experience where you fill in your project
-name, stack, and standards.
+The installer copies skills and agents into your project's `.claude/` folder and scaffolds
+the full workspace (`docs/implr/`, schemas, templates, config placeholders). Run `/implr-init`
+inside Claude Code to fill in your project name, stack, and standards.
 
 > **Important:** Run the installer from your **target project's root directory**, not from
 > inside the implr folder.
@@ -202,8 +201,8 @@ C:\path\to\implr\install.bat
 
 New skills and agents are available in Claude Code immediately after the installer runs — no
 restart needed. If a new version adds workspace changes (new folders, schemas, templates), run
-`/implr-init` inside Claude Code to pick them up — it is idempotent and will not overwrite your
-config or standards.
+the installer again — it is idempotent and will not overwrite your config or standards. Then
+run `/implr-init` if you want to update your project name, stack, or standards.
 
 ---
 
