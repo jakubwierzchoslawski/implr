@@ -45,14 +45,17 @@ prior_decisions_summary: |
 2. Read all files the task will touch — before writing anything.
 3. Read `prior_decisions_summary`. Continue every pattern listed. Do not make a different
    choice for anything already decided (e.g. if DI via constructor is established, keep it).
+   If `prior_decisions_summary` contains an empty `completed_tasks` list (resume scenario
+   or first task), read all files the task will touch first to identify any established
+   patterns in the existing code before writing.
 4. If `tdd_required: true`:
    a. Write the failing test(s) named in the task's AC list.
    b. Run the test runner with output cap:
-      `<runner-command> 2>&1 | tee /tmp/implr-test-{plan_id}.txt | head -80`
+      `<runner-command> 2>&1 | tee "${TMPDIR:-/tmp}/implr-test-{plan_id}.txt" | head -80`
       Derive `{plan_id}` from `plan_path` (e.g. if `plan_path` ends in
       `PLAN-F-007-slug.md`, then `{plan_id}` is `PLAN-F-007`).
    c. Verify the test fails. If 80 lines is not enough to diagnose, read
-      `/tmp/implr-test-{plan_id}.txt` for the full output.
+      `"${TMPDIR:-/tmp}/implr-test-{plan_id}.txt"` for the full output.
    d. Implement the minimal code to pass.
    e. Run the test runner again (same command); verify pass.
    f. Refactor if needed; re-verify.
