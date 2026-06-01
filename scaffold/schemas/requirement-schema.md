@@ -59,14 +59,9 @@ Independently testable statements.
 - [ ] AC-001: {Condition} — {Expected result}
 - [ ] AC-002: {Condition} — {Expected result}
 
-## Definition of Done
-- [ ] Code implemented and peer-reviewed
-- [ ] Unit tests passing (tests first if tdd_required)
-- [ ] Integration tests passing
-- [ ] All acceptance criteria verified
-- [ ] Documentation updated
-- [ ] Deployed to staging and smoke-tested
-- [ ] Product Owner sign-off
+## Acceptance Notes
+Optional. Atypical completion requirements beyond the canonical DoD in docs/implr/DOD.md.
+Omit section entirely when empty.
 
 ## Out of Scope
 - {Explicit exclusion}
@@ -103,6 +98,12 @@ Developer-level tasks with complexity each.
 |----------|-----------------|-------------|
 | auth-flow.md | §3 Reset Flow | Defines token expiry and email step |
 ```
+
+### Optional-sections rule
+
+`dev-planner` and `ba-requirements-gen` MUST omit these sections entirely when they have no
+content: `## Acceptance Notes`, `## Open Questions`. For `## Data Models` and
+`## Process Sequence`: emit a single `N/A` line OR omit the section entirely — either is valid.
 
 ---
 
