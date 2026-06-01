@@ -21,6 +21,8 @@ created_at:
 updated_at:
 ---
 
+<!-- Sections Out of Scope, Open Questions, Data Models, Process Sequence, and Acceptance Notes are omitted here — add when populated. See docs/implr/DOD.md for canonical DoD. -->
+
 # REQ-F-000 — REPLACE ME
 
 ## Domain Context
@@ -33,28 +35,6 @@ updated_at:
 
 ## Acceptance Criteria
 - [ ] AC-001:
-
-## Definition of Done
-- [ ] Code implemented and peer-reviewed
-- [ ] Unit tests passing
-- [ ] Integration tests passing
-- [ ] All acceptance criteria verified
-- [ ] Documentation updated
-- [ ] Deployed to staging and smoke-tested
-- [ ] Product Owner sign-off
-
-## Out of Scope
--
-
-## Open Questions
-| # | Question | Source of Ambiguity | Raised | Resolved |
-|---|----------|--------------------|--------|----------|
-
-## Data Models
-N/A
-
-## Process Sequence
-N/A
 
 ## Subtasks
 - [ ] ST-001: — complexity: S
