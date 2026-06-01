@@ -59,6 +59,11 @@ for %%A in ("%AGENTS_SRC%\*.md") do (
 )
 echo   installed agents
 
+if exist "%AGENTS_DEST%\executor-worker.md" (
+    del /Q "%AGENTS_DEST%\executor-worker.md"
+    echo   removed deprecated agent: executor-worker.md (replaced by plan-runner.md in v3)
+)
+
 REM Workspace scaffolding always targets the current project (CWD), regardless of --global.
 call :scaffold_workspace
 
@@ -127,6 +132,13 @@ if not exist "docs\implr\requirements\resolved-contradictions.md" (
     echo   created docs\implr\requirements\resolved-contradictions.md
 ) else (
     echo   kept existing docs\implr\requirements\resolved-contradictions.md
+)
+
+if not exist "docs\implr\DOD.md" (
+    copy /Y "%SCRIPT_DIR%scaffold\seeds\DOD.md" "docs\implr\DOD.md" >nul
+    echo   created docs\implr\DOD.md
+) else (
+    echo   kept existing docs\implr\DOD.md
 )
 
 echo   workspace scaffolded

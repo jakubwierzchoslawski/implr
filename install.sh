@@ -86,6 +86,14 @@ scaffold_workspace() {
     echo "  kept existing docs/implr/requirements/resolved-contradictions.md"
   fi
 
+  # Skip if exists: DOD.md seed
+  if [ ! -f "docs/implr/DOD.md" ]; then
+    cp "$SCRIPT_DIR/scaffold/seeds/DOD.md" "docs/implr/DOD.md"
+    echo "  created docs/implr/DOD.md"
+  else
+    echo "  kept existing docs/implr/DOD.md"
+  fi
+
   echo "  workspace scaffolded"
 }
 
@@ -115,6 +123,12 @@ if [ ! -d "$SCAFFOLD_SRC" ]; then echo "ERROR: Missing scaffold source: $SCAFFOL
 mkdir -p "$AGENTS_DEST"
 cp -f "$AGENTS_SRC/"*.md "$AGENTS_DEST/"
 echo "  installed agents"
+
+# Remove deprecated executor-worker.md if present
+if [ -f "$AGENTS_DEST/executor-worker.md" ]; then
+    rm -f "$AGENTS_DEST/executor-worker.md"
+    echo "  removed deprecated agent: executor-worker.md (replaced by plan-runner.md in v3)"
+fi
 
 # Workspace scaffolding always targets the current project (CWD), regardless of --global.
 scaffold_workspace

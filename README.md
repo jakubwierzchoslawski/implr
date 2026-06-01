@@ -14,8 +14,7 @@ docs/kb/  →  doc-ingest  →  arch-gen  →  ba-requirements-gen
                           dev-planner  →  dev-executor  →  dev-code-review  →  reviewed code
 ```
 
-In v2.0, each skill runs as an **orchestrator** that dispatches heavy phases to dedicated
-subagents — cutting end-to-end token consumption by 3–4× while preserving quality.
+In v3.0, the cost model is rebuilt further: `dev-executor` parses plans into inline task envelopes and dispatches feather-weight `plan-runner` agents (replacing `executor-worker`). `task-executor` no longer re-reads schemas, ARCHITECTURE.md, or DEV-STANDARDS.md — everything arrives inline. End-to-end runs cost **6–10× fewer tokens** than v1.x and **2.5–3× fewer than v2.0** on a typical plan.
 
 ---
 
@@ -74,12 +73,12 @@ Key properties:
 | Skill | Role | Command |
 |-------|------|---------|
 | `implr-init` | Configures the plugin workspace (project name, stack, standards) | `/implr-init` |
-| `doc-ingest` | Indexes and digests the knowledge base (dispatches parallel extract/digest/synthesize workers) | `/doc-ingest` |
+| `doc-ingest` | Indexes and digests the knowledge base (full pipeline by default; parallel extract/digest/synthesize; --registry-only for fast scan) | `/doc-ingest` |
 | `arch-gen` | Generates `ARCHITECTURE.md` (dispatches `arch-drafter`) | `/arch-gen` |
 | `ba-requirements-gen` | Generates functional and non-functional requirements (parallel per-domain workers) | `/ba-requirements-gen` |
 | `ba-cr` | Creates and applies Change Requests (impact + parallel appliers) | `/ba-cr` |
 | `dev-planner` | Creates implementation plans (wave-based parallel plan workers) | `/dev-planner` |
-| `dev-executor` | Implements plans (parallel executor-worker per plan → task-executor per task, Opus by default) | `/dev-executor` |
+| `dev-executor` | Implements plans (parallel plan-runner per plan → task-executor per task, Opus by default; envelope-based dispatch) | `/dev-executor` |
 | `dev-code-review` | Reviews produced code (parallel review workers, fresh context per plan) | `/dev-code-review` |
 
 A future `ba-jira-populate` skill will push approved requirements into Jira; its data contract is
@@ -329,10 +328,11 @@ cp ~/specs/*.md docs/kb/
    sweep via the built-in Explore subagent. Writes PLAN-F-* with task-level TDD flags.
 
 8. IMPLEMENT         /dev-executor
-   Dispatches executor-worker per plan in parallel waves. Each executor-worker dispatches
-   one task-executor per task (sequential). task-executor writes production code and tests,
-   enforcing TDD for M/L/XL tasks and SOLID throughout. Notes manual actions it cannot
-   perform. Opus by default — TDD + SOLID need a strong model.
+   Dispatches arch-excerpter (Sonnet, once per plan) then plan-runner (Opus) per plan in
+   parallel waves. Each plan-runner dispatches one task-executor per task (sequential).
+   task-executor writes production code and tests, enforcing TDD for M/L/XL tasks and
+   SOLID throughout. Notes manual actions it cannot perform. Opus by default — TDD + SOLID
+   need a strong model.
 
 9. REVIEW            /dev-code-review
    Fresh context per plan via code-review-worker dispatches. Verifies every acceptance
@@ -531,7 +531,7 @@ Creates implementation plans from approved requirements.
 `--brainstorm` combines with a requirement id or `--all`. `--dry-run` combines with any mode.
 
 ### dev-executor
-Implements plans. Per-plan dispatch to `executor-worker`; each executor-worker dispatches
+Implements plans. Per-plan dispatch to `plan-runner` (via inline task envelopes); each plan-runner dispatches
 one `task-executor` per task (Opus default — TDD + SOLID need a strong model).
 
 ```
@@ -664,7 +664,8 @@ agents:
   cr-impact-analyzer: sonnet
   cr-applier: sonnet
   plan-worker: sonnet
-  executor-worker: opus             # thin per-plan orchestrator
+  plan-runner: opus                 # per-plan dispatcher (no stable reads)
+  arch-excerpter: sonnet            # per-plan ARCHITECTURE excerpt
   task-executor: opus               # TDD + SOLID enforcement per task
   code-review-worker: sonnet
 ```
@@ -678,7 +679,7 @@ updates.
 2. `default_model` declared in `.claude/agents/<agent-name>.md`
 
 **When to override:**
-- *Downgrade to save cost* — e.g. `task-executor: sonnet` if your tasks are simpler (task-executor is the cost driver; executor-worker can also be downgraded independently)
+- *Downgrade to save cost* — e.g. `task-executor: sonnet` if your tasks are simpler (task-executor is the cost driver; plan-runner can also be downgraded independently)
 - *Upgrade for quality* — e.g. `requirements-domain-worker: opus` on a complex domain
 - *Match your budget* — downgrade everything to Haiku for prototyping; restore defaults for production runs
 
@@ -686,25 +687,22 @@ updates.
 
 ## Performance & Token Efficiency
 
-implr v2.0 separates orchestration from heavy lifting:
+implr v3.0 takes the orchestrator-+-subagent model further:
 
-- **Skills are orchestrators** — they run in the main conversation, handle interactive
-  questions, and dispatch heavy phases to subagents.
-- **Subagents are dedicated workers** — they run in isolated contexts, with focused tool
-  allowlists and tier-appropriate models (Haiku for mechanical text extraction, Sonnet
-  for analysis, Opus reserved for TDD-discipline tasks).
-- **Phase prompts live in companion files** — under `skills/<skill>/phases/`, so the
-  SKILL.md stays small and prompt-cache friendly.
-- **Stable reads first** — every skill and phase reads schemas and config before dynamic
-  inputs, so Anthropic's 5-minute prompt cache reuses the prefix across calls.
+- **Inline task envelopes** — `dev-executor` parses each plan once and dispatches each task
+  as a self-contained envelope. `task-executor` no longer re-reads the full plan, schema,
+  ARCHITECTURE.md, or DEV-STANDARDS.md per task.
+- **Standards card** — a compact (~55-line) auto-generated subset of DEV-STANDARDS.md
+  passed inline to `task-executor` and `code-review-worker`; the full standards stay for
+  `dev-planner`.
+- **Per-plan ARCHITECTURE excerpt** — `arch-excerpter` (Sonnet, one call per plan)
+  extracts only the sections each plan touches, plus Cross-Cutting Concerns verbatim.
+- **plan-runner replaces executor-worker** — feather-weight per-plan agent with NO stable
+  reads; the 30k+ stable prefix of v2.0's executor-worker is gone.
+- **Compact plan & requirement templates** — DoD moved to a single canonical
+  `docs/implr/DOD.md`; always-empty sections omitted; one-line task headers.
 
-Two flag changes also cut waste:
-- `/doc-ingest` now defaults to a fast registry-only scan; pass `--digest` for the full
-  synthesis pipeline.
-- `--ingest` and `--ingest-file` were removed from `ba-requirements-gen`. Run
-  `/doc-ingest --digest` (or `/doc-ingest --file <path> --digest`) first instead.
-
-Typical end-to-end runs cost **3–4× fewer tokens** than v1.x.
+Typical end-to-end runs cost **6–10× fewer tokens** than v1.x.
 
 ---
 
@@ -764,6 +762,37 @@ them; doc-ingest detects them and prompts you to run `/ba-cr --file`.
 
 To change a requirement after generation, use `/ba-cr` rather than editing the generated
 requirement file directly. See [Changing Requirements](#changing-requirements).
+
+---
+
+## Migrating from v2.0 to v3.0
+
+1. **Re-run the installer** from your project root. It:
+   - Copies new agents: `plan-runner.md`, `arch-excerpter.md`.
+   - Removes deprecated `executor-worker.md` from `.claude/agents/`.
+   - Seeds `docs/implr/DOD.md` (canonical Definition of Done).
+   - Refreshes schemas and templates with compact v3 formats.
+
+2. **Generate `standards-card.md`:** run `/implr-init --refresh-card`. Reads your current
+   `DEV-STANDARDS.md` stack and versioning values; writes
+   `docs/implr/config/standards-card.md`. This file is required by `dev-executor` and
+   `dev-code-review` — both halt with a clear error if it's missing.
+
+3. **Existing plans:** still execute. If `### TASK-NNN:` headers don't match the new
+   compact format (`title · complexity/TDD · files`), `dev-executor` detects the parse
+   failure, skips that plan with an error message, and continues. Re-generate with
+   `/dev-planner --replan <REQ-ID>` for the new format.
+
+4. **Existing requirements:** continue to work. Inline DoD sections are inert — skills
+   now use `docs/implr/DOD.md` plus per-REQ `## Acceptance Notes`.
+
+5. **Flag changes:**
+   - `/doc-ingest` runs the full pipeline by default. Use `--registry-only` for v2's fast scan. `--digest` is accepted but deprecated.
+   - `/dev-planner` coherence sweep is now opt-in (`--coherence-check`) or auto-on for ≥3 plans.
+   - `/dev-executor` and `/dev-code-review` default reports are compact one-screen; use `--verbose` for detail.
+   - `/dev-executor --review` chains code-review automatically.
+
+6. **Config:** in `implr.config.yaml`, remove `executor-worker:` under `agents:`. Optionally add `plan-runner: opus` and `arch-excerpter: sonnet`.
 
 ---
 

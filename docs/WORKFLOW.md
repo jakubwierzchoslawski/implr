@@ -44,7 +44,7 @@ Traceability chain: `source doc → digest → domain synthesis → requirement 
 
 ---
 
-## Subagent Dispatch Model (v2.0)
+## Subagent Dispatch Model (v3.0)
 
 Every skill in v2.0 is an **orchestrator** that runs in the main conversation context. It
 handles user interaction (questions, confirmations) and dispatches heavy phases to dedicated
@@ -65,8 +65,9 @@ restricted tool allowlist, and a tier-appropriate model.
 | ba-cr | Phase 4 (apply) | cr-applier | sonnet | Yes (cap 5) |
 | dev-planner | Phase 5 (plan-one) | plan-worker | sonnet | Yes per wave (cap 5) |
 | dev-planner | Phase 6 (coherence) | Explore (built-in) | n/a | No |
-| dev-executor | Phase 4 (execute) | executor-worker | **opus** | Yes per wave (cap 5) |
-| dev-executor | Phase 4 (per-task) | task-executor | **opus** | Sequential within each executor-worker |
+| dev-executor | Phase 4 (arch excerpt) | arch-excerpter | sonnet | One per plan, before dispatch |
+| dev-executor | Phase 5 (plan execute) | plan-runner | **opus** | Yes per wave (cap 5) |
+| dev-executor | Phase 5 (per-task) | task-executor | **opus** | Sequential within each plan-runner |
 | dev-code-review | Phase 2 (review) | code-review-worker | sonnet | Yes (cap 5) |
 
 ### Model override
@@ -91,14 +92,13 @@ across dispatches within a session.
 
 ### Why this saves tokens
 
-- Heavy reads (cache files, digests, requirements bodies) happen inside subagent contexts,
-  not in the main conversation.
-- Subagents have focused system prompts (1–3K tokens vs the main agent's ~10K).
-- Subagents run on cheaper model tiers where strong reasoning isn't required.
-- Independent units dispatch in parallel — same wall-clock, lower per-token spend on
-  cheaper tiers.
+- Per-task envelopes: task-executor never re-reads the full plan, schema, ARCHITECTURE.md, or DEV-STANDARDS.md.
+- plan-runner has no stable reads — replaces v2's per-plan dispatcher (~30k stable prefix gone).
+- standards-card (~55 lines auto-generated) replaces DEV-STANDARDS.md reads in task-executor and code-review-worker.
+- arch-excerpter runs once per plan (Sonnet); amortises over all tasks in that plan.
+- Independent units still dispatch in parallel — same wall-clock, lower per-token spend.
 
-Typical end-to-end runs cost 3–4× fewer tokens than v1.x.
+Typical end-to-end runs cost 6–10× fewer tokens than v1.x.
 
 ---
 
@@ -257,11 +257,7 @@ A plan replanned by `dev-planner --replan` returns to `ready` regardless of prio
 | approved / approved-with-warnings | plan stays `done` |
 | changes-required / rejected | plan set back to `in-progress`, blocking findings noted |
 
-*In v2.0, plan creation is performed by parallel `plan-worker` subagents (one per
-requirement in a dependency wave). Plan execution is performed by parallel
-`executor-worker` subagents (one per plan); each executor-worker dispatches one
-`task-executor` per task (sequential). Plan review is performed by parallel
-`code-review-worker` subagents (one per plan).*
+*In v3.0, plan creation is performed by parallel `plan-worker` subagents (one per requirement per dependency wave). Plan execution is orchestrated by `dev-executor`: it parses each plan into per-task envelopes, dispatches `arch-excerpter` (Sonnet) once per plan, then dispatches `plan-runner` (Opus) per plan in parallel waves. Each plan-runner dispatches one `task-executor` (Opus) per task sequentially. Plan review is performed by parallel `code-review-worker` subagents (one per plan, receiving `standards-card` inline).*
 
 ---
 

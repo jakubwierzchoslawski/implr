@@ -88,6 +88,14 @@ function Scaffold-Workspace {
         Write-Host "  kept existing docs\implr\requirements\resolved-contradictions.md"
     }
 
+    # Skip if exists: DOD.md seed at docs/implr/DOD.md
+    if (-not (Test-Path "docs\implr\DOD.md")) {
+        Copy-Item (Join-Path $ScaffoldSrc "seeds\DOD.md") "docs\implr\DOD.md"
+        Write-Host "  created docs\implr\DOD.md"
+    } else {
+        Write-Host "  kept existing docs\implr\DOD.md"
+    }
+
     Write-Host "  workspace scaffolded"
 }
 
@@ -120,6 +128,13 @@ New-Item -ItemType Directory -Force -Path $AgentsDest | Out-Null
 Copy-Item -Force (Join-Path $AgentsSrc "*.md") $AgentsDest
 $agentCount = (Get-ChildItem -Path $AgentsDest -Filter "*.md" -File).Count
 Write-Host "  installed $agentCount agents"
+
+    # Remove deprecated executor-worker.md if present (replaced by plan-runner.md in v3)
+    $oldAgent = Join-Path $AgentsDest "executor-worker.md"
+    if (Test-Path $oldAgent) {
+        Remove-Item -Force $oldAgent
+        Write-Host "  removed deprecated agent: executor-worker.md (replaced by plan-runner.md in v3)"
+    }
 
 # Workspace scaffolding always targets the current project (CWD), regardless of -Global.
 Scaffold-Workspace
