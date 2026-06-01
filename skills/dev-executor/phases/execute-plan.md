@@ -14,7 +14,7 @@ commit_mode: {{COMMIT_MODE}}      # auto (default) | defer
 ```
 
 ## Task
-Orchestrate plan execution by dispatching one `task-executor` subagent per task in order.
+Orchestrate plan execution by dispatching one `task-executor` subagent (`.claude/agents/task-executor.md`) per task in order.
 Do not implement code directly. `commit_mode` applies after ALL tasks in the plan complete —
 not per-task. Flag any manual actions reported by task-executor.
 
