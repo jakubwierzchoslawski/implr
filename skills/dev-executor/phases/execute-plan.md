@@ -1,10 +1,8 @@
 # Phase: execute-plan
 
-Dispatch prompt for `executor-worker`. One dispatch per plan in scope.
+Dispatch prompt for `plan-runner`. One dispatch per plan in scope.
 
-## Read first
-- `docs/implr/schemas/plan-schema.md`
-- `docs/implr/config/implr.config.yaml`
+> Note: `plan-runner` receives pre-built envelopes and does NOT read schema/ARCHITECTURE/DEV-STANDARDS files.
 
 ## Your scope
 ```
