@@ -126,7 +126,7 @@ REPLACE_ME literals. Asset files are opaque: do not deep-read them to reason abo
 
 ---
 
-## Step 5 — Generate standards-card
+## Step 4 — Generate standards-card
 
 1. Read `docs/implr/templates/standards-card-template.md`.
 
@@ -144,7 +144,7 @@ REPLACE_ME literals. Asset files are opaque: do not deep-read them to reason abo
 
 ---
 
-## Step 4 — Report
+## Step 5 — Report
 
 ```
 ✅ implr configured

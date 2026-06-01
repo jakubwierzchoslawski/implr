@@ -312,8 +312,8 @@ tests match the plan's "tests first" list.
 | arch-gen | master-synthesis, arch docs, template | docs/ARCHITECTURE.md |
 | ba-requirements-gen | syntheses, requirement schema, config | requirements/** |
 | dev-planner | approved requirements, ARCHITECTURE.md, DEV-STANDARDS.md, plan schema | plans/** |
-| dev-executor | plans, ARCHITECTURE.md, DEV-STANDARDS.md | src/**, tests/**, plan status |
-| dev-code-review | plan, requirement, code, ARCHITECTURE.md, DEV-STANDARDS.md, review schema | reviews/** |
+| dev-executor | plans, standards-card.md (arch-excerpter reads ARCHITECTURE.md once per plan) | src/**, tests/**, plan status |
+| dev-code-review | plan, requirement, code, ARCHITECTURE.md, standards-card.md, review schema | reviews/** |
 
 Note the clean separation: only doc-ingest writes kb-index; only ba-requirements-gen writes
 requirements; only dev-planner writes plans; only dev-executor writes code; only dev-code-review

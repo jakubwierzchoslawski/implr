@@ -43,5 +43,9 @@ updated_at:
 
 ### TASK-001: {title} · S/no-TDD · {files}
 
+{Description of the task.}
+
+**AC covered**: AC-001
+
 ## Acceptance Criteria Coverage
 - AC-001: {text} → TASK-001

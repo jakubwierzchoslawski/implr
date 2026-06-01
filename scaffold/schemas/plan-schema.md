@@ -97,7 +97,7 @@ Ordered. Each task carries complexity and a TDD flag derived from the plan and t
 **Tests to write first (TDD)**: only present when TDD is true for this task.
 - {Test case description}
 
-**Acceptance criteria covered**: {AC ids, or "enables AC-00x"}
+**AC covered**: {AC ids, or "enables AC-00x"}
 
 ## Acceptance Criteria Coverage
 Every acceptance criterion in the linked requirement must appear here, covered by at least one task.
