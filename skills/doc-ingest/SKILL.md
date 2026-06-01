@@ -2,10 +2,10 @@
 name: doc-ingest
 description: >
   Indexes and digests the knowledge base under docs/kb/. Use when adding/updating docs,
-  refreshing the KB index, or asking to ingest/scan/digest. Default in v2.0 is REGISTRY
-  ONLY (fast). Pass --digest for full pipeline (digests + syntheses + master). Dispatches
-  parallel subagents for extract, digest, and per-domain synthesis. Detects contradictions.
-  Incremental — only reprocesses changed files.
+  refreshing the KB index, or asking to ingest/scan/digest. Default in v3.0 is FULL
+  PIPELINE (extract + digest + syntheses + master). Pass --registry-only for fast
+  registry-only scan without digesting. Dispatches parallel subagents for extract,
+  digest, and per-domain synthesis. Detects contradictions. Incremental.
 ---
 
 # doc-ingest Skill (v2.0 orchestrator)
@@ -21,13 +21,17 @@ dispatch in parallel, aggregate summaries, and write the index, master synthesis
 
 ## Parameters
 
-- `/doc-ingest` — registry only: scan, classify, write `index.md`. No digests, no syntheses.
-- `/doc-ingest --digest` — full pipeline (extract + digest + syntheses + master).
-- `/doc-ingest --file <path>` — process one file (registry only unless `--digest` also passed).
-- `/doc-ingest --rebuild` — implies `--digest`; reprocesses everything from scratch.
-- `/doc-ingest --dry-run` — report what would change; write nothing; log unchanged.
+- `/doc-ingest` — **full pipeline** (extract + digest + syntheses + master). New default in v3.0.
+- `/doc-ingest --registry-only` — fast scan: updates registry only, no digests or syntheses.
+- `/doc-ingest --file <path>` — process one file (full pipeline unless `--registry-only` also passed).
+- `/doc-ingest --rebuild` — full pipeline, reprocess everything from scratch.
+- `/doc-ingest --dry-run` — report what would change; write nothing.
 
-Removed in v2.0: `--no-digest` (now the default; flag is redundant).
+**Removed in v3.0:** `--digest` is now the default behaviour. The flag is accepted for
+backward compatibility (with a deprecation warning) for one minor version, then will error.
+If both `--digest` and `--registry-only` are passed, `--registry-only` wins with a warning.
+
+**Renamed from v2.0:** the v2.0 registry-only default now needs explicit `--registry-only`.
 
 ## Model resolution
 
@@ -58,7 +62,7 @@ Read each return summary. If `status: extraction_failed`, log a warning and cont
 
 ### Phase 4 — Per-doc digest (parallel `doc-ingest-digester` dispatches)
 
-**Skip entirely if `--digest` was not passed.**
+**Skip entirely if `--registry-only` was passed.**
 
 For each successfully extracted file, dispatch `doc-ingest-digester` with scope
 `{slug, cache_path, source_path, domain}`. Cap parallelism at 5.
@@ -67,7 +71,7 @@ Collect digest paths, checksums, `arch_relevant` flags.
 
 ### Phase 5 — Domain syntheses (parallel `doc-ingest-synthesizer` dispatches)
 
-**Skip if `--digest` was not passed.**
+**Skip entirely if `--registry-only` was passed.**
 
 Determine affected domains: any domain containing a NEW, CHANGED, or REMOVED file.
 
@@ -78,7 +82,7 @@ robust to slug collisions across domains. Cap parallelism at 5.
 
 ### Phase 6 — Master synthesis (orchestrator, integrative)
 
-**Skip if `--digest` was not passed.**
+**Skip entirely if `--registry-only` was passed.**
 
 If any domain synthesis changed (new `synthesis_checksum` differs from what
 `master-synthesis.md` recorded), rebuild `docs/implr/kb-index/master-synthesis.md`

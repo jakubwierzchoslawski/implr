@@ -14,14 +14,20 @@ subagents in a fresh context per plan.
 ## Read first
 
 - `docs/implr/schemas/review-schema.md`
-- `docs/ARCHITECTURE.md`
-- `docs/implr/config/DEV-STANDARDS.md`
+- `docs/implr/config/standards-card.md` — read once and pass inline to each worker.
+  Halt if missing: `❌ standards-card.md not found. Run /implr-init --refresh-card first.`
+
+Do NOT pre-read `docs/ARCHITECTURE.md` or `docs/implr/config/DEV-STANDARDS.md` here —
+workers read ARCHITECTURE.md themselves (full read needed for review), and standards-card
+replaces DEV-STANDARDS.md.
 
 ## Parameters
 
 - `/dev-code-review PLAN-F-001` — review one plan's output.
 - `/dev-code-review PLAN-F-001 PLAN-F-002` — review several.
 - `/dev-code-review --all` — review all `done` plans without a current review.
+- `/dev-code-review --verbose` — include per-finding detail in aggregate report.
+  Default: severity counts + verdicts only.
 
 ## Execution
 
@@ -34,7 +40,7 @@ For `--all`: read `plans-index.md`, pick `done` plans without an existing review
 
 Cap parallelism at 5.
 
-Per dispatch scope: `{plan_path, requirement_path, review_path_out, src_path, tests_path}`.
+Per dispatch scope: `{plan_path, requirement_path, review_path_out, src_path, tests_path, standards_card}` where `standards_card` is the inline content of `docs/implr/config/standards-card.md`.
 
 The review paths follow: `docs/implr/reviews/REVIEW-F-NNN-<slug>.md` (numbering matches the
 plan).
@@ -50,17 +56,14 @@ Add entry per review with verdict and severity counts.
 ### Phase 5 — Report
 
 ```
-🔍 dev-code-review complete  (v2.0)
-Reviews written: {n}
-Verdicts:
-  ✅ approved: {n}
-  ⚠️  approved-with-warnings: {n}
-  ❌ changes-required: {n}
-  🚫 rejected: {n}
-Findings totals:
-  Critical: {n}   High: {n}   Medium: {n}   Low: {n}   Info: {n}
+🔍 dev-code-review complete  (v3.0)
+Reviews: {n}   ✅{approved} ⚠️{warnings} ❌{changes} 🚫{rejected}
+Findings: C={critical} H={high} M={medium} L={low} I={info}
+Blocks merge: {plan ids with Critical or High; "none" if empty}
 
-Blocks merge: {list of plan ids with Critical or High findings}
+{With --verbose only:}
+Per plan:
+  PLAN-F-NNN — {verdict} — C={n} H={n} M={n} (review at {path})
 ```
 
 ## Verdict rules (enforced by worker)

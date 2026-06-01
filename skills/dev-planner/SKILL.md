@@ -28,6 +28,7 @@ in parallel `plan-worker` subagents respecting dependency waves.
 - `/dev-planner --replan REQ-F-001` — regenerate an existing plan (preserve plan_id).
 - `/dev-planner --brainstorm REQ-F-001` — interactive design exploration before planning.
 - `/dev-planner --dry-run REQ-F-001` — preview; write nothing.
+- `/dev-planner --coherence-check ...` — force the cross-plan coherence sweep (Phase 6). Default: only auto-runs when ≥3 plans generated in this invocation.
 
 ## Execution
 
@@ -77,7 +78,13 @@ Aggregate returns. Collect blockers, AC coverage stats, tasks counts.
 
 ### Phase 6 — Cross-requirement coherence sweep
 
-Dispatch the built-in `Explore` subagent (read-only) with scope:
+**Run this phase ONLY if:**
+- `--coherence-check` flag was passed, OR
+- The number of plans generated in this invocation is ≥ 3.
+
+Otherwise, skip with one line: `Coherence sweep skipped ({n} plan(s) — pass --coherence-check to force).`
+
+When running: dispatch the built-in `Explore` subagent (read-only) with scope:
 "Check plans at <paths> for: duplicate task definitions across plans, missing AC coverage,
 inconsistent task ordering vs requirement dependencies."
 

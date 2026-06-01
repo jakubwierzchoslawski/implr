@@ -14,9 +14,11 @@ verdict and write the review file.
 ## Read first
 
 1. `docs/implr/schemas/review-schema.md`
-2. `docs/ARCHITECTURE.md`
-3. `docs/implr/config/DEV-STANDARDS.md`
-4. The plan and the requirement (paths in inputs).
+2. `docs/ARCHITECTURE.md` (full — code review needs broad architectural context)
+3. The plan and the requirement (paths in inputs).
+
+You do NOT read `docs/implr/config/DEV-STANDARDS.md`. The compact executable subset is
+passed inline as `standards_card` in your inputs (see below).
 
 ## Inputs
 
@@ -26,6 +28,8 @@ requirement_path: docs/implr/requirements/.../REQ-F-NNN-<slug>.md
 review_path_out: docs/implr/reviews/REVIEW-F-NNN-<slug>.md
 src_path: src
 tests_path: tests
+standards_card: |
+  <contents of docs/implr/config/standards-card.md — passed inline by dev-code-review>
 ```
 
 ## Work
