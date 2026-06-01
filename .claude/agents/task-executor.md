@@ -49,21 +49,18 @@ prior_decisions_summary: |
    a. Write the failing test(s) named in the task's AC list.
    b. Run the test runner with output cap:
       `<runner-command> 2>&1 | tee /tmp/implr-test-{plan_id}.txt | head -80`
-      Replace `{plan_id}` with the plan's ID (e.g. `PLAN-F-007`).
+      Derive `{plan_id}` from `plan_path` (e.g. if `plan_path` ends in
+      `PLAN-F-007-slug.md`, then `{plan_id}` is `PLAN-F-007`).
    c. Verify the test fails. If 80 lines is not enough to diagnose, read
       `/tmp/implr-test-{plan_id}.txt` for the full output.
    d. Implement the minimal code to pass.
    e. Run the test runner again (same command); verify pass.
    f. Refactor if needed; re-verify.
-5. If not TDD-required (XS, S below threshold): write code and any smoke tests.
+5. If `tdd_required: false`: write code and any smoke tests.
 6. Note any manual action you cannot perform (missing credentials, env-specific config).
    Do not invent secrets.
 
 Do NOT commit. Do NOT update plan status. executor-worker handles both.
-
-## Output
-
-Implementation files under `src/` and `tests/` per config paths.
 
 ## Return summary (your one final message)
 
