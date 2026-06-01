@@ -49,8 +49,16 @@ plan_path: <plan_path>
 task_id: <task_id>
 prior_decisions_summary: |
   completed_tasks:
-    <decisions_log entries so far>
+    - task_id: <T-NNN>
+      files_created: [<paths>]
+      files_modified: [<paths>]
+      interfaces_added: [<names>]
+      decisions:
+        - "<pattern or choice made, and why>"
+      tests_pass: true | false
 ```
+
+Build each entry from the task-executor return summary. On the first dispatch (or first resumed dispatch when `resume_task` is set), pass `completed_tasks: []`.
 
 Wait for the return summary before dispatching the next task.
 
@@ -67,7 +75,7 @@ Do NOT update plan status fields between task dispatches — only after all task
 
 After all tasks complete (or on stop condition):
 - All tasks done, all tests pass → set plan `status: done`.
-- Any task blocked or failed → set plan `status: in-progress`; annotate the blocking task.
+- Any task blocked, failed, or with `tests_pass: false` → set plan `status: in-progress`; annotate the stopping task.
 
 Edit the plan file directly to update the `status` field.
 
