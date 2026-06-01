@@ -63,8 +63,8 @@ Key properties:
   planning, implementation, and review skills all enforce.
 - **Human-gated** — Claude generates; humans approve. Requirements only flow to planning once a
   person marks them approved.
-- **Token-efficient (v2.0)** — orchestrator + dedicated subagent model with tier-appropriate
-  models (Haiku/Sonnet/Opus). Typical runs cost 3–4× fewer tokens than v1.x.
+- **Token-efficient (v3.0)** — inline task envelopes, standards-card, per-plan ARCHITECTURE
+  excerpts, and feather-weight plan-runner agents. Typical runs cost 6–10× fewer tokens than v1.x.
 
 ---
 
@@ -194,7 +194,7 @@ C:\path\to\implr\install.bat
 | `CLAUDE.md` | **Never touched** — your file is preserved |
 | Everything in `docs/kb/` | **Never touched** — your documents are preserved |
 
-> **Upgrading from v1.x to v2.0?** See the dedicated [Migrating from v1.x to v2.0](#migrating-from-v1x-to-v20) section. Two flags were removed and one default was flipped — the migration is two commands and a re-install.
+> **Upgrading to v3.0?** See [Migrating from v2.0 to v3.0](#migrating-from-v20-to-v30). Re-run the installer, generate `standards-card.md`, and optionally update config. **Upgrading from v1.x to v2.0?** See the dedicated [Migrating from v1.x to v2.0](#migrating-from-v1x-to-v20) section. Two flags were removed and one default was flipped — the migration is two commands and a re-install.
 
 ### After updating
 
@@ -698,7 +698,7 @@ implr v3.0 takes the orchestrator-+-subagent model further:
 - **Per-plan ARCHITECTURE excerpt** — `arch-excerpter` (Sonnet, one call per plan)
   extracts only the sections each plan touches, plus Cross-Cutting Concerns verbatim.
 - **plan-runner replaces executor-worker** — feather-weight per-plan agent with NO stable
-  reads; the 30k+ stable prefix of v2.0's executor-worker is gone.
+  reads; the 30k+ stable prefix of the v2.0 per-plan dispatcher is gone.
 - **Compact plan & requirement templates** — DoD moved to a single canonical
   `docs/implr/DOD.md`; always-empty sections omitted; one-line task headers.
 
