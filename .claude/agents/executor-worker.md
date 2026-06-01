@@ -1,7 +1,7 @@
 ---
 name: executor-worker
 description: Thin per-plan orchestrator. Reads the plan, dispatches one task-executor subagent per task sequentially, carries a prior_decisions_summary forward between dispatches, updates plan status after all tasks complete, commits if commit_mode is auto.
-tools: [Read, Write, Edit, Bash, Grep, Glob]
+tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 default_model: opus
 ---
 
