@@ -17,22 +17,21 @@ created_at:
 updated_at:
 ---
 
+<!-- Sections Brainstorm Decisions, Applied NFR Constraints, Acceptance Notes, Open Questions Inherited, Risks and Notes are omitted here — add them only when populated. The canonical DOD checklist lives in docs/implr/DOD.md. -->
+
 # PLAN-F-000 — REPLACE ME
 
 ## Linked Requirement
-**REQ-F-000** — REPLACE ME
-Status: approved | Jira:
+**REQ-F-000** — REPLACE ME (status: approved, jira: )
 
 ## Objective
 
 ## Architecture Context
 
-## Applied NFR Constraints
-N/A
-
 ## Component Design
 
 ### New Components
+-
 
 ### Modified Components
 | File | Change | Reason |
@@ -42,25 +41,7 @@ N/A
 
 ## Implementation Tasks
 
-### TASK-001:
-**Complexity**: S | **TDD**: false
-**Files**:
+### TASK-001: {title} · S/no-TDD · {files}
 
 ## Acceptance Criteria Coverage
-| AC | Description | Covered by |
-|----|-------------|-----------|
-
-## Definition of Done
-- [ ] All tasks complete
-- [ ] Unit tests passing
-- [ ] Integration tests passing
-- [ ] All acceptance criteria verified
-- [ ] No TODO/FIXME in produced code
-- [ ] dev-code-review run and Critical/High findings resolved
-
-## Open Questions Inherited
-| # | Question | Resolution |
-|---|----------|-----------|
-
-## Risks and Notes
--
+- AC-001: {text} → TASK-001
