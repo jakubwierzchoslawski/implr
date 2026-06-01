@@ -60,8 +60,6 @@ Omit this section entirely otherwise.
 |-----|-----------|---------------------|
 | REQ-N-001 | p99 < 200ms | Index added in TASK-001; no synchronous email in request path |
 
-If none: `N/A`
-
 ## Component Design
 
 ### New Components
@@ -92,9 +90,7 @@ interface IAuthRepository {
 ## Implementation Tasks
 Ordered. Each task carries complexity and a TDD flag derived from the plan and task scope.
 
-### TASK-001: {Title}
-**Complexity**: S | **TDD**: false
-**Files**: {paths}
+### TASK-001: {Title} · S/no-TDD · {comma-separated files}
 
 {Description of what to build.}
 
@@ -104,22 +100,13 @@ Ordered. Each task carries complexity and a TDD flag derived from the plan and t
 **Acceptance criteria covered**: {AC ids, or "enables AC-00x"}
 
 ## Acceptance Criteria Coverage
-| AC | Description | Covered by |
-|----|-------------|-----------|
-| AC-001 | {text} | TASK-002, TASK-006 |
+Every acceptance criterion in the linked requirement must appear here, covered by at least one task.
 
-Every acceptance criterion in the linked requirement must appear here, covered by at least
-one task.
+- AC-001: {text} → TASK-002, TASK-006
 
-## Definition of Done
-Plan-specific DoD, derived from the requirement DoD and enriched with implementation specifics.
-
-- [ ] All tasks complete
-- [ ] Unit tests passing
-- [ ] Integration tests passing
-- [ ] All acceptance criteria verified
-- [ ] No TODO/FIXME in produced code
-- [ ] dev-code-review run and Critical/High findings resolved
+## Acceptance Notes
+Optional. Present only when completion requires atypical steps (e.g. manual deployment, external
+sign-off, environment-specific verification). Omit this section entirely if not needed.
 
 ## Open Questions Inherited
 | # | Question | Resolution |
@@ -129,6 +116,36 @@ Plan-specific DoD, derived from the requirement DoD and enriched with implementa
 ## Risks and Notes
 - {Implementation risk, gotcha, or decision the developer should know}
 ```
+
+---
+
+## Optional-sections rule
+
+`dev-planner` MUST omit the following sections entirely when they have no content — do not emit
+a heading with "N/A" or an empty body:
+
+- **Brainstorm Decisions** — omit unless `--brainstorm` was used and decisions were recorded
+- **Applied NFR Constraints** — omit when no NFRs apply to this plan
+- **Acceptance Notes** — omit unless atypical completion requirements exist
+- **Open Questions Inherited** — omit when the requirement carried no unresolved questions
+- **Risks and Notes** — omit when there are no known risks or implementation caveats
+
+---
+
+## Task dispatch in v3.0
+
+`task-executor` does NOT read the plan file directly. `dev-executor` parses the plan and
+dispatches each task as an inline task envelope passed to the executor agent.
+
+**Parseable task-header format:**
+
+```
+### TASK-001: {Title} · {complexity}/{tdd-flag} · {comma-separated files}
+```
+
+- `{tdd-flag}` is `TDD` when `tdd_required: true` for the task, otherwise `no-TDD`
+- `^### TASK-(\d{3}): ` is the required prefix regex used by dev-executor to locate tasks
+- Everything on the header line after the title is machine-readable metadata; do not reorder fields
 
 ---
 
