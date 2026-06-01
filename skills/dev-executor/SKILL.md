@@ -1,15 +1,16 @@
 ---
 name: dev-executor
 description: >
-  Implements ready plans. Dispatches one executor-worker subagent (Opus by default — TDD
-  and SOLID need strong model) per plan. Independent plans dispatched in parallel waves;
-  tasks within each plan stay sequential inside the subagent. Use when implementing plans.
+  Implements ready plans. Dispatches one executor-worker subagent per plan in parallel
+  waves; each executor-worker dispatches one task-executor subagent per task (sequential,
+  TDD + SOLID enforced, Opus by default). Use when implementing plans.
 ---
 
 # dev-executor Skill (v2.0 orchestrator)
 
 You orchestrate plan execution. Per-plan implementation runs in `executor-worker`
-subagents. Plan dependencies define the execution waves.
+subagents (one per plan); each executor-worker dispatches one `task-executor` subagent
+per task (sequential within the plan). Plan dependencies define the execution waves.
 
 ## Read first
 
@@ -49,6 +50,9 @@ For each wave, dispatch all in-wave plans (cap 5):
 
 Scope: `{plan_path, resume_task, commit_mode}` (`resume_task` empty for fresh plan
 execution; `commit_mode` defaults to `auto`).
+
+Each executor-worker will in turn dispatch one `task-executor` subagent per task
+sequentially. Do not implement tasks directly — executor-worker handles that chain.
 
 Wait for wave completion before next wave.
 

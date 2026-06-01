@@ -27,8 +27,9 @@ default model assignments.
   `doc-ingest-synthesizer` (sonnet), `arch-drafter` (sonnet),
   `requirements-domain-worker` (sonnet), `cr-impact-analyzer` (sonnet),
   `cr-applier` (sonnet), `plan-worker` (sonnet), `executor-worker` (**opus** —
-  TDD + SOLID need a strong model), `code-review-worker` (sonnet). The installer copies
-  them alongside `.claude/skills/`.
+  thin per-plan orchestrator), `task-executor` (**opus** — TDD + SOLID enforcement per
+  task), `code-review-worker` (sonnet). The installer copies them alongside
+  `.claude/skills/`.
 - **`skills/<skill>/phases/`** per-skill phase prompt files used as dispatch payloads
   (`extract`, `digest`, `synthesize-domain`, `draft`, `domain`, `impact`, `apply`,
   `plan-one`, `execute-plan`, `review-plan`).

@@ -66,6 +66,7 @@ restricted tool allowlist, and a tier-appropriate model.
 | dev-planner | Phase 5 (plan-one) | plan-worker | sonnet | Yes per wave (cap 5) |
 | dev-planner | Phase 6 (coherence) | Explore (built-in) | n/a | No |
 | dev-executor | Phase 4 (execute) | executor-worker | **opus** | Yes per wave (cap 5) |
+| dev-executor | Phase 4 (per-task) | task-executor | **opus** | Sequential within each executor-worker |
 | dev-code-review | Phase 2 (review) | code-review-worker | sonnet | Yes (cap 5) |
 
 ### Model override
@@ -258,8 +259,9 @@ A plan replanned by `dev-planner --replan` returns to `ready` regardless of prio
 
 *In v2.0, plan creation is performed by parallel `plan-worker` subagents (one per
 requirement in a dependency wave). Plan execution is performed by parallel
-`executor-worker` subagents (one per plan, tasks sequential inside). Plan review is
-performed by parallel `code-review-worker` subagents (one per plan).*
+`executor-worker` subagents (one per plan); each executor-worker dispatches one
+`task-executor` per task (sequential). Plan review is performed by parallel
+`code-review-worker` subagents (one per plan).*
 
 ---
 

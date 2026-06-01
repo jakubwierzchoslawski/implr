@@ -45,5 +45,6 @@ jira:
 #   cr-impact-analyzer: sonnet
 #   cr-applier: sonnet
 #   plan-worker: sonnet
-#   executor-worker: opus             # TDD + SOLID enforcement
+#   executor-worker: opus             # thin per-plan orchestrator
+#   task-executor: opus               # TDD + SOLID enforcement per task (main cost driver)
 #   code-review-worker: sonnet

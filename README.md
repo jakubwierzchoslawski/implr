@@ -79,7 +79,7 @@ Key properties:
 | `ba-requirements-gen` | Generates functional and non-functional requirements (parallel per-domain workers) | `/ba-requirements-gen` |
 | `ba-cr` | Creates and applies Change Requests (impact + parallel appliers) | `/ba-cr` |
 | `dev-planner` | Creates implementation plans (wave-based parallel plan workers) | `/dev-planner` |
-| `dev-executor` | Implements plans (wave-based parallel executor workers, Opus by default) | `/dev-executor` |
+| `dev-executor` | Implements plans (parallel executor-worker per plan → task-executor per task, Opus by default) | `/dev-executor` |
 | `dev-code-review` | Reviews produced code (parallel review workers, fresh context per plan) | `/dev-code-review` |
 
 A future `ba-jira-populate` skill will push approved requirements into Jira; its data contract is
@@ -329,9 +329,10 @@ cp ~/specs/*.md docs/kb/
    sweep via the built-in Explore subagent. Writes PLAN-F-* with task-level TDD flags.
 
 8. IMPLEMENT         /dev-executor
-   Dispatches executor-worker (Opus by default) per plan in waves. Writes production code
-   and tests to your src/ and tests/, enforcing TDD for M/L/XL tasks and SOLID in code.
-   Notes manual actions it cannot perform.
+   Dispatches executor-worker per plan in parallel waves. Each executor-worker dispatches
+   one task-executor per task (sequential). task-executor writes production code and tests,
+   enforcing TDD for M/L/XL tasks and SOLID throughout. Notes manual actions it cannot
+   perform. Opus by default — TDD + SOLID need a strong model.
 
 9. REVIEW            /dev-code-review
    Fresh context per plan via code-review-worker dispatches. Verifies every acceptance
@@ -530,8 +531,8 @@ Creates implementation plans from approved requirements.
 `--brainstorm` combines with a requirement id or `--all`. `--dry-run` combines with any mode.
 
 ### dev-executor
-Implements plans. Per-plan dispatch to `executor-worker` (Opus default — TDD + SOLID need a
-strong model).
+Implements plans. Per-plan dispatch to `executor-worker`; each executor-worker dispatches
+one `task-executor` per task (Opus default — TDD + SOLID need a strong model).
 
 ```
 - `/dev-executor PLAN-F-001` — execute one plan
@@ -663,7 +664,8 @@ agents:
   cr-impact-analyzer: sonnet
   cr-applier: sonnet
   plan-worker: sonnet
-  executor-worker: opus             # TDD + SOLID enforcement
+  executor-worker: opus             # thin per-plan orchestrator
+  task-executor: opus               # TDD + SOLID enforcement per task
   code-review-worker: sonnet
 ```
 
@@ -676,7 +678,7 @@ updates.
 2. `default_model` declared in `.claude/agents/<agent-name>.md`
 
 **When to override:**
-- *Downgrade to save cost* — e.g. `executor-worker: sonnet` if your tasks are simpler than the Opus default expects
+- *Downgrade to save cost* — e.g. `task-executor: sonnet` if your tasks are simpler (task-executor is the cost driver; executor-worker can also be downgraded independently)
 - *Upgrade for quality* — e.g. `requirements-domain-worker: opus` on a complex domain
 - *Match your budget* — downgrade everything to Haiku for prototyping; restore defaults for production runs
 
