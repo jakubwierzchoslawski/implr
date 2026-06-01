@@ -143,7 +143,7 @@ dispatches each task as an inline task envelope passed to the executor agent.
 ### TASK-001: {Title} · {complexity}/{tdd-flag} · {comma-separated files}
 ```
 
-- `{tdd-flag}` is `TDD` when `tdd_required: true` for the task, otherwise `no-TDD`
+- `{tdd-flag}` is per-task: `TDD` when this task has complexity M/L/XL (or explicitly overridden), `no-TDD` when complexity XS/S — independent of the plan-level `tdd_required:` frontmatter field, which is a roll-up (true if any task requires TDD)
 - `^### TASK-(\d{3}): ` is the required prefix regex used by dev-executor to locate tasks
 - Everything on the header line after the title is machine-readable metadata; do not reorder fields
 
