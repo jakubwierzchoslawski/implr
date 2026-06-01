@@ -4,8 +4,9 @@ description: >
   Configures the implr workspace after the installer has scaffolded docs/implr/. Asks 8
   setup questions (project name, frontend/backend/db stack, paths, TDD threshold, API
   versioning), substitutes placeholders in implr.config.yaml, DEV-STANDARDS.md, and
-  CLAUDE.md, and creates <src>/frontend/ and <src>/backend/ subdirectories. Idempotent:
-  re-running re-asks all questions and re-applies substitutions.
+  CLAUDE.md, creates <src>/frontend/ and <src>/backend/ subdirectories, and generates
+  docs/implr/config/standards-card.md. Idempotent: re-running re-asks all questions and
+  re-applies substitutions. Supports --refresh-card to regenerate standards-card.md only.
 ---
 
 # implr-init Skill
@@ -13,6 +14,36 @@ description: >
 You configure the implr workspace: collect project details and substitute placeholders in
 three config files. The installer already created all directories and copied all files —
 your only job is questions, substitutions, and two source subdirectory creates.
+
+---
+
+## Parameters
+
+| Invocation | Behaviour |
+|------------|-----------|
+| `/implr-init` | Full setup: ask 8 questions, apply substitutions, create source subdirectories, generate `docs/implr/config/standards-card.md` |
+| `/implr-init --refresh-card` | Regenerate `docs/implr/config/standards-card.md` ONLY from current `docs/implr/config/DEV-STANDARDS.md` — no questions re-asked |
+
+---
+
+## Refresh-card-only mode
+
+When invoked with `--refresh-card`:
+
+1. Read `docs/implr/config/DEV-STANDARDS.md` and extract the following values:
+   - **FRONTEND** — the value on the line starting with `Frontend:` inside the §1 Project Stack block
+   - **BACKEND** — the value on the line starting with `Backend:` inside the §1 Project Stack block
+   - **DB** — the value on the line starting with `Database + ORM:` inside the §1 Project Stack block
+   - **VERSIONING** — the value on the line starting with `Versioning:` inside the §7 block
+
+2. Run Step 5 only (generate `docs/implr/config/standards-card.md`) using these extracted values.
+
+3. Print:
+   ```
+   ✅ standards-card.md regenerated from DEV-STANDARDS.md
+   ```
+
+4. Stop. Do not proceed to any other step.
 
 ---
 
@@ -95,6 +126,24 @@ REPLACE_ME literals. Asset files are opaque: do not deep-read them to reason abo
 
 ---
 
+## Step 5 — Generate standards-card
+
+1. Read `docs/implr/templates/standards-card-template.md`.
+
+2. Substitute placeholders:
+
+   | Placeholder | Value |
+   |-------------|-------|
+   | `{{FRONTEND}}` | answer 2a (or FRONTEND extracted in refresh-card mode) |
+   | `{{BACKEND}}` | answer 2b (or BACKEND extracted in refresh-card mode) |
+   | `{{DB}}` | answer 2c (or DB extracted in refresh-card mode) |
+   | `{{VERSIONING}}` | answer 6 (or VERSIONING extracted in refresh-card mode) |
+
+3. Write the result to `docs/implr/config/standards-card.md`. ALWAYS overwrite — this file
+   is auto-managed and must never be hand-edited.
+
+---
+
 ## Step 4 — Report
 
 ```
@@ -104,6 +153,7 @@ Updated:
   docs/implr/config/implr.config.yaml
   docs/implr/config/DEV-STANDARDS.md
   CLAUDE.md
+  docs/implr/config/standards-card.md   (auto-generated; do not hand-edit)
 
 Created:
   <answer 3>/frontend/
