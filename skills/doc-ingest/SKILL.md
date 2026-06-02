@@ -10,9 +10,10 @@ description: >
 
 # doc-ingest Skill (v2.0 orchestrator)
 
-You orchestrate the knowledge-base ingest pipeline. Heavy work runs in dedicated subagents
-(`doc-ingest-extractor`, `doc-ingest-digester`, `doc-ingest-synthesizer`). You decide scope,
-dispatch in parallel, aggregate summaries, and write the index, master synthesis, and log.
+You orchestrate the knowledge-base ingest pipeline. Phase 3 extraction runs inline via
+`Bash`. Heavy digest and synthesis work runs in dedicated subagents (`doc-ingest-digester`,
+`doc-ingest-synthesizer`). You decide scope, dispatch in parallel, aggregate summaries, and
+write the index, master synthesis, and log.
 
 ## Read first (cache-friendly)
 
@@ -38,6 +39,9 @@ If both `--digest` and `--registry-only` are passed, `--registry-only` wins with
 For each dispatch, resolve model from `agents.<agent-name>` in `implr.config.yaml`; fall
 back to the agent's `default_model`.
 
+Phase 3 extraction is inline (no subagent), so no model is resolved for it. Phases 4–5
+still dispatch `doc-ingest-digester` and `doc-ingest-synthesizer`.
+
 ## Execution
 
 ### Phase 1 — Scan
@@ -50,15 +54,39 @@ mtime, md5. Use `find` + `md5sum` (POSIX) or equivalent.
 NEW / CHANGED / UNCHANGED / REMOVED / UNSUPPORTED per current schema. `--rebuild` forces
 all supported to CHANGED. `--file` forces the named file to CHANGED.
 
-### Phase 3 — Extract text (parallel `doc-ingest-extractor` dispatches)
+### Phase 3 — Extract text (inline in the orchestrator)
 
-For each NEW or CHANGED supported file, compute the slug (kebab-cased filename without
-extension; if two files share a filename across domains, append a 6-char hex hash of the
-relative path for disambiguation). Then dispatch `doc-ingest-extractor` with scope
-`{file_path, slug}`. Cap parallel dispatches at 5 per wave; sequence remainder into waves.
+For each NEW or CHANGED file, compute the slug (kebab-cased filename without extension; if
+two files share a filename across different domains, append a 6-char hex hash of the
+relative path for disambiguation).
 
-Read each return summary. If `status: extraction_failed`, log a warning and continue. If
-`status: unsupported`, mark `format_supported: false` in the index entry.
+Then write `docs/implr/kb-index/cache/<slug>.txt` by running the appropriate command for
+the file's extension. The orchestrator runs these inline via `Bash`; no subagent is
+dispatched. File content never enters an LLM context window during extraction.
+
+| Ext | Command (POSIX) | Command (PowerShell) |
+|---|---|---|
+| md, txt, csv, vtt | `cp "<src>" "docs/implr/kb-index/cache/<slug>.txt"` | `Copy-Item -LiteralPath "<src>" -Destination "docs\implr\kb-index\cache\<slug>.txt" -Force` |
+| pdf | `pdftotext "<src>" "docs/implr/kb-index/cache/<slug>.txt"` (fallback: `python3 -c "import pymupdf; doc=pymupdf.open('<src>'); open('docs/implr/kb-index/cache/<slug>.txt','w',encoding='utf-8').write('\n'.join(p.get_text() for p in doc))"`) | same; use `python` on Windows if `python3` is absent |
+| docx | `python3 -c "from docx import Document; d=Document('<src>'); open('docs/implr/kb-index/cache/<slug>.txt','w',encoding='utf-8').write('\n'.join(p.text for p in d.paragraphs))"` | same with `python` |
+| xlsx | `python3 -c "from openpyxl import load_workbook; wb=load_workbook('<src>', data_only=True); out=open('docs/implr/kb-index/cache/<slug>.txt','w',encoding='utf-8'); [out.write(f'## {s.title}\n' + '\n'.join('\t'.join('' if c is None else str(c) for c in r) for r in s.iter_rows(values_only=True)) + '\n') for s in wb.worksheets]; out.close()"` | same with `python` |
+| anything else | Do not extract. Mark the index entry `format_supported: false`. Skip Phase 4 for this file. |
+
+Cap parallel `Bash` calls at 5 (one wave at a time per file batch). Sequence the remainder
+into subsequent waves.
+
+If a command exits non-zero OR the required tool is missing, log a warning of the form
+`extract-failed: <file_path> — <error one-liner>` and continue with the next file. Do not
+write a partial cache file (delete it if a partial was produced). Do not write an index
+entry as `format_supported: true` for that file.
+
+Detect missing tools BEFORE the first invocation by probing once per run:
+- `pdftotext -v` (or `python3 -c "import pymupdf"` as fallback) — required only when pdf files are in scope
+- `python3 -c "import docx"` — required only when docx files are in scope
+- `python3 -c "import openpyxl"` — required only when xlsx files are in scope
+
+If a probe fails, emit one warning per format and skip all files of that format with
+`format_supported: false`. Do not re-probe per file.
 
 ### Phase 4 — Per-doc digest (parallel `doc-ingest-digester` dispatches)
 
