@@ -20,7 +20,7 @@ You produce exactly one per-document digest file from one cached text file. You 
 
 ```
 slug: <slug>
-cache_path: docs/implr/kb-index/cache/<slug>.md
+cache_path: docs/implr/kb-index/cache/<slug>.txt
 source_path: docs/kb/<domain>/<name>.<ext>
 domain: <domain>
 ```
