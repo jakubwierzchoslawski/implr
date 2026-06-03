@@ -1,28 +1,21 @@
 # Phase: extract
 
-Dispatch prompt for `doc-ingest-extractor`.
+Extraction runs **inline** in the orchestrator via `Bash` — no subagent is dispatched.
 
-## Read first
-- `docs/implr/config/implr.config.yaml`
+Follow the extraction table and rules defined in `SKILL.md` Phase 3. Run commands directly
+with the `Bash` tool. Cap parallel `Bash` calls at 5 per wave.
 
-## Your scope
-```
-file_path: {{FILE_PATH}}
-slug: {{SLUG}}
-```
+Write extracted text to `docs/implr/kb-index/cache/<slug>.txt`.
 
-## Task
-If file to extract is *.md just copy it to cache.
-Extract text from `{{FILE_PATH}}` per the format rules in your system prompt. Write to
-`docs/implr/kb-index/cache/{{SLUG}}.md`. If the format is unsupported or extraction fails,
-do not write a cache file; return the appropriate status.
+If a command exits non-zero or a required tool is missing, log
+`extract-failed: <file_path> — <error>`, delete any partial cache file, and continue.
 
+## Extraction command table
 
-## Return summary
-```
-slug: {{SLUG}}
-cache_path: <path or empty>
-word_count: <n>
-status: extracted | unsupported | extraction_failed
-error: <if extraction_failed>
-```
+| Ext | Command (POSIX) | Command (PowerShell) |
+|---|---|---|
+| md, txt, csv, vtt | `cp "<src>" "docs/implr/kb-index/cache/<slug>.txt"` | `Copy-Item -LiteralPath "<src>" -Destination "docs\implr\kb-index\cache\<slug>.txt" -Force` |
+| pdf | `pdftotext "<src>" "docs/implr/kb-index/cache/<slug>.txt"` (fallback: pymupdf) | same |
+| docx | `python3 -c "from docx import Document; ..."` | same with `python` |
+| xlsx | `python3 -c "from openpyxl import load_workbook; ..."` | same with `python` |
+| anything else | Mark `format_supported: false`. Skip Phase 4 for this file. |
