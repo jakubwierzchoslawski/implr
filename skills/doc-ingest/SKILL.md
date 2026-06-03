@@ -172,8 +172,8 @@ Fire only for NEW files.
 ## Failure handling
 
 - Missing extraction tool → register file, `format_supported: false`, warn, continue.
-- Subagent dispatch returns `extraction_failed` → warn, continue, do not write index entry
-  as supported.
+- Extraction command exits non-zero → log `extract-failed: <file_path> — <error>`, delete
+  any partial cache file, mark `format_supported: false`, continue with the next file.
 - Corrupt/unreadable source file (Read fails before dispatch) → skip with warning, do not
   fail the run.
 - `index.md` unparseable → treat all files as NEW and rebuild, warn the user.
