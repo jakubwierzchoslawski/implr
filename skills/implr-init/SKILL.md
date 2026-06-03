@@ -5,8 +5,9 @@ description: >
   setup questions (project name, frontend/backend/db stack, paths, TDD threshold, API
   versioning), substitutes placeholders in implr.config.yaml, DEV-STANDARDS.md, and
   CLAUDE.md, creates <src>/frontend/ and <src>/backend/ subdirectories, and generates
-  docs/implr/config/standards-card.md. Idempotent: re-running re-asks all questions and
-  re-applies substitutions. Supports --refresh-card to regenerate standards-card.md only.
+  docs/implr/config/standards-card.md and docs/implr/config/requirements-card.md.
+  Idempotent: re-running re-asks all questions and re-applies substitutions.
+  Supports --refresh-card to regenerate standards-card.md and requirements-card.md.
 ---
 
 # implr-init Skill
@@ -21,7 +22,7 @@ your only job is questions, substitutions, and two source subdirectory creates.
 
 | Invocation | Behaviour |
 |------------|-----------|
-| `/implr-init` | Full setup: ask 8 questions, apply substitutions, create source subdirectories, generate `docs/implr/config/standards-card.md` |
+| `/implr-init` | Full setup: ask 8 questions, apply substitutions, create source subdirectories, generate `docs/implr/config/standards-card.md` and `docs/implr/config/requirements-card.md` |
 | `/implr-init --refresh-card` | Regenerate `docs/implr/config/standards-card.md` AND `docs/implr/config/requirements-card.md` from current `docs/implr/config/DEV-STANDARDS.md` and `docs/implr/config/implr.config.yaml` — no questions re-asked |
 
 ---
