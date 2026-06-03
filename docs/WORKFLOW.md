@@ -55,7 +55,7 @@ restricted tool allowlist, and a tier-appropriate model.
 
 | Skill | Phase | Subagent | Default model | Parallel? |
 |---|---|---|---|---|
-| doc-ingest | Phase 3 (extract) | doc-ingest-extractor | haiku | Yes (cap 5) |
+| doc-ingest | Phase 3 (extract) | doc-ingest skill (inline) | shell-only: cp / pdftotext / python; no LLM token cost | — |
 | doc-ingest | Phase 4 (digest) | doc-ingest-digester | sonnet | Yes (cap 5) |
 | doc-ingest | Phase 5 (domain synthesis) | doc-ingest-synthesizer | sonnet | Yes (cap 5) |
 | arch-gen | Phase 4 (draft) | arch-drafter | sonnet | No (single dispatch) |
@@ -69,6 +69,17 @@ restricted tool allowlist, and a tier-appropriate model.
 | dev-executor | Phase 5 (plan execute) | plan-runner | **opus** | Yes per wave (cap 5) |
 | dev-executor | Phase 5 (per-task) | task-executor | **opus** | Sequential within each plan-runner |
 | dev-code-review | Phase 2 (review) | code-review-worker | sonnet | Yes (cap 5) |
+
+> **v3.1:** Text extraction is now inline in the `doc-ingest` skill (direct shell calls).
+> The `doc-ingest-extractor` subagent has been removed — file content no longer enters an
+> LLM context window during extraction.
+
+> **v3.1:** `ba-requirements-gen` builds an inline `domain_envelope` per dispatch.
+> `requirements-domain-worker` no longer reads `requirement-schema.md`,
+> `implr.config.yaml`, `DEV-STANDARDS.md`, or `master-synthesis.md` — the orchestrator
+> reads them once, packages the executable subset as `requirements_card` (auto-generated
+> by `/implr-init`), and embeds them inline. Mirrors the v3.0 `task-executor` envelope
+> contract.
 
 ### Model override
 
