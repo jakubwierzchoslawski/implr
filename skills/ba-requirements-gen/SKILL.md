@@ -17,9 +17,10 @@ sequential IDs and finalise after all workers return.
 
 ## Read first
 
-- `docs/implr/schemas/requirement-schema.md`
-- `docs/implr/kb-index/master-synthesis.md`  (stop if missing — tell user to run /doc-ingest --digest)
-- `docs/implr/config/implr.config.yaml`
+- `docs/implr/config/requirements-card.md`  (stop if missing — tell user to run /implr-init or /implr-init --refresh-card)
+- `docs/implr/schemas/requirement-schema.md`  (orchestrator only — workers no longer read this)
+- `docs/implr/kb-index/master-synthesis.md`  (stop if missing — tell user to run /doc-ingest)
+- `docs/implr/config/implr.config.yaml`  (orchestrator only — for default_tdd_threshold and contradictions_block)
 
 ## Parameters
 
@@ -106,6 +107,17 @@ Keys in `resolved_map` are normalised to uppercase with no surrounding whitespac
 
 These are passed to every worker dispatch in Phase 3.
 
+**Step 6 — Verify requirements-card present**
+
+If `docs/implr/config/requirements-card.md` does not exist, halt with:
+
+```
+❌ requirements-card.md missing. Run /implr-init (first-time setup) or
+   /implr-init --refresh-card (to regenerate from DEV-STANDARDS.md + config).
+```
+
+Do not advance to Phase 1.
+
 ### Phase 1 — Load state and determine scope
 
 Read `requirements-log.md` (create with header if absent). Determine scope:
@@ -126,17 +138,64 @@ If `.staging/` already exists, delete it before proceeding.
 - Windows: `cmd /c "rd /s /q <path>"` — do NOT use `Remove-Item -Recurse -Force`; it hangs when files are locked by antivirus or an IDE.
 - Unix/macOS: `rm -rf <path>`
 
-### Phase 3 — Dispatch `requirements-domain-worker` per domain (parallel)
+### Phase 3 — Dispatch `requirements-domain-worker` per domain (parallel, inline envelope)
 
-For each in-scope domain, dispatch with scope `{domain, synthesis_path, master_synthesis_path,
-digests_dir, staging_dir, existing_reqs_index, mode, reprocess_target,
-resolved_contradictions, deferred_contradictions}`. Cap parallelism at 5.
+**Build once per run (before dispatching any worker):**
 
-Where `resolved_contradictions` is `resolved_map` and `deferred_contradictions` is
-`deferred_list` built in Phase 0 Step 5.
+1. `requirements_card_inline` = full contents of `docs/implr/config/requirements-card.md`
+   (already read in "Read first"; stop with the Phase 0 Step 6 error if absent).
 
-Each worker writes to `staging/<domain>/<slug>.md` (functional) or `staging/<domain>/n-<slug>.md`
-(non-functional) with empty `req_id` fields.
+2. `master_synthesis_nfr_inline` = the substring of `docs/implr/kb-index/master-synthesis.md`
+   containing ONLY the "Global NFR Candidates" section AND the "Cross-Domain Contradictions"
+   section (heading inclusive, ending at the next `## ` heading or EOF). If either section
+   is absent in the master synthesis, substitute the literal string `N/A` for that section
+   inside the inline excerpt with a one-line header so the worker can still parse it.
+
+3. `default_tdd_threshold` = value of `behaviour.default_tdd_threshold` from
+   `implr.config.yaml`.
+
+4. `existing_reqs_summary` = `{req_ids: [...], slugs_in_domain: {<domain>: [...], ...}}`
+   built from `requirements-index.md` (or empty lists on first run).
+
+**Per-domain (parallel, cap 5):**
+
+For each in-scope domain, read its synthesis file ONCE in the orchestrator and pass the
+content inline. Dispatch `requirements-domain-worker` with `domain_envelope`:
+
+```yaml
+domain_envelope:
+  domain: <domain>
+  mode: <create|reprocess>
+  reprocess_target: <path or null>
+
+  staging_dir: docs/implr/requirements/.staging/<domain>/
+  digests_dir: docs/implr/kb-index/digests/per-doc/
+
+  requirements_card: |
+    <requirements_card_inline>
+
+  domain_synthesis: |
+    <full content of docs/implr/kb-index/domains/<domain>-synthesis.md, read here>
+
+  master_synthesis_nfr: |
+    <master_synthesis_nfr_inline>
+
+  default_tdd_threshold: <value>
+
+  existing_reqs_summary:
+    req_ids: <existing_reqs_summary.req_ids>
+    slugs_in_domain: <existing_reqs_summary.slugs_in_domain[<domain>] or []>
+
+  resolved_contradictions: <resolved_map>
+  deferred_contradictions: <deferred_list>
+```
+
+Each worker writes to `staging/<domain>/<slug>.md` (functional) or
+`staging/<domain>/n-<slug>.md` (non-functional) with empty `req_id` fields.
+
+**Token-budget note:** workers no longer cold-read `requirement-schema.md`, `DEV-STANDARDS.md`,
+`implr.config.yaml`, or `master-synthesis.md`. Stable context arrives inline (~50 lines of
+`requirements_card` + the NFR-only master excerpt) instead of ~400+ lines read per worker.
 
 ### Phase 4 — Aggregate returns; collect contradictions and open questions
 
