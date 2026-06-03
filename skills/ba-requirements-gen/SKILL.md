@@ -146,7 +146,7 @@ If `.staging/` already exists, delete it before proceeding.
    (already read in "Read first"; stop with the Phase 0 Step 6 error if absent).
 
 2. `master_synthesis_nfr_inline` = the substring of `docs/implr/kb-index/master-synthesis.md`
-   containing ONLY the "Global NFR Candidates" section AND the "Cross-Domain Contradictions"
+   containing ONLY the "Cross-Domain Contradictions" section AND the "Global NFR Candidates"
    section (heading inclusive, ending at the next `## ` heading or EOF). If either section
    is absent in the master synthesis, substitute the literal string `N/A` for that section
    inside the inline excerpt with a one-line header so the worker can still parse it.
