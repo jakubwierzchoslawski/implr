@@ -22,7 +22,7 @@ your only job is questions, substitutions, and two source subdirectory creates.
 | Invocation | Behaviour |
 |------------|-----------|
 | `/implr-init` | Full setup: ask 8 questions, apply substitutions, create source subdirectories, generate `docs/implr/config/standards-card.md` |
-| `/implr-init --refresh-card` | Regenerate `docs/implr/config/standards-card.md` ONLY from current `docs/implr/config/DEV-STANDARDS.md` — no questions re-asked |
+| `/implr-init --refresh-card` | Regenerate `docs/implr/config/standards-card.md` AND `docs/implr/config/requirements-card.md` from current `docs/implr/config/DEV-STANDARDS.md` and `docs/implr/config/implr.config.yaml` — no questions re-asked |
 
 ---
 
@@ -36,14 +36,20 @@ When invoked with `--refresh-card`:
    - **DB** — the value on the line starting with `Database + ORM:` inside the §1 Project Stack block
    - **VERSIONING** — the value on the line starting with `Versioning:` inside the §7 block
 
-2. Run Step 5 only (generate `docs/implr/config/standards-card.md`) using these extracted values.
+2. Additionally read `docs/implr/config/implr.config.yaml` and extract
+   `behaviour.default_tdd_threshold` (treat the literal token after the colon, stripping
+   inline comments and whitespace).
 
-3. Print:
+3. Run Step 4 (generate `docs/implr/config/standards-card.md`) and Step 5 (generate
+   `docs/implr/config/requirements-card.md`) using these extracted values. Skip Step 1
+   (no questions) and Step 2 (no source subdirectories).
+
+4. Print:
    ```
-   ✅ standards-card.md regenerated from DEV-STANDARDS.md
+   ✅ standards-card.md and requirements-card.md regenerated
    ```
 
-4. Stop. Do not proceed to any other step.
+5. Stop. Do not proceed to any other step.
 
 ---
 
@@ -144,7 +150,22 @@ REPLACE_ME literals. Asset files are opaque: do not deep-read them to reason abo
 
 ---
 
-## Step 5 — Report
+## Step 5 — Generate requirements-card
+
+1. Read `docs/implr/templates/requirements-card-template.md`.
+
+2. Substitute placeholders:
+
+   | Placeholder | Value |
+   |-------------|-------|
+   | `{{TDD_THRESHOLD}}` | answer 5 (or `default_tdd_threshold` extracted in refresh-card mode) |
+
+3. Write the result to `docs/implr/config/requirements-card.md`. ALWAYS overwrite — this
+   file is auto-managed and must never be hand-edited.
+
+---
+
+## Step 6 — Report
 
 ```
 ✅ implr configured
@@ -153,7 +174,8 @@ Updated:
   docs/implr/config/implr.config.yaml
   docs/implr/config/DEV-STANDARDS.md
   CLAUDE.md
-  docs/implr/config/standards-card.md   (auto-generated; do not hand-edit)
+  docs/implr/config/standards-card.md       (auto-generated; do not hand-edit)
+  docs/implr/config/requirements-card.md    (auto-generated; do not hand-edit)
 
 Created:
   <answer 3>/frontend/
