@@ -70,6 +70,7 @@ dispatched. File content never enters an LLM context window during extraction.
 | pdf | `pdftotext "<src>" "docs/implr/kb-index/cache/<slug>.txt"` (fallback: `python3 -c "import pymupdf; doc=pymupdf.open('<src>'); open('docs/implr/kb-index/cache/<slug>.txt','w',encoding='utf-8').write('\n'.join(p.get_text() for p in doc))"`) | same; use `python` on Windows if `python3` is absent |
 | docx | `python3 -c "from docx import Document; d=Document('<src>'); open('docs/implr/kb-index/cache/<slug>.txt','w',encoding='utf-8').write('\n'.join(p.text for p in d.paragraphs))"` | same with `python` |
 | xlsx | `python3 -c "from openpyxl import load_workbook; wb=load_workbook('<src>', data_only=True); out=open('docs/implr/kb-index/cache/<slug>.txt','w',encoding='utf-8'); [out.write(f'## {s.title}\n' + '\n'.join('\t'.join('' if c is None else str(c) for c in r) for r in s.iter_rows(values_only=True)) + '\n') for s in wb.worksheets]; out.close()"` | same with `python` |
+| pptx | `python3 -c "from pptx import Presentation; prs=Presentation('<src>'); out=open('docs/implr/kb-index/cache/<slug>.txt','w',encoding='utf-8'); [out.write('\n'.join(shape.text for shape in slide.shapes if hasattr(shape,'text')) + '\n') for slide in prs.slides]; out.close()"` | same with `python` |
 | anything else | Do not extract. Mark the index entry `format_supported: false`. Skip Phase 4 for this file. |
 
 Cap parallel `Bash` calls at 5 (one wave at a time per file batch). Sequence the remainder
@@ -84,6 +85,7 @@ Detect missing tools BEFORE the first invocation by probing once per run:
 - `pdftotext -v` (or `python3 -c "import pymupdf"` as fallback) — required only when pdf files are in scope
 - `python3 -c "import docx"` — required only when docx files are in scope
 - `python3 -c "import openpyxl"` — required only when xlsx files are in scope
+- `python3 -c "import pptx"` — required only when pptx files are in scope
 
 If a probe fails, emit one warning per format and skip all files of that format with
 `format_supported: false`. Do not re-probe per file.

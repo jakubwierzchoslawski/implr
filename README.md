@@ -165,6 +165,21 @@ stack, and standards.
 The installer is **idempotent** — re-running it refreshes skills and agents without touching
 anything else.
 
+### Python libraries for document extraction
+
+`/doc-ingest` extracts text from binary formats using Python. Install the libraries for the
+formats you use:
+
+| Format | Library | Install |
+|--------|---------|---------|
+| PDF | `pymupdf` | `pip install pymupdf` |
+| PowerPoint (`.pptx`) | `python-pptx` | `pip install python-pptx` |
+| Excel (`.xlsx`) | `openpyxl` | `pip install openpyxl` |
+| Word (`.docx`) | `python-docx` | `pip install python-docx` |
+
+Plain-text formats (`.md`, `.txt`, `.csv`, `.vtt`) need no extra libraries. For PDF,
+`pdftotext` (from poppler) is tried first; `pymupdf` is the fallback.
+
 > **Note on skill packaging.** Claude Code reads skills from unpacked folders (each containing a
 > `SKILL.md`), not from `.skill` archives. The installer copies unpacked folders, so the skills
 > and agents appear in Claude Code immediately.
@@ -321,7 +336,7 @@ cp ~/specs/*.md docs/kb/
    Installer copies skills + agents to .claude/ and scaffolds docs/implr/ with schemas, templates, and config placeholders; /implr-init fills in project name, stack, and standards
 
 2. DOCUMENT
-   You add .md/.pdf/.docx/.xlsx/.csv/.txt/.vtt files to docs/kb/
+   You add .md/.pdf/.docx/.xlsx/.pptx/.csv/.txt/.vtt files to docs/kb/
 
 3. INGEST            /doc-ingest --digest    (use --digest for the full pipeline)
    Scans the KB, computes checksums, extracts text, writes per-doc digests,
