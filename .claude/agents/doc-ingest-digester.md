@@ -23,6 +23,7 @@ slug: <slug>
 cache_path: docs/implr/kb-index/cache/<slug>.txt
 source_path: docs/kb/<domain>/<name>.<ext>
 domain: <domain>
+ocr_sparse: true | false
 ```
 
 ## Work
@@ -30,6 +31,13 @@ domain: <domain>
 Read the cache file. Produce a digest with all schema-required sections: business rules,
 system behaviours, data entities, integration points, NFR signals, ambiguities,
 architecture signals.
+
+**If `ocr_sparse` is `true`:** the source is an image whose OCR text was sparse (< 30
+words). After reading `cache_path`, also `Read(source_path)` — the Read tool renders
+images natively. Produce the digest from the combined OCR text and visual content. Add an
+`<!-- extraction: vision-assisted -->` comment on the line after the frontmatter closing
+`---` so consumers can identify vision-derived digests. If `ocr_sparse` is `false` or
+absent, proceed with cache text only.
 
 **Completeness is the invariant.** Every distinct business rule, behaviour, entity, and
 integration point in the source must appear as its own line. Never merge or drop items to
