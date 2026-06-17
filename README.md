@@ -327,9 +327,6 @@ cp ~/specs/*.md docs/kb/
 /dev-code-review --all      # review everything that was built
 ```
 
-> **v2.0 note:** `/doc-ingest` (without `--digest`) now does only a registry scan — fast.
-> Pass `--digest` whenever you want the per-doc digests + per-domain syntheses + master synthesis.
-
 ---
 
 ## The Full Pipeline
@@ -615,7 +612,7 @@ approval.
 
 **KB-document path** — added a new or updated doc to the KB that changes requirements:
 ```
-/doc-ingest --file docs/kb/your-new-doc.md --digest    # ingest with digest first
+/doc-ingest --file docs/kb/your-new-doc.md
 /ba-cr --ingest-file docs/kb/your-new-doc.md            # then derive the CR
 ```
 ba-cr reads the document's digest, auto-generates a CR, runs impact analysis,
