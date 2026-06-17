@@ -341,7 +341,7 @@ cp ~/specs/*.md docs/kb/
 2. DOCUMENT
    You add .md/.pdf/.docx/.xlsx/.pptx/.csv/.txt/.vtt/.png/.jpg/.jpeg/.gif/.webp/.tiff/.bmp files to docs/kb/
 
-3. INGEST            /doc-ingest --digest    (use --digest for the full pipeline)
+3. INGEST            /doc-ingest
    Scans the KB, computes checksums, extracts text, writes per-doc digests,
    per-domain syntheses, and a master synthesis. Detects contradictions. Incremental.
    The skill dispatches three subagents in parallel: extract, digest, synthesize-domain.
@@ -501,17 +501,17 @@ your stack.
 Indexes and digests the KB. Dispatches three parallel subagent pools.
 
 ```
-- `/doc-ingest` — registry-only fast scan (new default in v2.0)
-- `/doc-ingest --digest` — full pipeline: extract + per-doc digest + per-domain synthesis + master
-- `/doc-ingest --file <path>` — process a single file (registry only unless --digest)
+- `/doc-ingest` — full pipeline (default in v3.0): extract + per-doc digest + per-domain synthesis + master
+- `/doc-ingest --registry-only` — fast scan: updates registry only, no digests or syntheses
+- `/doc-ingest --file <path>` — process a single file (full pipeline unless --registry-only also passed)
 - `/doc-ingest --dry-run` — report what would change; write nothing
-- `/doc-ingest --rebuild` — implies --digest; reprocess everything from scratch
+- `/doc-ingest --rebuild` — full pipeline, reprocess everything from scratch
 ```
 
 Supported formats: `md, pdf, docx, xlsx, pptx, csv, txt, vtt, png, jpg, jpeg, gif, webp, tiff, bmp` (configurable). Unsupported files are
 registered but not digested.
 
-> **Removed in v2.0:** `--no-digest` (now the default; flag is redundant).
+> **Removed in v3.0:** `--digest` is now the default behaviour. Use `--registry-only` for the v2.0 fast scan. `--no-digest` was removed in v2.0.
 
 ### arch-gen
 Generates `docs/ARCHITECTURE.md`. Interactive — confirms inferred decisions, then dispatches
