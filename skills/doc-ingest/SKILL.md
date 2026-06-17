@@ -101,7 +101,11 @@ If a probe fails, emit one warning per format and skip all files of that format 
 **Skip entirely if `--registry-only` was passed.**
 
 For each successfully extracted file, dispatch `doc-ingest-digester` with scope
-`{slug, cache_path, source_path, domain}`. Cap parallelism at 5.
+`{slug, cache_path, source_path, domain, ocr_sparse}`. Cap parallelism at 5.
+
+`ocr_sparse` is `true` when the image extraction command printed `sparse` (OCR word count
+< 30); `false` for all other formats and for image files where OCR produced ≥ 30 words.
+Always pass the field; use `false` for non-image files.
 
 Collect digest paths, checksums, `arch_relevant` flags.
 
