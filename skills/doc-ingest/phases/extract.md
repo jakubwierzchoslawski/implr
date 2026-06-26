@@ -19,6 +19,7 @@ If a command exits non-zero or a required tool is missing, log
 | docx | `python3 -c "from docx import Document; ..."` | same with `python` |
 | xlsx | `python3 -c "from openpyxl import load_workbook; ..."` | same with `python` |
 | pptx | `python3 -c "from pptx import Presentation; ..."` | same with `python` |
+| odp, odt, ods | `python3 -c "from odf.opendocument import load; from odf.text import P; ..."` | same with `python` |
 | png, jpg, jpeg, gif, webp, tiff, bmp | `python3 -c "import pytesseract; from PIL import Image; ..."` (stdout: `sparse`/`ok`) | same with `python` |
 | anything else | Mark `format_supported: false`. Skip Phase 4 for this file. |
 
