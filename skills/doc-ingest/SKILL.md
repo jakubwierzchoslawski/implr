@@ -71,6 +71,7 @@ dispatched. File content never enters an LLM context window during extraction.
 | docx | `python3 -c "from docx import Document; d=Document('<src>'); open('docs/implr/kb-index/cache/<slug>.txt','w',encoding='utf-8').write('\n'.join(p.text for p in d.paragraphs))"` | same with `python` |
 | xlsx | `python3 -c "from openpyxl import load_workbook; wb=load_workbook('<src>', data_only=True); out=open('docs/implr/kb-index/cache/<slug>.txt','w',encoding='utf-8'); [out.write(f'## {s.title}\n' + '\n'.join('\t'.join('' if c is None else str(c) for c in r) for r in s.iter_rows(values_only=True)) + '\n') for s in wb.worksheets]; out.close()"` | same with `python` |
 | pptx | `python3 -c "from pptx import Presentation; prs=Presentation('<src>'); out=open('docs/implr/kb-index/cache/<slug>.txt','w',encoding='utf-8'); [out.write('\n'.join(shape.text for shape in slide.shapes if hasattr(shape,'text')) + '\n') for slide in prs.slides]; out.close()"` | same with `python` |
+| odp, odt, ods | `python3 -c "from odf.opendocument import load; from odf.text import P; fn=lambda e: ''.join(n.data if hasattr(n,'data') else fn(n) for n in e.childNodes); doc=load('<src>'); open('docs/implr/kb-index/cache/<slug>.txt','w',encoding='utf-8').write('\n'.join(fn(p) for p in doc.getElementsByType(P)))"` | same with `python` |
 | png, jpg, jpeg, gif, webp, tiff, bmp | `python3 -c "import pytesseract; from PIL import Image; img=Image.open('<src>'); text=pytesseract.image_to_string(img); open('docs/implr/kb-index/cache/<slug>.txt','w',encoding='utf-8').write(text); print('sparse' if len(text.split())<30 else 'ok')"` | same; use `python` on Windows if `python3` is absent |
 | anything else | Do not extract. Mark the index entry `format_supported: false`. Skip Phase 4 for this file. |
 
@@ -91,6 +92,7 @@ Detect missing tools BEFORE the first invocation by probing once per run:
 - `python3 -c "import docx"` — required only when docx files are in scope
 - `python3 -c "import openpyxl"` — required only when xlsx files are in scope
 - `python3 -c "import pptx"` — required only when pptx files are in scope
+- `python3 -c "from odf.opendocument import load; from odf.text import P"` — required only when OpenDocument files (odp, odt, ods) are in scope
 - `python3 -c "import pytesseract; from PIL import Image"` — required only when image files (png, jpg, jpeg, gif, webp, tiff, bmp) are in scope
 
 If a probe fails, emit one warning per format and skip all files of that format with
