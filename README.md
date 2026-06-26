@@ -176,6 +176,7 @@ formats you use:
 | PowerPoint (`.pptx`) | `python-pptx` | `pip install python-pptx` |
 | Excel (`.xlsx`) | `openpyxl` | `pip install openpyxl` |
 | Word (`.docx`) | `python-docx` | `pip install python-docx` |
+| OpenDocument (`.odp`, `.odt`, `.ods`) | `odfpy` | `pip install odfpy` |
 | Images (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.tiff`, `.bmp`) | `Pillow` + `pytesseract` | `pip install Pillow pytesseract` — also requires [Tesseract](https://github.com/tesseract-ocr/tesseract) binary on `PATH` |
 
 Plain-text formats (`.md`, `.txt`, `.csv`, `.vtt`) need no extra libraries. For PDF,
@@ -336,7 +337,7 @@ cp ~/specs/*.md docs/kb/
    Installer copies skills + agents to .claude/ and scaffolds docs/implr/ with schemas, templates, and config placeholders; /implr-init fills in project name, stack, and standards
 
 2. DOCUMENT
-   You add .md/.pdf/.docx/.xlsx/.pptx/.csv/.txt/.vtt/.png/.jpg/.jpeg/.gif/.webp/.tiff/.bmp files to docs/kb/
+   You add .md/.pdf/.docx/.xlsx/.pptx/.odp/.odt/.ods/.csv/.txt/.vtt/.png/.jpg/.jpeg/.gif/.webp/.tiff/.bmp files to docs/kb/
 
 3. INGEST            /doc-ingest
    Scans the KB, computes checksums, extracts text, writes per-doc digests,
@@ -505,7 +506,7 @@ Indexes and digests the KB. Dispatches three parallel subagent pools.
 - `/doc-ingest --rebuild` — full pipeline, reprocess everything from scratch
 ```
 
-Supported formats: `md, pdf, docx, xlsx, pptx, csv, txt, vtt, png, jpg, jpeg, gif, webp, tiff, bmp` (configurable). Unsupported files are
+Supported formats: `md, pdf, docx, xlsx, pptx, odp, odt, ods, csv, txt, vtt, png, jpg, jpeg, gif, webp, tiff, bmp` (configurable). Unsupported files are
 registered but not digested.
 
 > **Removed in v3.0:** `--digest` is now the default behaviour. Use `--registry-only` for the v2.0 fast scan. `--no-digest` was removed in v2.0.
@@ -642,7 +643,7 @@ docs/kb/
 - Files directly under `docs/kb/` belong to the `root` domain.
 - Each subfolder is a domain; contradiction detection runs within each domain and across
   domains at the master-synthesis level.
-- Mix formats freely: `.md`, `.pdf`, `.docx`, `.xlsx`, `.pptx`, `.csv`, `.txt`, `.vtt`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.tiff`, `.bmp`.
+- Mix formats freely: `.md`, `.pdf`, `.docx`, `.xlsx`, `.pptx`, `.odp`, `.odt`, `.ods`, `.csv`, `.txt`, `.vtt`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.tiff`, `.bmp`.
 - When a decision changes, prefer adding a new document over editing the old one — implr detects
   the new file incrementally and flags any contradiction with the existing one.
 
@@ -668,7 +669,7 @@ behaviour:
   default_tdd_threshold: M        # complexity at/above which TDD is enforced
   require_approved_status: true   # dev-planner only processes approved requirements
   contradictions_block: false     # false = open questions; true = halt on conflict
-  kb_supported_formats: [md, pdf, docx, xlsx, pptx, csv, txt, vtt, png, jpg, jpeg, gif, webp, tiff, bmp]
+  kb_supported_formats: [md, pdf, docx, xlsx, pptx, odp, odt, ods, csv, txt, vtt, png, jpg, jpeg, gif, webp, tiff, bmp]
 
 jira:
   base_url: https://your-org.atlassian.net
