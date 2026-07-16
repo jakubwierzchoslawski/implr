@@ -48,24 +48,31 @@ sequential IDs and finalise after all workers return.
 Run before Phase 1. Resolves outstanding C-xxx contradictions so workers generate
 requirements with correct data — resolved contradictions never become Open Questions.
 
-**Step 1 — Collect C-IDs**
+**Step 1 — Collect contradictions**
 
 Read every `docs/implr/kb-index/domains/*-synthesis.md` and gather all rows from their
 `Contradictions Detected` tables. Read `docs/implr/kb-index/master-synthesis.md` and gather
-rows from `Cross-Domain Contradictions`. De-duplicate by C-ID.
+rows from `Cross-Domain Contradictions`. Each row carries a `Fingerprint` and `FP-Ver`.
+De-duplicate by `(fingerprint_version, fingerprint)` — the `C-xxx` ID is a display label
+only and is NOT used for matching.
 
 **Step 2 — Load existing resolutions**
 
 Read `docs/implr/requirements/resolved-contradictions.md` (skip if absent).
-Build `already_handled = resolved_ids ∪ deferred_ids`.
+Build `already_handled` as the set of `(fingerprint_version, fingerprint)` pairs from BOTH
+the Resolved and Deferred tables.
+
+Matching is by fingerprint; a contradiction whose fingerprint is absent from
+`resolved-contradictions.md` is treated as unresolved even if a similar C-ID exists.
 
 **Step 3 — Prompt for unresolved**
 
-If `already_handled` contains all collected C-IDs: log
+If `already_handled` contains the fingerprint of every collected contradiction: log
 `No unresolved contradictions. Skipping Phase 0 interactive prompts.` and proceed
 directly to Step 5.
 
-Otherwise, for each C-ID not in `already_handled`, present to user:
+Otherwise, for each contradiction whose `(fingerprint_version, fingerprint)` is not in
+`already_handled`, present to user (the `C-xxx` label is shown for readability only):
 
 ```
 C-001 [Hard conflict]
@@ -88,22 +95,24 @@ single pass. Resolved decisions go to the `## Resolved` table; deferred items go
 > Maintained by ba-requirements-gen. To change a decision, edit this file and re-run `/ba-requirements-gen`.
 
 ## Resolved
-| C-ID | Type | Source A | Source B | Problem | Decision | Resolved |
-|------|------|----------|----------|---------|----------|----------|
+| C-ID | Fingerprint | FP-Ver | Type | Source A | Source B | Problem | Decision | Resolved |
+|------|-------------|--------|------|----------|----------|---------|----------|----------|
 
 ## Deferred
-| C-ID | Type | Source A | Source B | Problem | Notes | Deferred |
-|------|------|----------|----------|---------|-------|----------|
+| C-ID | Fingerprint | FP-Ver | Type | Source A | Source B | Problem | Notes | Deferred |
+|------|-------------|--------|------|----------|----------|---------|-------|----------|
 ```
 
 **Step 5 — Build dispatch maps**
 
 After writing (or confirming the file is up to date), re-read the complete
 `docs/implr/requirements/resolved-contradictions.md` to build maps reflecting the complete current state of the file (current session plus any prior runs):
-- `resolved_map`: `{C-001: {problem: "...", decision: "..."}, ...}` — one entry per Resolved row
-- `deferred_list`: `["C-003", "C-004"]` — C-IDs from the Deferred table
+- `resolved_map`: `{(1, "a1b2c3d4e5f6a7b8"): {c_id: "C-001", problem: "...", decision: "..."}, ...}` — one entry per Resolved row, keyed on `(fingerprint_version, fingerprint)`
+- `deferred_list`: list of `(fingerprint_version, fingerprint)` pairs from the Deferred table
 
-Keys in `resolved_map` are normalised to uppercase with no surrounding whitespace (e.g. `C-001`) to ensure reliable lookup.
+Keys in `resolved_map` are the `(fingerprint_version, fingerprint)` pair; the fingerprint hash
+is normalised to lowercase with no surrounding whitespace to ensure reliable lookup. The
+`C-xxx` label is retained inside each entry for display but never used as the key.
 
 These are passed to every worker dispatch in Phase 3.
 

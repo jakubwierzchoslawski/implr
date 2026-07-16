@@ -144,12 +144,16 @@ synthesis_checksum: {md5 of the concatenated source digest checksums}
 Consolidated, deduplicated rules across all docs in this domain.
 
 ## Contradictions Detected
-| ID | Statement A | Source A | Statement B | Source B | Type |
-|----|------------|---------|------------|---------|------|
-| C-001 | Session timeout 15 min | security-policy.md §3 | Session timeout 30 min | auth-flow.md §2 | Hard conflict |
+| ID | Fingerprint | FP-Ver | Statement A | Source A | Statement B | Source B | Type |
+|----|-------------|--------|------------|---------|------------|---------|------|
+| C-001 | 1:a1b2c3d4e5f6a7b8 | 1 | Session timeout 15 min | security-policy.md §3 | Session timeout 30 min | auth-flow.md §2 | Hard conflict |
 
 Type is one of: Hard conflict | Soft conflict | Version drift | Scope overlap.
 If none: write `None detected.`
+
+`Fingerprint`/`FP-Ver` are the stable identity of the contradiction (see § Contradiction
+Fingerprint below); `C-xxx` is a display label only. The synthesizer records the five raw
+fields per row and the orchestrator computes the hash — see that section.
 
 ## Cross-Domain Dependencies
 - Depends on: {domain} ({reason})
@@ -195,8 +199,8 @@ master_checksum: {md5 of sorted domain synthesis_checksums}
 | authentication | 3 | User, Session, Token | 1 | Performance, Compliance | 2 |
 
 ## Cross-Domain Contradictions
-| ID | Description | Domain A | Source A | Domain B | Source B | Type |
-|----|-------------|---------|---------|---------|---------|------|
+| ID | Fingerprint | FP-Ver | Description | Domain A | Source A | Domain B | Source B | Type |
+|----|-------------|--------|-------------|---------|---------|---------|---------|------|
 
 If none: `None detected.`
 
@@ -269,14 +273,14 @@ ones. To change a decision, edit the file manually and re-run `/ba-requirements-
 > Maintained by ba-requirements-gen. To change a decision, edit this file and re-run `/ba-requirements-gen`.
 
 ## Resolved
-| C-ID  | Type          | Source A                | Source B                | Problem                          | Decision                      | Resolved   |
-|-------|---------------|-------------------------|-------------------------|----------------------------------|-------------------------------|------------|
-| C-001 | Hard conflict | docs/kb/spec-v1.md §3.2 | docs/kb/spec-v2.md §1.4 | Auth token TTL: 15 min vs 30 min | Use 30-minute auth token TTL  | 2026-05-31 |
+| C-ID  | Fingerprint          | FP-Ver | Type          | Source A                | Source B                | Problem                          | Decision                      | Resolved   |
+|-------|----------------------|--------|---------------|-------------------------|-------------------------|----------------------------------|-------------------------------|------------|
+| C-001 | 1:a1b2c3d4e5f6a7b8   | 1      | Hard conflict | docs/kb/spec-v1.md §3.2 | docs/kb/spec-v2.md §1.4 | Auth token TTL: 15 min vs 30 min | Use 30-minute auth token TTL  | 2026-05-31 |
 
 ## Deferred
-| C-ID  | Type          | Source A            | Source B            | Problem                         | Notes                     | Deferred   |
-|-------|---------------|---------------------|---------------------|---------------------------------|---------------------------|------------|
-| C-003 | Scope overlap | docs/kb/roadmap.md  | docs/kb/mvp.md      | Feature X: in MVP scope or not? | Needs product owner input | 2026-05-31 |
+| C-ID  | Fingerprint          | FP-Ver | Type          | Source A            | Source B            | Problem                         | Notes                     | Deferred   |
+|-------|----------------------|--------|---------------|---------------------|---------------------|---------------------------------|---------------------------|------------|
+| C-003 | 1:9f8e7d6c5b4a3928   | 1      | Scope overlap | docs/kb/roadmap.md  | docs/kb/mvp.md      | Feature X: in MVP scope or not? | Needs product owner input | 2026-05-31 |
 ```
 
 ### Column definitions
@@ -285,7 +289,9 @@ ones. To change a decision, edit the file manually and re-run `/ba-requirements-
 
 | Column | Source | Notes |
 |--------|--------|-------|
-| C-ID | domain/master synthesis | Assigned at synthesis time |
+| C-ID | domain/master synthesis | Display label only, assigned at synthesis time; NOT used for matching |
+| Fingerprint | computed via `scripts/implr_validate --fingerprint` | Stable identity used to match against this file |
+| FP-Ver | fingerprint algorithm version | Bumped when the algorithm changes |
 | Type | synthesis Contradictions Detected | Hard conflict / Soft conflict / Version drift / Scope overlap |
 | Source A | synthesis | File path + section if available |
 | Source B | synthesis | File path + section if available |
@@ -299,5 +305,28 @@ Same columns except `Decision` → `Notes` (user's deferral reason) and `Resolve
 
 ### Idempotency
 
-`ba-requirements-gen` Phase 0 skips any C-ID already present in either table. Only new
-C-IDs trigger prompts. File is never truncated or overwritten — only appended.
+`ba-requirements-gen` Phase 0 skips any contradiction whose `(fingerprint_version,
+fingerprint)` is already present in either table. Only contradictions with a new fingerprint
+trigger prompts; `C-xxx` is a display label and is not used for matching. File is never
+truncated or overwritten — only appended.
+
+### Contradiction Fingerprint (stable identity)
+
+Every contradiction row carries a `fingerprint` and `fingerprint_version`. The fingerprint is
+the stable identity used to match against `resolved-contradictions.md` — `C-xxx` IDs are display
+labels only and are NOT used for matching.
+
+Algorithm (version 1), implemented canonically in `scripts/implr_validate/fingerprint.py`:
+
+1. Normalize every field: trim, collapse internal whitespace, lowercase, strip trailing
+   `.,;:!?`.
+2. Build the two sides `{source, statement}` for A and B and **sort them** (so swapping A/B does
+   not change the identity).
+3. Serialize `{version, type, sides}` as canonical JSON (sorted keys, no insignificant
+   whitespace).
+4. `fingerprint = "1:" + sha256(canonical)[:16]`.
+
+An LLM must NOT hand-compute this hash. The `doc-ingest` orchestrator computes it by writing the
+five fields to a temp JSON file and calling
+`python scripts/implr_validate --fingerprint <file>`. `implr-validate --workspace` recomputes
+and verifies stored fingerprints. To change the algorithm, bump `fingerprint_version`.

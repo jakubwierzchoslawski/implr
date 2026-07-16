@@ -122,6 +122,21 @@ For each affected domain, dispatch `doc-ingest-synthesizer` with scope
 — the synthesizer filters by reading each digest's `domain:` frontmatter field, which is
 robust to slug collisions across domains. Cap parallelism at 5.
 
+**Compute contradiction fingerprints (orchestrator, has Bash).** The synthesizer returns a
+`contradictions_for_fingerprinting` list (five raw fields per contradiction). An LLM cannot
+compute SHA-256 reliably, so for each contradiction:
+
+1. Write the five fields (`source_a`, `statement_a`, `source_b`, `statement_b`, `type`) to a
+   temp JSON file, e.g. `docs/implr/kb-index/.fp-tmp.json`.
+2. Run `python scripts/implr_validate --fingerprint <tmp>` and capture the printed
+   `<ver>:<hash>`.
+3. Write the `<hash>` part into the row's `Fingerprint` column and `<ver>` into `FP-Ver` of
+   the domain synthesis `Contradictions Detected` table.
+4. Delete the temp file after the batch (`rm -f`/`Remove-Item`).
+
+Do not hand-compute or guess the hash. `implr-validate --workspace` later recomputes and
+verifies these stored fingerprints.
+
 ### Phase 6 — Master synthesis (orchestrator, integrative)
 
 **Skip entirely if `--registry-only` was passed.**

@@ -27,4 +27,15 @@ contradictions: <n>
 ambiguities: <n>
 nfr_candidates: <n>
 arch_relevant_files: <n>
+contradictions_for_fingerprinting:
+  - c_id: C-001
+    source_a: <source A>
+    statement_a: <statement A>
+    source_b: <source B>
+    statement_b: <statement B>
+    type: <Hard conflict | Soft conflict | Version drift | Scope overlap>
 ```
+
+Emit one `contradictions_for_fingerprinting` entry per detected contradiction with its five
+raw fields. **Do not compute the fingerprint hash yourself** — the orchestrator computes it
+via `python scripts/implr_validate --fingerprint` and writes it into the synthesis table.
