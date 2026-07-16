@@ -66,7 +66,7 @@
 
 ```json
 {
-  "_comment": "SINGLE SOURCE OF TRUTH for implr artefact state machines. Do not restate these enums in any other file; reference this file by name. Validated and consumed by scripts/implr_validate. Human-readable overview: status-vocabulary.md.",
+  "_comment": "SINGLE SOURCE OF TRUTH for implr artefact state machines. Do not rederive these enums; reference this file by name. Schema/template display comments may mirror these values ONLY if validated against this file by implr-validate --repo; free prose must not hardcode them. Consumed by scripts/implr_validate. Human overview: status-vocabulary.md.",
   "machines": {
     "requirement": {
       "states": ["draft", "under-review", "approved", "rejected", "superseded"],
