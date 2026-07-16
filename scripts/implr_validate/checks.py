@@ -112,3 +112,95 @@ def check_workspace(root, contracts):
         for phantom in sorted(indexed - disk):
             findings.append(Finding("error", index_rel, "%s is in the index but has no file" % phantom))
     return findings
+
+
+# --- Task 8: repo prose checks (banned tokens, divergent enums, cache/format drift) ---
+ENUM_COMMENT_RE = re.compile(r"status:\s*[\w-]+\s*#\s*([\w-]+(?:\s*\|\s*[\w-]+)+)")
+
+
+def _is_exempt(rel, exempt_prefixes):
+    rel = rel.replace(os.sep, "/")
+    return any(rel == p or rel.startswith(p) for p in exempt_prefixes)
+
+
+CACHE_MD_RE = re.compile(r"cache/\{slug\}\.md|cache/[\w-]+\.md|cache_path:\s*\S+\.md")
+FORMATS_RE = re.compile(r"kb_supported_formats:\s*\[([^\]]*)\]")
+# `changes-required` used as a plan lifecycle transition (misuse), not the review verdict noun
+TRANSITION_MISUSE_RE_TMPL = r"(?:->|-->|→|—>)\s*%s|%s\s*(?:->|-->|→|—>)"
+
+
+def _matches_surface(rel, surfaces):
+    return any(rel == s or rel.startswith(s) for s in surfaces)
+
+
+def check_repo_prose(root, contracts):
+    cfg = contracts.repo_prose_checks
+    findings = []
+    banned = cfg["banned_tokens"]
+    exempt = cfg["exempt_paths"]
+    banned_surfaces = cfg["banned_token_surfaces"]
+    enum_surfaces = cfg["enum_comment_surfaces"]
+    enum_exempt = cfg["enum_check_exempt"]
+    cache_surfaces = cfg["cache_path_surfaces"]
+    misuse_tokens = cfg.get("plan_status_misuse_tokens", [])
+    canonical = list(cfg["canonical_formats"])
+    machine_map = contracts.schema_machine_map
+
+    for dirpath, _dirs, files in os.walk(root):
+        for name in files:
+            if not name.endswith(".md"):
+                continue
+            abspath = os.path.join(dirpath, name)
+            rel = os.path.relpath(abspath, root).replace(os.sep, "/")
+            with open(abspath, encoding="utf-8") as f:
+                text = f.read()
+
+            # (a) retired tokens — broad surface (README/WORKFLOW/skills/agents/scaffold)
+            if _matches_surface(rel, banned_surfaces) and not _is_exempt(rel, exempt):
+                for b in banned:
+                    if b["token"] in text:
+                        findings.append(Finding("error", rel, "banned token %r (%s)" % (b["token"], b["reason"])))
+                # (a2) transition-context misuse of an otherwise-legal token
+                for tok in misuse_tokens:
+                    pat = TRANSITION_MISUSE_RE_TMPL % (re.escape(tok), re.escape(tok))
+                    if re.search(pat, text):
+                        findings.append(Finding("error", rel, "%r used as a plan-lifecycle transition; it is a review status, not a plan status" % tok))
+
+            # (b) divergent enum comments — narrow surface (schemas/templates)
+            if name in machine_map and _matches_surface(rel, enum_surfaces) and not _is_exempt(rel, enum_exempt):
+                legal = contracts.states_for(machine_map[name])
+                for m in ENUM_COMMENT_RE.finditer(text):
+                    for v in [x.strip() for x in m.group(1).split("|")]:
+                        if v not in legal:
+                            findings.append(Finding("error", rel, "enum comment lists %r, illegal for %s machine" % (v, machine_map[name])))
+
+            # (c) cache-path drift — the retired .md cache extension
+            if _matches_surface(rel, cache_surfaces) and CACHE_MD_RE.search(text):
+                findings.append(Finding("error", rel, "cache path uses retired .md extension; cache files are cache/{slug}.txt"))
+
+    # (d) format-list drift — EVERY kb_supported_formats array anywhere must equal canonical
+    for dirpath, _dirs, files in os.walk(root):
+        for name in files:
+            if not (name.endswith(".md") or name.endswith(".yaml") or name.endswith(".yml")):
+                continue
+            abspath = os.path.join(dirpath, name)
+            rel = os.path.relpath(abspath, root).replace(os.sep, "/")
+            if _is_exempt(rel, exempt):
+                continue
+            with open(abspath, encoding="utf-8") as f:
+                for m in FORMATS_RE.finditer(f.read()):
+                    listed = [x.strip() for x in m.group(1).split(",") if x.strip()]
+                    if listed != canonical:
+                        findings.append(Finding("error", rel, "kb_supported_formats %s != canonical %s" % (listed, canonical)))
+
+    # (e) format presence — every canonical format must appear on each presence surface
+    for rel in cfg.get("format_presence_surfaces", []):
+        p = os.path.join(root, rel.replace("/", os.sep))
+        if not os.path.isfile(p):
+            continue
+        with open(p, encoding="utf-8") as f:
+            text = f.read()
+        for fmt in canonical:
+            if not re.search(r"\b%s\b" % re.escape(fmt), text):
+                findings.append(Finding("error", rel, "canonical format %r not mentioned on this surface" % fmt))
+    return findings

@@ -144,5 +144,92 @@ class TestWorkspace(unittest.TestCase):
             self.assertTrue(any("REQ-F-050" in f.message and "index" in f.message.lower() for f in findings))
 
 
+# --- Task 8: repo prose checks ---
+from implr_validate.checks import check_repo_prose
+
+
+class TestRepoProse(unittest.TestCase):
+    def setUp(self):
+        self.c = load_contracts(SCHEMA_DIR)
+
+    def _repo(self, root, rel, text):
+        p = os.path.join(root, rel.replace("/", os.sep))
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(text)
+
+    def test_banned_token_flagged_in_template(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "scaffold/templates/plan-template.md", "status: replan_required\n")
+            self.assertTrue(any("replan_required" in f.message for f in check_repo_prose(root, self.c)))
+
+    def test_banned_token_flagged_in_readme_and_workflow(self):
+        # the drift class the original review found — must be caught on broad surfaces
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "README.md", "the plan can be replan_required after a CR\n")
+            self._repo(root, "docs/WORKFLOW.md", "CR goes draft -> impact-analysed -> approved\n")
+            findings = check_repo_prose(root, self.c)
+            self.assertTrue(any("replan_required" in f.message for f in findings))
+            self.assertTrue(any("impact-analysed" in f.message for f in findings))
+
+    def test_banned_token_flagged_in_skill(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "skills/ba-cr/SKILL.md", "sets replan_required on the plan\n")
+            self.assertTrue(any("replan_required" in f.message for f in check_repo_prose(root, self.c)))
+
+    def test_banned_token_exempt_in_changelog(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "CHANGELOG.md", "removed replan_required in v3\n")
+            self.assertEqual([f for f in check_repo_prose(root, self.c) if "replan_required" in f.message], [])
+
+    def test_divergent_enum_comment_flagged(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "scaffold/schemas/plan-schema.md",
+                       "status: ready   # ready | in-progress | done | changes-required\n")
+            self.assertTrue(any("changes-required" in f.message for f in check_repo_prose(root, self.c)))
+
+    def test_matching_enum_comment_clean(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "scaffold/schemas/plan-schema.md",
+                       "status: ready   # ready | in-progress | done | blocked | needs-rework\n")
+            self.assertEqual(check_repo_prose(root, self.c), [])
+
+    def test_cache_md_extension_flagged(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "scaffold/schemas/kb-index-schema.md", "cache_path: docs/implr/kb-index/cache/x.md\n")
+            self.assertTrue(any("cache" in f.message.lower() for f in check_repo_prose(root, self.c)))
+
+    def test_format_list_mismatch_flagged(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "scaffold/config/implr.config.yaml", "  kb_supported_formats: [md, pdf, docx]\n")
+            self.assertTrue(any("kb_supported_formats" in f.message for f in check_repo_prose(root, self.c)))
+
+    def test_format_array_mismatch_in_readme_flagged(self):
+        # (d) checks EVERY kb_supported_formats array anywhere, incl. README's config example
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "README.md", "example: `kb_supported_formats: [md, pdf]`\n")
+            self.assertTrue(any("kb_supported_formats" in f.message for f in check_repo_prose(root, self.c)))
+
+    def test_format_presence_missing_flagged(self):
+        # (e) each canonical format must appear on a presence surface; omit 'bmp'
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "skills/doc-ingest/phases/extract.md",
+                       "handles: md pdf docx xlsx pptx odp odt ods csv txt vtt png jpg jpeg gif webp tiff\n")
+            findings = check_repo_prose(root, self.c)
+            self.assertTrue(any("bmp" in f.message and "not mentioned" in f.message for f in findings))
+
+    def test_changes_required_transition_misuse_flagged(self):
+        # 'changes-required' used as a plan-lifecycle transition on a doc surface
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "docs/WORKFLOW.md", "plan flow: done -> changes-required -> in-progress\n")
+            self.assertTrue(any("changes-required" in f.message and "transition" in f.message for f in check_repo_prose(root, self.c)))
+
+    def test_changes_required_verdict_prose_clean(self):
+        # legitimate review-verdict prose (no arrow) must NOT be flagged
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "README.md", "If the verdict is changes-required, the plan returns to in-progress.\n")
+            self.assertEqual([f for f in check_repo_prose(root, self.c) if "transition" in f.message], [])
+
+
 if __name__ == "__main__":
     unittest.main()
