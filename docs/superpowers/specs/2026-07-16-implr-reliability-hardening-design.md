@@ -81,15 +81,16 @@ Eight coordinated workstreams. They are coupled through the status single-source
 
 ### A. Single source of truth for all four state machines
 
-Create **`scaffold/schemas/status-vocabulary.yaml`** as the single machine-readable definition
-of legal states and transitions for **requirement**, **plan**, **review**, and **CR**. A thin
-prose `status-vocabulary.md` links to it for humans but restates no enum values. Every other
-file (prose schemas, README, WORKFLOW, agents, SKILLs) references the vocabulary by name and
-**must not restate an enum inline**; `implr-validate` (B) fails if any file hardcodes an enum
-value that diverges from the YAML. This makes the vocabulary the one source of truth rather
-than creating N companion copies of it.
+Create **`scaffold/schemas/status-vocabulary.json`** as the single machine-readable definition
+of legal states and transitions for **requirement**, **plan**, **review**, and **CR**. JSON
+(not YAML) is deliberate: `implr-validate` parses it with the Python standard library, which has
+no YAML parser (see B). A thin prose `status-vocabulary.md` links to it for humans but restates
+no enum values. Every other file (prose schemas, README, WORKFLOW, agents, SKILLs) references
+the vocabulary by name and **must not restate an enum inline**; `implr-validate` (B) fails if
+any file hardcodes an enum value that diverges from the JSON. This makes the vocabulary the one
+source of truth rather than creating N companion copies of it.
 
-Canonical vocabularies (defined in the YAML; shown here for the design record):
+Canonical vocabularies (defined in the JSON; shown here for the design record):
 
 - **Requirement:** `draft | under-review | approved | rejected | superseded`
   (`superseded_by` points to the replacement). Unchanged from `requirement-schema.md`.
@@ -117,31 +118,53 @@ Drift corrections made against this file:
 ### B. Machine-checkable schemas + `implr-validate`
 
 Rather than per-schema companion files (which would become new copies to drift), the
-machine-readable contract is **one** artefact — `status-vocabulary.yaml` (A) plus a small
-`scaffold/schemas/frontmatter-rules.yaml` capturing required frontmatter fields per artefact
-type. Prose schemas reference these and restate nothing.
+machine-readable contract is **one** artefact — `status-vocabulary.json` (A) plus a small
+`scaffold/schemas/frontmatter-rules.json` capturing required frontmatter fields per artefact
+type. Both are **JSON**, parsed by the Python standard library. Prose schemas reference these
+and restate nothing.
 
-Add `scripts/implr-validate` (Python 3, no third-party deps, cross-platform) with **two
-modes**:
+**Parsing without third-party deps.** `scripts/implr-validate` is Python 3 (3.8+),
+cross-platform, and uses **only the standard library**. Two consequences drive the format
+choices:
+
+- Contract files are JSON (`json` module), not YAML — the stdlib has no YAML parser.
+- The artefact `.md` files carry **YAML frontmatter**, which the validator must read. Since
+  implr owns every template that produces frontmatter, the schemas define a **restricted
+  frontmatter subset** — scalars, quoted strings, flat inline lists (`[a, b]`), block lists of
+  scalars, one level of nested mapping (e.g. `jira:`), and lists of simple `{id, reason}`
+  objects — and `implr-validate` ships a small dedicated parser for exactly that subset.
+  Frontmatter outside the subset is itself a validation error (it means a template drifted).
+  This keeps the validator dependency-free without hand-waving over YAML parsing.
+
+Two **modes**:
 
 - **`--repo`** — validates the plugin *source* tree before release: `scaffold/**`,
   `skills/**`, `.claude/agents/**`, `README.md`, `docs/WORKFLOW.md`. Catches the drift class
   the review found (enums restated and divergent, cache-path `.md` vs `.txt`, format-list
-  mismatch, `impact-analysed`/`replan_required`-as-status tokens).
+  mismatch, retired-status tokens).
 - **`--workspace`** — validates an installed project's `docs/implr/**` artefacts.
 
 Both modes check:
 
-- Every artefact's frontmatter has required fields with legal enum values (enums read from
-  `status-vocabulary.yaml`).
+- Every artefact's frontmatter parses within the subset and has required fields with legal enum
+  values (enums read from `status-vocabulary.json`, fields from `frontmatter-rules.json`).
 - `status:` values are legal for the artefact type.
 - Cross-references resolve (`linked_requirement`, `superseded_by`, CR `targets`, plan/req ID
   pairing PLAN-F-NNN ↔ REQ-F-NNN).
 - Index files (`requirements-index.md`, `plans-index.md`, `cr-index.md`) agree with the files
   they list.
 
-`--repo` additionally greps source prose for hardcoded enum values and fails when any diverge
-from the YAML, and for the retired tokens above.
+**`--repo` prose checks, with an explicit allowlist to avoid brittleness:**
+
+- **Banned retired tokens** — `replan_required`/`impact-analysed`/`changes-required`-as-a-status
+  fail everywhere *except* historical records: `CHANGELOG.md` and `docs/superpowers/**` (specs
+  and plans are dated design history) are exempt.
+- **Divergent restated enums** — the "no inline enum that diverges from the JSON" check runs
+  only on *live contract surfaces*: `scaffold/schemas/*.md` prose, `skills/**`,
+  `.claude/agents/**`, `README.md`, `docs/WORKFLOW.md`. Exempt from this check: the
+  `status-vocabulary.*` files themselves (they *define* the enums), `CHANGELOG.md`, and
+  `docs/superpowers/**`. The allowed/exempt list lives in `frontmatter-rules.json` so it is
+  itself reviewable, not buried in the script.
 
 Exit non-zero on any violation, with a human-readable report. Invoked manually and by the
 precondition gates (F). No CI wiring in this phase.
@@ -161,9 +184,20 @@ This is the core of the reliability concern. Design chosen from brainstorm decis
 **C.1 Explicit CR targets.** Add `targets: [REQ-F-NNN, ...]` to CR frontmatter. The author
 fills what they know (empty allowed → "I'm not sure"). `cr-impact-analyzer` stays **read-only**:
 it returns the confirmed + augmented target set in its summary but writes nothing. The `ba-cr`
-orchestrator writes the resolved `targets` back to the CR file **after the approval/confirmation
+orchestrator writes the resolved set back to the CR file **after the approval/confirmation
 gate** — mutation stays centralized in `ba-cr`, preserving the "impact analysis is read-only"
-principle. Matching thus becomes auditable rather than a pure Grep guess.
+principle.
+
+Three distinct notions are kept separate so "selected" approval (E) is unambiguous:
+
+- **`targets:`** (CR frontmatter) — *all confirmed affected requirements*, i.e. the full impact
+  set, independent of what the user chose to apply. This is the durable "what does this CR
+  affect" record.
+- **`applied_targets`** / **`excluded_targets`** — the per-run split from the all/selected/none
+  gate. These are **run state**, recorded in `cr-log.md` (E), not on the CR frontmatter, because
+  a later re-run may apply a previously excluded target.
+
+Matching thus becomes auditable rather than a pure Grep guess.
 
 **C.2 One apply path.** `ba-cr` owns CR application end-to-end. `ba-requirements-gen
 --reprocess` is reserved for **changed KB source documents only**, not CRs — removing the
@@ -210,9 +244,16 @@ carries an **executed fingerprint**:
 ```
 task_fingerprint = sha256(canonical_json({
   task_body, ac_ids, ac_text, files, tests_first,
-  requirement_updated_at, arch_excerpt_hash
+  requirement_updated_at, arch_excerpt_hash,
+  interfaces_contracts, applied_nfrs,
+  standards_card_hash, test_runner
 }))
 ```
+
+The extra fields matter: a task can be invalidated by a standards-card change, an NFR
+constraint change, an interface/contract change, or a different test runner — none of which
+touch the AC text. Including them means such changes correctly force re-implementation instead
+of a false `already-satisfied` skip.
 
 `plan-runner` records the fingerprint per task on completion (alongside `implemented_files`).
 On re-execution, `task-executor` **skips and reports `already-satisfied` only when the recorded
@@ -265,10 +306,11 @@ Make `ba-cr` behavior match the schema it already ships:
 
 - Stamp the CR file: `approved_at` at approval, `applied_at` + `status → applied` after all
   appliers succeed.
-- Write `cr-log.md` (append-only, newest first) per `cr-schema.md`, including the
-  **Excluded from apply** list.
-- Approval gate becomes **all / selected / none** (matching `WORKFLOW.md:437`); record
-  excluded targets in both `cr-log.md` and the report.
+- Write `cr-log.md` (append-only, newest first) per `cr-schema.md`, recording this run's
+  `applied_targets` and `excluded_targets` (the schema's **Excluded from apply** field).
+- Approval gate becomes **all / selected / none** (matching `WORKFLOW.md:437`). The confirmed
+  impact set is written to CR `targets:` (C.1); the applied/excluded split for *this run* is
+  recorded in `cr-log.md` and the report.
 - Partial failure: if one applier fails, others stay applied (current behavior), but the CR
   file is **not** stamped `applied` — it stays `approved` with the failure recorded in
   `cr-log.md`.
@@ -301,12 +343,19 @@ and `WORKFLOW.md:269` require.
 `command`, `exit_code`, pass/fail, a captured output tail, an ISO `run_at` timestamp, and the
 `source_ref` (git commit or worktree hash the run was executed against).
 
-`code-review-worker` (read-only) reads that artefact and applies a **staleness rule** — it
-flags and downgrades its verdict to at least `changes-required` when the test results are:
-missing, not tied to the reviewed `plan_id`, run against a different `source_ref` than the code
-under review, or `run_at` earlier than the plan's `executed_at`. Otherwise it fails the plan on
-any non-green covered test. The review stays a read-through — it does not run code — but can no
-longer certify code whose tests fail or whose evidence is stale.
+Because `code-review-worker` is read-only (no Bash), it cannot compute the current source
+state itself. The **`dev-code-review` orchestrator** (which runs in main and can shell out)
+computes `current_source_ref` and passes it into the worker's dispatch scope. The deterministic
+rule: `git rev-parse HEAD` combined with a short hash of `git diff -- <src> <tests>` (so
+uncommitted changes are captured); documented **non-git fallback**: a hash of the sorted
+(path, size, mtime) tuples of the src/tests trees.
+
+`code-review-worker` then applies a **staleness rule** — it flags and downgrades its verdict to
+at least `changes-required` when the test results are: missing, not tied to the reviewed
+`plan_id`, whose recorded `source_ref` ≠ the passed `current_source_ref`, or whose `run_at` is
+earlier than the plan's `executed_at`. Otherwise it fails the plan on any non-green covered
+test. The review stays a read-through — it does not run code — but can no longer certify code
+whose tests fail or whose evidence is stale.
 
 ### H. Safe commit default
 
@@ -318,16 +367,16 @@ dispatch). Update `dev-executor`, `plan-runner`, README, and WORKFLOW accordingl
 
 | File | Change |
 |---|---|
-| `scaffold/schemas/status-vocabulary.yaml` (+ thin `.md`) | **New** — single machine-readable canonical states/transitions for all four machines |
-| `scaffold/schemas/frontmatter-rules.yaml` | **New** — required frontmatter fields per artefact type |
+| `scaffold/schemas/status-vocabulary.json` (+ thin `.md`) | **New** — single machine-readable (JSON, stdlib-parseable) canonical states/transitions for all four machines |
+| `scaffold/schemas/frontmatter-rules.json` | **New** — required frontmatter fields per artefact type + `--repo` grep allowlist/banned-token config |
 | `scaffold/schemas/*-schema.md` | Reference the YAML vocab; **restate no enums**; cache path `.txt`; format enum; contradiction `fingerprint`/`fingerprint_version`; CR `targets`; plan `needs-rework`/`rework_cr`/`rework_reason`/`implemented_files`/per-task `task_fingerprint` |
 | `scaffold/config/implr.config.yaml` | `kb_supported_formats` → full 18-format list |
-| `scripts/implr-validate` | **New** — deterministic validator with `--repo` and `--workspace` modes |
+| `scripts/implr-validate` | **New** — deterministic stdlib-only validator (`--repo`/`--workspace`); ships a restricted-frontmatter-subset parser |
 | `tests/fixtures/sample-kb/` | **New** — minimal deterministic fixture + `expected-validate.txt` (B.4) |
 | `skills/ba-cr/**` | Single apply path; **ba-cr writes CR targets** (analyzer stays read-only); new-req creation; CR stamping; cr-log.md; all/selected/none |
 | `skills/dev-executor/**`, `.claude/agents/task-executor.md`, `plan-runner.md` | Idempotent per-task execution via `task_fingerprint`; halt on `needs-rework`; `implemented_files`; attributable `test-results.md`; commit default `defer` |
 | `skills/dev-planner/**` | `needs-rework → ready` is the only replan transition; replan preserves `plan_id` |
-| `skills/dev-code-review/**`, `.claude/agents/code-review-worker.md` | Consume `test-results.md` with staleness rule; write plan status back |
+| `skills/dev-code-review/**`, `.claude/agents/code-review-worker.md` | Orchestrator computes/passes `current_source_ref`; worker consumes `test-results.md` with staleness rule; write plan status back |
 | `.claude/agents/cr-*.md` | `cr-impact-analyzer` returns targets (no writes); `cr-applier` sets `done → needs-rework` |
 | `skills/doc-ingest/**`, `.claude/agents/doc-ingest-synthesizer.md` | Order-independent versioned contradiction fingerprint |
 | `skills/**/SKILL.md` | Preconditions blocks |
@@ -346,14 +395,14 @@ dispatch). Update `dev-executor`, `plan-runner`, README, and WORKFLOW accordingl
   `task_fingerprint`; a task whose AC text changed is re-implemented).
 - Grep sweep (part of `--repo`): no remaining `replan_required`/`impact-analysed`/
   `changes-required`-as-status tokens in README/WORKFLOW; no `cache/{slug}.md` references; no
-  enum values restated in prose that diverge from `status-vocabulary.yaml`.
+  enum values restated in prose that diverge from `status-vocabulary.json`.
 
 ## Decomposition into Implementation Plans
 
 Three coordinated plans, in order:
 
 1. **Foundation — SSOT + validation + drift fixes** (A, B, D): machine-readable
-   `status-vocabulary.yaml` + `frontmatter-rules.yaml`, `implr-validate` (`--repo` +
+   `status-vocabulary.json` + `frontmatter-rules.json`, `implr-validate` (`--repo` +
    `--workspace`), the B.4 fixture, cache path, formats, versioned contradiction fingerprint.
    Everything else depends on the canonical vocabularies existing.
 2. **CR lifecycle** (C, E): single delta-safe path, `needs-rework`, new-req creation,
