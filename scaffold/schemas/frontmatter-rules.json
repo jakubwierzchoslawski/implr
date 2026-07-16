@@ -1,0 +1,61 @@
+{
+  "_comment": "Required frontmatter fields per artefact type and configuration for implr-validate --repo prose checks. Enum values themselves live in status-vocabulary.json; this file only names which machine each artefact/schema uses.",
+  "artefact_types": {
+    "requirement": {
+      "id_field": "req_id",
+      "id_pattern": "^REQ-[FN]-[0-9]{3}$",
+      "status_machine": "requirement",
+      "required": ["req_id", "slug", "title", "type", "status", "complexity", "tdd_required", "source_docs", "created_at", "updated_at"],
+      "index_file": "docs/implr/requirements/requirements-index.md",
+      "path_globs": ["docs/implr/requirements/functional/*.md", "docs/implr/requirements/non-functional/*.md"]
+    },
+    "plan": {
+      "id_field": "plan_id",
+      "id_pattern": "^PLAN-[FN]-[0-9]{3}$",
+      "status_machine": "plan",
+      "required": ["plan_id", "slug", "title", "linked_requirement", "type", "status", "complexity", "tdd_required", "created_at", "updated_at"],
+      "index_file": "docs/implr/plans/plans-index.md",
+      "path_globs": ["docs/implr/plans/functional/*.md", "docs/implr/plans/non-functional/*.md"]
+    },
+    "cr": {
+      "id_field": "cr_id",
+      "id_pattern": "^CR-[0-9]{3}$",
+      "status_machine": "cr",
+      "required": ["cr_id", "slug", "title", "status", "change_type", "source", "created_at"],
+      "index_file": "docs/implr/requirements/cr-index.md",
+      "path_globs": ["docs/kb/change-requests/*.md"]
+    },
+    "review": {
+      "id_field": "review_id",
+      "id_pattern": "^REVIEW-[FN]-[0-9]{3}$",
+      "status_machine": "review",
+      "required": ["review_id", "status"],
+      "index_file": "docs/implr/reviews/reviews-index.md",
+      "path_globs": ["docs/implr/reviews/REVIEW-*.md"]
+    }
+  },
+  "schema_machine_map": {
+    "requirement-schema.md": "requirement",
+    "requirement-template.md": "requirement",
+    "plan-schema.md": "plan",
+    "plan-template.md": "plan",
+    "cr-schema.md": "cr",
+    "cr-template.md": "cr",
+    "review-schema.md": "review",
+    "review-template.md": "review"
+  },
+  "repo_prose_checks": {
+    "banned_tokens": [
+      {"token": "replan_required", "reason": "retired plan-status marker; use needs-rework"},
+      {"token": "impact-analysed", "reason": "never a real CR status; CR states are draft|approved|rejected|applied"}
+    ],
+    "banned_token_surfaces": ["scaffold/", "skills/", ".claude/agents/", "README.md", "docs/WORKFLOW.md"],
+    "enum_comment_surfaces": ["scaffold/schemas/", "scaffold/templates/"],
+    "exempt_paths": ["CHANGELOG.md", "docs/superpowers/"],
+    "enum_check_exempt": ["scaffold/schemas/status-vocabulary.json", "scaffold/schemas/status-vocabulary.md"],
+    "cache_path_surfaces": ["scaffold/schemas/", "skills/", ".claude/agents/", "README.md", "docs/WORKFLOW.md"],
+    "canonical_formats": ["md", "pdf", "docx", "xlsx", "pptx", "odp", "odt", "ods", "csv", "txt", "vtt", "png", "jpg", "jpeg", "gif", "webp", "tiff", "bmp"],
+    "format_presence_surfaces": ["scaffold/schemas/kb-index-schema.md", "README.md", "skills/doc-ingest/phases/extract.md"],
+    "plan_status_misuse_tokens": ["changes-required"]
+  }
+}
