@@ -214,8 +214,10 @@ git commit -m "feat(schemas): add machine-readable status-vocabulary as single s
     "enum_comment_surfaces": ["scaffold/schemas/", "scaffold/templates/"],
     "exempt_paths": ["CHANGELOG.md", "docs/superpowers/"],
     "enum_check_exempt": ["scaffold/schemas/status-vocabulary.json", "scaffold/schemas/status-vocabulary.md"],
-    "cache_path_surfaces": ["scaffold/schemas/", "skills/", ".claude/agents/"],
-    "canonical_formats": ["md", "pdf", "docx", "xlsx", "pptx", "odp", "odt", "ods", "csv", "txt", "vtt", "png", "jpg", "jpeg", "gif", "webp", "tiff", "bmp"]
+    "cache_path_surfaces": ["scaffold/schemas/", "skills/", ".claude/agents/", "README.md", "docs/WORKFLOW.md"],
+    "canonical_formats": ["md", "pdf", "docx", "xlsx", "pptx", "odp", "odt", "ods", "csv", "txt", "vtt", "png", "jpg", "jpeg", "gif", "webp", "tiff", "bmp"],
+    "format_presence_surfaces": ["scaffold/schemas/kb-index-schema.md", "README.md", "skills/doc-ingest/phases/extract.md"],
+    "plan_status_misuse_tokens": ["changes-required"]
   }
 }
 ```
@@ -223,7 +225,11 @@ git commit -m "feat(schemas): add machine-readable status-vocabulary as single s
 Notes: `banned_token_surfaces` is deliberately broad (this is where the review found retired
 tokens — README, WORKFLOW, skills, agents). `enum_comment_surfaces` is narrow because the
 `status: x  # a | b | c` comment pattern only appears in schemas/templates. `cache_path_surfaces`
-and `canonical_formats` drive the Task 8 cache-path and format-list checks.
+now includes README/WORKFLOW so the final "no `.md` cache path anywhere live" goal is a permanent
+check, not a one-time grep. `canonical_formats` drives the format checks (exact-match on machine
+arrays + presence on `format_presence_surfaces`). `plan_status_misuse_tokens` lists values that
+are legal for another machine (e.g. `changes-required` is a review status) but must never appear
+in a plan-lifecycle transition context on a doc surface.
 
 - [ ] **Step 2: Verify the JSON parses**
 
@@ -1026,7 +1032,7 @@ git commit -m "feat(validate): add cross-reference and workspace discovery check
 
 **Interfaces:**
 - Consumes: `Contracts`, `Finding`.
-- Produces: `check_repo_prose(root: str, contracts) -> list[Finding]`. (a) retired `banned_tokens` found on any `banned_token_surfaces` path (README, WORKFLOW, skills, agents, scaffold) not under `exempt_paths`; (b) divergent status enum comments in `schema_machine_map` files under `enum_comment_surfaces`; (c) retired `.md` cache-path references on `cache_path_surfaces`; (d) `kb_supported_formats` in the shipped config not equal to `canonical_formats`.
+- Produces: `check_repo_prose(root: str, contracts) -> list[Finding]`. (a) retired `banned_tokens` on any `banned_token_surfaces` path not under `exempt_paths`, PLUS `plan_status_misuse_tokens` (e.g. `changes-required`) used in an arrow/transition context; (b) divergent status enum comments in `schema_machine_map` files under `enum_comment_surfaces`; (c) retired `.md` cache-path references on `cache_path_surfaces` (now incl. README/WORKFLOW); (d) EVERY `kb_supported_formats: [...]` array repo-wide equals `canonical_formats`; (e) every canonical format token is present on each `format_presence_surfaces` file.
 
 - [ ] **Step 1: Write the failing tests (append to `tests/test_checks.py`)**
 
@@ -1090,6 +1096,32 @@ class TestRepoProse(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             self._repo(root, "scaffold/config/implr.config.yaml", "  kb_supported_formats: [md, pdf, docx]\n")
             self.assertTrue(any("kb_supported_formats" in f.message for f in check_repo_prose(root, self.c)))
+
+    def test_format_array_mismatch_in_readme_flagged(self):
+        # (d) checks EVERY kb_supported_formats array anywhere, incl. README's config example
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "README.md", "example: `kb_supported_formats: [md, pdf]`\n")
+            self.assertTrue(any("kb_supported_formats" in f.message for f in check_repo_prose(root, self.c)))
+
+    def test_format_presence_missing_flagged(self):
+        # (e) each canonical format must appear on a presence surface; omit 'bmp'
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "skills/doc-ingest/phases/extract.md",
+                       "handles: md pdf docx xlsx pptx odp odt ods csv txt vtt png jpg jpeg gif webp tiff\n")
+            findings = check_repo_prose(root, self.c)
+            self.assertTrue(any("bmp" in f.message and "not mentioned" in f.message for f in findings))
+
+    def test_changes_required_transition_misuse_flagged(self):
+        # 'changes-required' used as a plan-lifecycle transition on a doc surface
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "docs/WORKFLOW.md", "plan flow: done -> changes-required -> in-progress\n")
+            self.assertTrue(any("changes-required" in f.message and "transition" in f.message for f in check_repo_prose(root, self.c)))
+
+    def test_changes_required_verdict_prose_clean(self):
+        # legitimate review-verdict prose (no arrow) must NOT be flagged
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "README.md", "If the verdict is changes-required, the plan returns to in-progress.\n")
+            self.assertEqual([f for f in check_repo_prose(root, self.c) if "transition" in f.message], [])
 ```
 
 - [ ] **Step 2: Run to verify the new tests fail**
@@ -1111,6 +1143,12 @@ def _is_exempt(rel, exempt_prefixes):
 
 CACHE_MD_RE = re.compile(r"cache/\{slug\}\.md|cache/[\w-]+\.md|cache_path:\s*\S+\.md")
 FORMATS_RE = re.compile(r"kb_supported_formats:\s*\[([^\]]*)\]")
+# `changes-required` used as a plan lifecycle transition (misuse), not the review verdict noun
+TRANSITION_MISUSE_RE_TMPL = r"(?:->|-->|→|—>)\s*%s|%s\s*(?:->|-->|→|—>)"
+
+
+def _matches_surface(rel, surfaces):
+    return any(rel == s or rel.startswith(s) for s in surfaces)
 
 
 def check_repo_prose(root, contracts):
@@ -1122,6 +1160,8 @@ def check_repo_prose(root, contracts):
     enum_surfaces = cfg["enum_comment_surfaces"]
     enum_exempt = cfg["enum_check_exempt"]
     cache_surfaces = cfg["cache_path_surfaces"]
+    misuse_tokens = cfg.get("plan_status_misuse_tokens", [])
+    canonical = list(cfg["canonical_formats"])
     machine_map = contracts.schema_machine_map
 
     for dirpath, _dirs, files in os.walk(root):
@@ -1134,13 +1174,18 @@ def check_repo_prose(root, contracts):
                 text = f.read()
 
             # (a) retired tokens — broad surface (README/WORKFLOW/skills/agents/scaffold)
-            if any(rel == s or rel.startswith(s) for s in banned_surfaces) and not _is_exempt(rel, exempt):
+            if _matches_surface(rel, banned_surfaces) and not _is_exempt(rel, exempt):
                 for b in banned:
                     if b["token"] in text:
                         findings.append(Finding("error", rel, "banned token %r (%s)" % (b["token"], b["reason"])))
+                # (a2) transition-context misuse of an otherwise-legal token
+                for tok in misuse_tokens:
+                    pat = TRANSITION_MISUSE_RE_TMPL % (re.escape(tok), re.escape(tok))
+                    if re.search(pat, text):
+                        findings.append(Finding("error", rel, "%r used as a plan-lifecycle transition; it is a review status, not a plan status" % tok))
 
             # (b) divergent enum comments — narrow surface (schemas/templates)
-            if name in machine_map and any(rel.startswith(s) for s in enum_surfaces) and not _is_exempt(rel, enum_exempt):
+            if name in machine_map and _matches_surface(rel, enum_surfaces) and not _is_exempt(rel, enum_exempt):
                 legal = contracts.states_for(machine_map[name])
                 for m in ENUM_COMMENT_RE.finditer(text):
                     for v in [x.strip() for x in m.group(1).split("|")]:
@@ -1148,23 +1193,43 @@ def check_repo_prose(root, contracts):
                             findings.append(Finding("error", rel, "enum comment lists %r, illegal for %s machine" % (v, machine_map[name])))
 
             # (c) cache-path drift — the retired .md cache extension
-            if any(rel.startswith(s) for s in cache_surfaces):
-                if CACHE_MD_RE.search(text):
-                    findings.append(Finding("error", rel, "cache path uses retired .md extension; cache files are cache/{slug}.txt"))
+            if _matches_surface(rel, cache_surfaces) and CACHE_MD_RE.search(text):
+                findings.append(Finding("error", rel, "cache path uses retired .md extension; cache files are cache/{slug}.txt"))
 
-    # (d) format-list drift — the shipped config must equal the canonical set
-    canonical = list(cfg["canonical_formats"])
-    cfg_path = os.path.join(root, "scaffold", "config", "implr.config.yaml")
-    if os.path.isfile(cfg_path):
-        with open(cfg_path, encoding="utf-8") as f:
-            m = FORMATS_RE.search(f.read())
-        if m:
-            listed = [x.strip() for x in m.group(1).split(",") if x.strip()]
-            if listed != canonical:
-                findings.append(Finding("error", "scaffold/config/implr.config.yaml",
-                                        "kb_supported_formats %s != canonical %s" % (listed, canonical)))
+    # (d) format-list drift — EVERY kb_supported_formats array anywhere must equal canonical
+    for dirpath, _dirs, files in os.walk(root):
+        for name in files:
+            if not (name.endswith(".md") or name.endswith(".yaml") or name.endswith(".yml")):
+                continue
+            abspath = os.path.join(dirpath, name)
+            rel = os.path.relpath(abspath, root).replace(os.sep, "/")
+            if _is_exempt(rel, exempt):
+                continue
+            with open(abspath, encoding="utf-8") as f:
+                for m in FORMATS_RE.finditer(f.read()):
+                    listed = [x.strip() for x in m.group(1).split(",") if x.strip()]
+                    if listed != canonical:
+                        findings.append(Finding("error", rel, "kb_supported_formats %s != canonical %s" % (listed, canonical)))
+
+    # (e) format presence — every canonical format must appear on each presence surface
+    for rel in cfg.get("format_presence_surfaces", []):
+        p = os.path.join(root, rel.replace("/", os.sep))
+        if not os.path.isfile(p):
+            continue
+        with open(p, encoding="utf-8") as f:
+            text = f.read()
+        for fmt in canonical:
+            if not re.search(r"\b%s\b" % re.escape(fmt), text):
+                findings.append(Finding("error", rel, "canonical format %r not mentioned on this surface" % fmt))
     return findings
 ```
+
+Note on scope: (d) exact-matches machine-readable `kb_supported_formats: [...]` arrays (config and
+README's config example). (e) is a presence check on the free-prose surfaces (schema enum comment,
+README lists, extractor table) — it catches the realistic "added/removed a format but missed a
+surface" drift without brittle exact-parsing of prose. Full bidirectional exact-match of prose
+lists is intentionally not attempted; presence + machine-array exact-match is the robust
+compromise.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -1549,10 +1614,16 @@ to:
 Run: `grep -n "cache/{slug}.md\|cache/auth-flow.md" scaffold/schemas/kb-index-schema.md || echo "none"`
 Expected: `none`
 
-- [ ] **Step 5: Run the repo validator to confirm still clean**
+- [ ] **Step 5: Targeted verification of the cache/format fixes**
 
-Run: `python scripts/implr_validate --repo --root . --schema-dir scaffold/schemas`
-Expected: `implr-validate: OK` (kb-index-schema.md is not in `schema_machine_map`, so no enum error; this confirms nothing else regressed).
+A full `--repo` is NOT yet green here — README/WORKFLOW and the CR agents/skills still carry
+retired status tokens that Task 13 clears. So verify only this task's surfaces:
+
+Run: `grep -rn "cache/{slug}.md\|cache/auth-flow.md\|cache_path:.*\.md" scaffold/schemas/kb-index-schema.md || echo "none"`
+Expected: `none`
+
+Run: `python -c "import re,io; t=open('scaffold/config/implr.config.yaml',encoding='utf-8').read(); m=re.search(r'kb_supported_formats:\s*\[([^\]]*)\]',t); vals=[x.strip() for x in m.group(1).split(',')]; canon=['md','pdf','docx','xlsx','pptx','odp','odt','ods','csv','txt','vtt','png','jpg','jpeg','gif','webp','tiff','bmp']; print('OK' if vals==canon else ('MISMATCH: %s' % vals))"`
+Expected: `OK`
 
 - [ ] **Step 6: Commit**
 
@@ -1670,14 +1741,21 @@ git commit -m "feat(doc-ingest): key contradictions on stable fingerprint via va
 
 ---
 
-## Task 13: Update README and WORKFLOW; final repo validation sweep
+## Task 13: Align docs + clear retired tokens everywhere; final repo validation sweep
 
 **Files:**
 - Modify: `README.md` (status/lifecycle sections; formats line ~672; cache-path mentions)
 - Modify: `docs/WORKFLOW.md` (plan lifecycle, CR lifecycle, contradiction section)
+- Modify: `.claude/agents/cr-applier.md`, `skills/ba-cr/SKILL.md`, `skills/ba-cr/phases/apply.md` (token swap only)
 
 **Interfaces:**
-- No code interface. Deliverable: README/WORKFLOW cite `status-vocabulary.json`, use only legal statuses, describe fingerprint matching, and the full `--repo` check plus full test suite are green.
+- No code interface. Deliverable: README/WORKFLOW cite `status-vocabulary.json`, use only legal statuses, describe fingerprint matching; ALL live surfaces are free of retired tokens; the full `--repo` check plus full test suite are green.
+
+**Why this task touches CR agents/skills:** broadening `--repo` to skills/agents means the retired
+`replan_required` token in `cr-applier.md`/`ba-cr` must go for `--repo` to pass. `needs-rework`
+already exists in the vocabulary (Task 1), so this task does the minimal **token swap** to
+`needs-rework` references. Plan 2 then layers the full `rework_cr`/`rework_reason` fields and
+behavior on these same files — this is a deliberate, coherent hand-off, not duplication.
 
 - [ ] **Step 1: Fix the plan lifecycle in `README.md`**
 
@@ -1713,6 +1791,21 @@ the review-failure transition as `done → in-progress`. Add `done → needs-rew
 Contradiction section (~lines 172–195): state that matching is by `(fingerprint_version,
 fingerprint)`, with `C-xxx` as a display label.
 
+- [ ] **Step 4b: Token-swap retired `replan_required` in the CR agents/skills**
+
+These files use the retired marker; swap to `needs-rework` language (full fields/behavior land
+in Plan 2):
+- `.claude/agents/cr-applier.md`: change "write a stub `replan_required: true` marker" to "set the
+  plan `status: needs-rework` (see `status-vocabulary.json`); the orchestrator invokes
+  `dev-planner --replan` separately"; change the return-summary `status: applied | replan_required`
+  to `status: applied | needs-rework`.
+- `skills/ba-cr/SKILL.md`: change "plans where the applier set `replan_required: true`" to "plans
+  the applier set to `needs-rework`".
+- `skills/ba-cr/phases/apply.md`: change any `replan_required` return value to `needs-rework`.
+
+Do NOT introduce `rework_cr`/`rework_reason` here (that is Plan 2 Task 2/9) — this step only
+removes the retired token.
+
 - [ ] **Step 5: Grep sweep for retired tokens outside history**
 
 Run:
@@ -1732,8 +1825,8 @@ Expected: PASS (all tests, all files).
 - [ ] **Step 7: Commit**
 
 ```bash
-git add README.md docs/WORKFLOW.md
-git commit -m "docs: align README and WORKFLOW with status-vocabulary, formats, and fingerprint matching"
+git add README.md docs/WORKFLOW.md .claude/agents/cr-applier.md skills/ba-cr/SKILL.md skills/ba-cr/phases/apply.md
+git commit -m "docs: align README/WORKFLOW with status-vocabulary; clear retired tokens on all live surfaces"
 ```
 
 ---
@@ -1741,8 +1834,9 @@ git commit -m "docs: align README and WORKFLOW with status-vocabulary, formats, 
 ## Self-Review Notes
 
 - **Spec coverage (A):** status-vocabulary.json (T1), thin .md (T1), drift fixes cache/formats (T11), README/WORKFLOW status sync (T13). ✓
-- **Spec coverage (B):** JSON contracts not per-schema companions (T1, T2), frontmatter subset parser (T3), `--repo`/`--workspace` (T9), grep allowlist/banned-token config in frontmatter-rules.json (T2, T8), B.4 fixture (T10). ✓
+- **Spec coverage (B):** JSON contracts not per-schema companions (T1, T2), frontmatter subset parser (T3), `--repo`/`--workspace` (T9), B.4 fixture (T10). `--repo` prose checks (T8): retired tokens on broad surfaces (README/WORKFLOW/skills/agents/scaffold), `changes-required` transition misuse, divergent enum comments, `.md` cache-path drift (incl. README/WORKFLOW), format-array exact-match repo-wide + canonical-format presence. Cross-ref/index checks (T7): linked_requirement, PLAN/REQ pairing, superseded_by, index agreement. ✓
 - **Spec coverage (D):** versioned order-independent SHA-256 fingerprint (T4), algorithm defined once in kb-index-schema.md (T12), columns in seed/schema (T12), synthesizer emits fields / orchestrator computes hash (T12), ba-requirements-gen keys on fingerprint (T12), WORKFLOW updated (T13). ✓
 - **LLM-can't-hash gap:** resolved — the fingerprint function is code (T4), invoked via `--fingerprint` by the orchestrator that has Bash (T12), and recomputed by `--workspace` for verification.
 - **Type consistency:** `Finding(level, path, message)` used consistently T6–T9; `contradiction_fingerprint(fields)`/`FINGERPRINT_VERSION` T4/T9/T12; `check_workspace`/`check_repo_prose`/`load_contracts`/`states_for` names stable across T5–T9.
 - **Out of scope (correct):** the `needs-rework` write path, CR audit trail, idempotent executor, and review changes are Plans 2 and 3. This plan only *defines* `needs-rework` in the vocabulary and validates it; nothing sets it yet.
+- **Sequencing (broadened `--repo`):** because the banned-token scan now covers skills/agents, `--repo` cannot be green while `replan_required` lingers in `cr-applier.md`/`ba-cr`. T13 does the minimal token-swap to `needs-rework` on those surfaces (the state exists as of T1); Plan 2 layers `rework_cr`/behavior on top. Mid-plan T11 uses targeted grep/format checks, not full `--repo`; full `--repo: OK` is a genuine end-of-Plan-1 gate after T13.

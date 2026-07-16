@@ -629,15 +629,44 @@ Insert after Phase 4:
 
 If impact analysis reported new requirements are needed (not just amendments):
 
-1. Determine the target domain for each new requirement (from the CR's affected_domains).
+1. Determine the target domain for each new requirement (from the CR's affected_domains; if none,
+   use `root`).
 2. Create the staging dir `docs/implr/requirements/.staging/<domain>/` (delete first if present,
    per the ba-requirements-gen Windows/Unix rules).
-3. Dispatch `requirements-domain-worker` with a `domain_envelope` whose `mode: create`, passing
-   the CR description as the source material and the requirements-card inline (same envelope
-   shape ba-requirements-gen uses).
+3. Dispatch `requirements-domain-worker` with a **complete** `domain_envelope` that satisfies its
+   contract. Because there is no domain synthesis for a CR-originated requirement, synthesize the
+   inputs from the CR (the worker treats `domain_synthesis` as authoritative source material):
+
+   ```yaml
+   domain_envelope:
+     domain: <domain>
+     mode: create
+     reprocess_target: null
+     staging_dir: docs/implr/requirements/.staging/<domain>/
+     digests_dir: docs/implr/kb-index/digests/per-doc/    # may be empty; worker reads only if needed
+     requirements_card: |
+       <full inline content of docs/implr/config/requirements-card.md>
+     domain_synthesis: |
+       # Synthesized from CR <cr_id>
+       ## Consolidated Rules
+       <the CR's Description of Change + before/after, restated as the rule(s) to implement>
+       ## Ambiguities Detected
+       (none)
+       ## Contradictions Detected
+       (none)
+     master_synthesis_nfr: |
+       N/A
+     default_tdd_threshold: <behaviour.default_tdd_threshold from implr.config.yaml>
+     existing_reqs_summary:
+       req_ids: <all ids from requirements-index.md>
+       slugs_in_domain: <slugs already in this domain, or []>
+     resolved_contradictions: {}
+     deferred_contradictions: []
+   ```
 4. After the worker returns, assign the next sequential `REQ-F-NNN`/`REQ-N-NNN` (continue from
    `requirements-index.md`), move the staged file into `functional/` or `non-functional/`, set
-   `status: draft`, and add the CR filename to `source_docs`.
+   `status: draft`, add the CR filename to `source_docs`, and add the new id to
+   `requirements-index.md`.
 5. Report the new REQ IDs and that they require human approval before planning.
 ```
 
@@ -778,12 +807,16 @@ In `task-executor.md` Inputs, add to the envelope:
 
 Add a new Work step 0 before step 1:
 "0. **Idempotent skip check.** If `prior_fingerprint` is non-empty, recompute this task's
-fingerprint from the envelope fields (the orchestrator supplies the same fields; if you cannot
-recompute, treat as non-matching). If it matches `prior_fingerprint` AND the task's tests
-currently pass when run, do NOT re-implement: return `task_status: done` with a note
-`already-satisfied` and no file changes. Otherwise proceed with the normal flow. (Note: the skip
-relies on a live test run, not a stored pass flag — there is no `prior_tests_pass` in Plan 2.
-Plan 3's `test-results.md` is for review evidence, a separate concern.)"
+fingerprint by writing the envelope's fingerprint fields (`task_body`, `ac_ids`, `ac_text`,
+`files`, `tests_first`, `requirement_updated_at`, `arch_excerpt_hash`, `interfaces_contracts`,
+`applied_nfrs`, `standards_card_hash`, `test_runner`) to a temp JSON file and running
+`python scripts/implr_validate --task-fingerprint <tmp>` — **never hand-compute the hash** (the
+executor has Bash; hashing is the validator's job, per the global constraint). If the printed
+value matches `prior_fingerprint` AND the task's tests currently pass when run, do NOT
+re-implement: return `task_status: done` with a note `already-satisfied` and no file changes.
+Otherwise proceed with the normal flow. (The skip relies on a live test run, not a stored pass
+flag — there is no `prior_tests_pass` in Plan 2; Plan 3's `test-results.md` is separate review
+evidence.)"
 
 Add `already_satisfied: true | false` to the return summary.
 

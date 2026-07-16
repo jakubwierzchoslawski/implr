@@ -276,7 +276,9 @@ test_output_tail: "<last ~15 lines, or empty>"
 - [ ] **Step 2: `plan-runner` writes `test-results.md`**
 
 In Work, add a step after status update:
-"Write `docs/implr/plans/test-results/<plan_id>-results.md` per `test-results-schema.md`. Compute
+"Ensure the directory `docs/implr/plans/test-results/` exists (create it if missing — e.g.
+`mkdir -p`, or the Windows equivalent). Then write
+`docs/implr/plans/test-results/<plan_id>-results.md` per `test-results-schema.md`. Compute
 `source_ref` by running `python scripts/implr_validate --source-ref <src_path> <tests_path>` and
 set `run_at` to now and `executed_at` to the plan's `executed_at`. One row per task from the
 executor returns (`test_command`, `test_exit_code`, pass/fail, `test_output_tail`)."
