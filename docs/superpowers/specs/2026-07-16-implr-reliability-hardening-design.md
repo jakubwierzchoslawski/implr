@@ -169,8 +169,8 @@ Both modes check:
 Exit non-zero on any violation, with a human-readable report. Invoked manually and by the
 precondition gates (F). No CI wiring in this phase.
 
-**B.4 Minimal deterministic fixture.** Add `scaffold/../tests/fixtures/sample-kb/` (or a
-sibling path) containing a hand-authored miniature workspace: two KB docs with one seeded
+**B.4 Minimal deterministic fixture.** Add `tests/fixtures/sample-kb/` containing a
+hand-authored miniature workspace: two KB docs with one seeded
 contradiction, one requirement, one additive CR, and one correction CR — plus an
 `expected-validate.txt` capturing the exact `implr-validate --workspace` outcome (pass, and the
 specific violations when a field is deliberately broken). This is a *deterministic* check of
@@ -369,7 +369,7 @@ dispatch). Update `dev-executor`, `plan-runner`, README, and WORKFLOW accordingl
 |---|---|
 | `scaffold/schemas/status-vocabulary.json` (+ thin `.md`) | **New** — single machine-readable (JSON, stdlib-parseable) canonical states/transitions for all four machines |
 | `scaffold/schemas/frontmatter-rules.json` | **New** — required frontmatter fields per artefact type + `--repo` grep allowlist/banned-token config |
-| `scaffold/schemas/*-schema.md` | Reference the YAML vocab; **restate no enums**; cache path `.txt`; format enum; contradiction `fingerprint`/`fingerprint_version`; CR `targets`; plan `needs-rework`/`rework_cr`/`rework_reason`/`implemented_files`/per-task `task_fingerprint` |
+| `scaffold/schemas/*-schema.md` | Reference the JSON vocab; **restate no enums**; cache path `.txt`; format enum; contradiction `fingerprint`/`fingerprint_version`; CR `targets`; plan `needs-rework`/`rework_cr`/`rework_reason`/`implemented_files`/per-task `task_fingerprint` |
 | `scaffold/config/implr.config.yaml` | `kb_supported_formats` → full 18-format list |
 | `scripts/implr-validate` | **New** — deterministic stdlib-only validator (`--repo`/`--workspace`); ships a restricted-frontmatter-subset parser |
 | `tests/fixtures/sample-kb/` | **New** — minimal deterministic fixture + `expected-validate.txt` (B.4) |
