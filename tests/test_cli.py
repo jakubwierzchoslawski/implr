@@ -31,5 +31,29 @@ class TestCli(unittest.TestCase):
         self.assertEqual(main([]), 2)
 
 
+# --- Task 10: sample-kb fixture integration tests ---
+FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "sample-kb")
+SCHEMA_DIR = os.path.join(REPO_ROOT, "scaffold", "schemas")
+
+
+class TestFixture(unittest.TestCase):
+    def test_clean_fixture_passes(self):
+        rc = main(["--workspace", FIXTURE, "--schema-dir", SCHEMA_DIR])
+        self.assertEqual(rc, 0)
+
+    def test_broken_status_fails(self):
+        import shutil, tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            dst = os.path.join(tmp, "sample-kb")
+            shutil.copytree(FIXTURE, dst)
+            req = os.path.join(dst, "docs", "implr", "requirements", "functional", "REQ-F-001-login.md")
+            with open(req, encoding="utf-8") as f:
+                text = f.read()
+            with open(req, "w", encoding="utf-8") as f:
+                f.write(text.replace("status: approved", "status: replan_required"))
+            rc = main(["--workspace", dst, "--schema-dir", SCHEMA_DIR])
+            self.assertEqual(rc, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
