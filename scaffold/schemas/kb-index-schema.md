@@ -326,7 +326,14 @@ Algorithm (version 1), implemented canonically in `scripts/implr_validate/finger
    whitespace).
 4. `fingerprint = "1:" + sha256(canonical)[:16]`.
 
+The `Fingerprint` column stores the full `<version>:<hash>` string; `FP-Ver` repeats the
+version for human readers.
+
 An LLM must NOT hand-compute this hash. The `doc-ingest` orchestrator computes it by writing the
 five fields to a temp JSON file and calling
 `python scripts/implr_validate --fingerprint <file>`. `implr-validate --workspace` recomputes
-and verifies stored fingerprints. To change the algorithm, bump `fingerprint_version`.
+each fingerprint stored in a domain synthesis `Contradictions Detected` table (the only surface
+that carries all five raw fields) from its cells and fails on any mismatch — so a hand-written
+or hallucinated hash is caught. The master `Cross-Domain Contradictions` and
+`resolved-contradictions.md` tables carry copies of the synthesis fingerprint and are not
+independently recomputable. To change the algorithm, bump `fingerprint_version`.

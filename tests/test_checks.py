@@ -144,6 +144,58 @@ class TestWorkspace(unittest.TestCase):
             self.assertTrue(any("REQ-F-050" in f.message and "index" in f.message.lower() for f in findings))
 
 
+# --- Fingerprint verification in check_workspace ---
+from implr_validate.fingerprint import contradiction_fingerprint
+
+_FP_FIELDS = {
+    "source_a": "login-spec.md §1", "statement_a": "Lockout after 3 failed attempts",
+    "source_b": "login-spec.md §4", "statement_b": "Lockout after 5 failed attempts",
+    "type": "Hard conflict",
+}
+_SYNTH = """---
+domain: authentication
+synthesis_checksum: abc
+---
+# Domain Synthesis: Authentication
+
+## Contradictions Detected
+| ID | Fingerprint | FP-Ver | Statement A | Source A | Statement B | Source B | Type |
+|----|-------------|--------|------------|---------|------------|---------|------|
+| C-001 | {fp} | {ver} | Lockout after 3 failed attempts | login-spec.md §1 | Lockout after 5 failed attempts | login-spec.md §4 | Hard conflict |
+"""
+
+
+def _write_synth(root, fp, ver):
+    d = os.path.join(root, "docs", "implr", "kb-index", "domains")
+    os.makedirs(d)
+    with open(os.path.join(d, "authentication-synthesis.md"), "w", encoding="utf-8") as f:
+        f.write(_SYNTH.format(fp=fp, ver=ver))
+
+
+class TestFingerprintVerification(unittest.TestCase):
+    def setUp(self):
+        self.c = load_contracts(SCHEMA_DIR)
+
+    def test_correct_fingerprint_clean(self):
+        with tempfile.TemporaryDirectory() as root:
+            _write_synth(root, contradiction_fingerprint(_FP_FIELDS), "1")
+            fp_findings = [f for f in check_workspace(root, self.c) if "fingerprint" in f.message.lower()]
+            self.assertEqual(fp_findings, [])
+
+    def test_wrong_fingerprint_flagged(self):
+        with tempfile.TemporaryDirectory() as root:
+            _write_synth(root, "1:0000000000000000", "1")
+            findings = check_workspace(root, self.c)
+            self.assertTrue(any("fingerprint" in f.message.lower() for f in findings))
+
+    def test_wrong_fp_ver_flagged(self):
+        with tempfile.TemporaryDirectory() as root:
+            good = contradiction_fingerprint(_FP_FIELDS)
+            _write_synth(root, good, "2")  # correct hash, wrong version column
+            findings = check_workspace(root, self.c)
+            self.assertTrue(any("fp-ver" in f.message.lower() or "version" in f.message.lower() for f in findings))
+
+
 # --- Task 8: repo prose checks ---
 from implr_validate.checks import check_repo_prose
 

@@ -130,12 +130,14 @@ compute SHA-256 reliably, so for each contradiction:
    temp JSON file, e.g. `docs/implr/kb-index/.fp-tmp.json`.
 2. Run `python scripts/implr_validate --fingerprint <tmp>` and capture the printed
    `<ver>:<hash>`.
-3. Write the `<hash>` part into the row's `Fingerprint` column and `<ver>` into `FP-Ver` of
-   the domain synthesis `Contradictions Detected` table.
+3. Write the full printed `<ver>:<hash>` into the row's `Fingerprint` column and the `<ver>`
+   into `FP-Ver` of the domain synthesis `Contradictions Detected` table.
 4. Delete the temp file after the batch (`rm -f`/`Remove-Item`).
 
-Do not hand-compute or guess the hash. `implr-validate --workspace` later recomputes and
-verifies these stored fingerprints.
+Do not hand-compute or guess the hash. `implr-validate --workspace` recomputes each domain
+synthesis contradiction fingerprint from its `Source A/Statement A/Source B/Statement B/Type`
+cells and fails if a stored `Fingerprint`/`FP-Ver` does not match — so a hand-written hash is
+caught.
 
 ### Phase 6 — Master synthesis (orchestrator, integrative)
 

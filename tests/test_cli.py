@@ -54,6 +54,19 @@ class TestFixture(unittest.TestCase):
             rc = main(["--workspace", dst, "--schema-dir", SCHEMA_DIR])
             self.assertEqual(rc, 1)
 
+    def test_broken_fingerprint_fails(self):
+        import shutil, tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            dst = os.path.join(tmp, "sample-kb")
+            shutil.copytree(FIXTURE, dst)
+            synth = os.path.join(dst, "docs", "implr", "kb-index", "domains", "authentication-synthesis.md")
+            with open(synth, encoding="utf-8") as f:
+                text = f.read()
+            with open(synth, "w", encoding="utf-8") as f:
+                f.write(text.replace("1:d5fe836f0aa838fd", "1:0000000000000000"))
+            rc = main(["--workspace", dst, "--schema-dir", SCHEMA_DIR])
+            self.assertEqual(rc, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

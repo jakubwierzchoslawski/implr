@@ -4,6 +4,7 @@ import os
 import re
 
 from .frontmatter import parse_frontmatter, FrontmatterError
+from .fingerprint import contradiction_fingerprint
 
 
 class Finding(object):
@@ -111,6 +112,73 @@ def check_workspace(root, contracts):
             findings.append(Finding("error", index_rel, "%s exists on disk but is not in the index" % missing))
         for phantom in sorted(indexed - disk):
             findings.append(Finding("error", index_rel, "%s is in the index but has no file" % phantom))
+
+    # (e) contradiction fingerprint verification — recompute stored fingerprints in the
+    # domain-synthesis "Contradictions Detected" tables (the only surface carrying the five
+    # raw fields). This is what makes the "LLM-can't-hash" guarantee real: a hand-written or
+    # hallucinated hash no longer passes validation.
+    findings.extend(_check_synthesis_fingerprints(root))
+    return findings
+
+
+_CONTRA_REQUIRED_COLS = ("Fingerprint", "FP-Ver", "Statement A", "Source A", "Statement B", "Source B", "Type")
+
+
+def _parse_md_table(lines, header_idx):
+    """Return (colmap, data_rows) for the pipe table whose header is lines[header_idx].
+    colmap maps column name -> index; separator rows (|---|) are skipped."""
+    header = [c.strip() for c in lines[header_idx].strip().strip("|").split("|")]
+    colmap = {name: i for i, name in enumerate(header)}
+    rows = []
+    j = header_idx + 1
+    while j < len(lines):
+        ln = lines[j].strip()
+        if not ln.startswith("|"):
+            break
+        cells = [c.strip() for c in ln.strip("|").split("|")]
+        if all(set(c) <= set("-: ") for c in cells):  # separator row
+            j += 1
+            continue
+        rows.append(cells)
+        j += 1
+    return colmap, rows
+
+
+def _check_synthesis_fingerprints(root):
+    findings = []
+    pattern = os.path.join(root, "docs", "implr", "kb-index", "domains", "*-synthesis.md")
+    for path in glob.glob(pattern):
+        rel = os.path.relpath(path, root).replace(os.sep, "/")
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().split("\n")
+        for i, ln in enumerate(lines):
+            s = ln.strip()
+            if not (s.startswith("|") and "Fingerprint" in s and "Statement A" in s):
+                continue
+            colmap, rows = _parse_md_table(lines, i)
+            if not all(c in colmap for c in _CONTRA_REQUIRED_COLS):
+                continue
+            for cells in rows:
+                if max(colmap.values()) >= len(cells):
+                    continue  # malformed / short row
+                stored_fp = cells[colmap["Fingerprint"]]
+                stored_ver = cells[colmap["FP-Ver"]]
+                if not stored_fp:
+                    continue
+                fields = {
+                    "source_a": cells[colmap["Source A"]],
+                    "statement_a": cells[colmap["Statement A"]],
+                    "source_b": cells[colmap["Source B"]],
+                    "statement_b": cells[colmap["Statement B"]],
+                    "type": cells[colmap["Type"]],
+                }
+                expected = contradiction_fingerprint(fields)
+                if stored_fp != expected:
+                    findings.append(Finding("error", rel, "contradiction fingerprint %r does not match recomputed %r" % (stored_fp, expected)))
+                    continue
+                expected_ver = expected.split(":", 1)[0]
+                if stored_ver != expected_ver:
+                    findings.append(Finding("error", rel, "contradiction FP-Ver %r does not match fingerprint version %r" % (stored_ver, expected_ver)))
     return findings
 
 
