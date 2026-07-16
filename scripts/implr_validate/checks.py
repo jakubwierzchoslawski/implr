@@ -114,9 +114,9 @@ def check_workspace(root, contracts):
             findings.append(Finding("error", index_rel, "%s is in the index but has no file" % phantom))
 
     # (e) contradiction fingerprint verification — recompute stored fingerprints in the
-    # domain-synthesis "Contradictions Detected" tables (the only surface carrying the five
-    # raw fields). This is what makes the "LLM-can't-hash" guarantee real: a hand-written or
-    # hallucinated hash no longer passes validation.
+    # domain-synthesis "Contradictions Detected" and master "Cross-Domain Contradictions"
+    # tables (both carry the five raw fields as named columns). This is what makes the
+    # "LLM-can't-hash" guarantee real: a hand-written or hallucinated hash no longer passes.
     findings.extend(_check_synthesis_fingerprints(root))
     return findings
 
@@ -146,8 +146,12 @@ def _parse_md_table(lines, header_idx):
 
 def _check_synthesis_fingerprints(root):
     findings = []
-    pattern = os.path.join(root, "docs", "implr", "kb-index", "domains", "*-synthesis.md")
-    for path in glob.glob(pattern):
+    kb = os.path.join(root, "docs", "implr", "kb-index")
+    paths = glob.glob(os.path.join(kb, "domains", "*-synthesis.md"))
+    master = os.path.join(kb, "master-synthesis.md")
+    if os.path.isfile(master):
+        paths.append(master)
+    for path in paths:
         rel = os.path.relpath(path, root).replace(os.sep, "/")
         with open(path, encoding="utf-8") as f:
             lines = f.read().split("\n")

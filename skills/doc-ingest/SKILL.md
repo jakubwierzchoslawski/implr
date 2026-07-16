@@ -153,6 +153,13 @@ in-skill:
 - Complete arch-relevant file list
 - Open ambiguities
 
+For each cross-domain contradiction, record its two conflicting statements (`Statement A`,
+`Statement B`) and sources, then compute its `Fingerprint`/`FP-Ver` the **same way as Phase 5**:
+write the five fields (`source_a`, `statement_a`, `source_b`, `statement_b`, `type`) to a temp
+JSON file, run `python scripts/implr_validate --fingerprint <tmp>`, and write the full printed
+`<ver>:<hash>` into the `Fingerprint` column and `<ver>` into `FP-Ver`. Do not hand-compute the
+hash; `implr-validate --workspace` recomputes and verifies these too.
+
 ### Phase 7 — Update `index.md`
 
 Rewrite with current entries; preserve UNCHANGED entries; update CHANGED; add NEW;

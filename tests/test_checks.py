@@ -195,6 +195,34 @@ class TestFingerprintVerification(unittest.TestCase):
             findings = check_workspace(root, self.c)
             self.assertTrue(any("fp-ver" in f.message.lower() or "version" in f.message.lower() for f in findings))
 
+    def test_master_cross_domain_fingerprint_verified(self):
+        m_fields = {
+            "source_a": "auth/policy.md", "statement_a": "Token TTL 15 min",
+            "source_b": "billing/spec.md", "statement_b": "Token TTL 30 min",
+            "type": "Version drift",
+        }
+        good = contradiction_fingerprint(m_fields)
+        master_tmpl = (
+            "---\ndomains_included: [authentication, billing]\n---\n"
+            "# Master Synthesis\n\n## Cross-Domain Contradictions\n"
+            "| ID | Fingerprint | FP-Ver | Domain A | Statement A | Source A | Domain B | Statement B | Source B | Type |\n"
+            "|----|-------------|--------|---------|------------|---------|---------|------------|---------|------|\n"
+            "| C-010 | {fp} | 1 | authentication | Token TTL 15 min | auth/policy.md | billing | Token TTL 30 min | billing/spec.md | Version drift |\n"
+        )
+
+        def _write_master(root, fp):
+            kb = os.path.join(root, "docs", "implr", "kb-index")
+            os.makedirs(kb)
+            with open(os.path.join(kb, "master-synthesis.md"), "w", encoding="utf-8") as f:
+                f.write(master_tmpl.format(fp=fp))
+
+        with tempfile.TemporaryDirectory() as root:
+            _write_master(root, good)
+            self.assertEqual([f for f in check_workspace(root, self.c) if "fingerprint" in f.message.lower()], [])
+        with tempfile.TemporaryDirectory() as root:
+            _write_master(root, "1:0000000000000000")
+            self.assertTrue(any("fingerprint" in f.message.lower() for f in check_workspace(root, self.c)))
+
 
 # --- Task 8: repo prose checks ---
 from implr_validate.checks import check_repo_prose

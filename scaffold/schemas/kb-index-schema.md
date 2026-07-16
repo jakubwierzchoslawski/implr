@@ -199,10 +199,14 @@ master_checksum: {md5 of sorted domain synthesis_checksums}
 | authentication | 3 | User, Session, Token | 1 | Performance, Compliance | 2 |
 
 ## Cross-Domain Contradictions
-| ID | Fingerprint | FP-Ver | Description | Domain A | Source A | Domain B | Source B | Type |
-|----|-------------|--------|-------------|---------|---------|---------|---------|------|
+| ID | Fingerprint | FP-Ver | Domain A | Statement A | Source A | Domain B | Statement B | Source B | Type |
+|----|-------------|--------|---------|------------|---------|---------|------------|---------|------|
 
 If none: `None detected.`
+
+`Statement A`/`Statement B` carry the two conflicting statements (one per domain) so the row is
+fingerprint-recomputable exactly like a domain synthesis contradiction. `implr-validate
+--workspace` recomputes these fingerprints too.
 
 ## Global NFR Candidates
 | Category | Frequency | Domains |
@@ -332,8 +336,10 @@ version for human readers.
 An LLM must NOT hand-compute this hash. The `doc-ingest` orchestrator computes it by writing the
 five fields to a temp JSON file and calling
 `python scripts/implr_validate --fingerprint <file>`. `implr-validate --workspace` recomputes
-each fingerprint stored in a domain synthesis `Contradictions Detected` table (the only surface
-that carries all five raw fields) from its cells and fails on any mismatch — so a hand-written
-or hallucinated hash is caught. The master `Cross-Domain Contradictions` and
-`resolved-contradictions.md` tables carry copies of the synthesis fingerprint and are not
-independently recomputable. To change the algorithm, bump `fingerprint_version`.
+each fingerprint stored in a domain synthesis `Contradictions Detected` table AND in the master
+`Cross-Domain Contradictions` table (both carry all five raw fields as named columns) from its
+cells and fails on any mismatch — so a hand-written or hallucinated hash is caught. The
+`resolved-contradictions.md` table stores a *copy* of a synthesis fingerprint as its match key
+(its rows lack separate statements), so it is not independently recomputable; verifying it would
+be a cross-reference check against the syntheses rather than a recomputation. To change the
+algorithm, bump `fingerprint_version`.
