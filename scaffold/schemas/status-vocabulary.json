@@ -1,0 +1,48 @@
+{
+  "_comment": "SINGLE SOURCE OF TRUTH for implr artefact state machines. Do not rederive these enums; reference this file by name. Schema/template display comments may mirror these values ONLY if validated against this file by implr-validate --repo; free prose must not hardcode them. Consumed by scripts/implr_validate. Human overview: status-vocabulary.md.",
+  "machines": {
+    "requirement": {
+      "states": ["draft", "under-review", "approved", "rejected", "superseded"],
+      "initial": "draft",
+      "terminal": ["rejected", "superseded"],
+      "transitions": [
+        {"from": "draft", "to": "under-review"},
+        {"from": "under-review", "to": "approved"},
+        {"from": "under-review", "to": "rejected"},
+        {"from": "approved", "to": "under-review", "note": "reopened by contradictory/correction CR"},
+        {"from": "approved", "to": "superseded", "note": "replaced via override CR; superseded_by set"}
+      ]
+    },
+    "plan": {
+      "states": ["ready", "in-progress", "done", "blocked", "needs-rework"],
+      "initial": "ready",
+      "terminal": [],
+      "transitions": [
+        {"from": "ready", "to": "in-progress"},
+        {"from": "in-progress", "to": "done"},
+        {"from": "ready", "to": "blocked"},
+        {"from": "in-progress", "to": "blocked"},
+        {"from": "blocked", "to": "ready"},
+        {"from": "done", "to": "in-progress", "note": "review verdict changes-required/rejected"},
+        {"from": "done", "to": "needs-rework", "by": "cr-applier", "note": "only cr-applier writes this"},
+        {"from": "needs-rework", "to": "ready", "by": "dev-planner --replan", "note": "only exit from needs-rework"}
+      ]
+    },
+    "review": {
+      "states": ["approved", "approved-with-warnings", "changes-required", "rejected"],
+      "initial": null,
+      "terminal": [],
+      "transitions": []
+    },
+    "cr": {
+      "states": ["draft", "approved", "rejected", "applied"],
+      "initial": "draft",
+      "terminal": ["rejected", "applied"],
+      "transitions": [
+        {"from": "draft", "to": "approved"},
+        {"from": "draft", "to": "rejected"},
+        {"from": "approved", "to": "applied"}
+      ]
+    }
+  }
+}
