@@ -622,9 +622,9 @@ git commit -m "feat(ba-cr): stamp CR lifecycle and write append-only cr-log.md"
 
 - [ ] **Step 1: Add Phase 4.5 to `ba-cr/SKILL.md`**
 
-Insert after Phase 4:
+Insert after Phase 4 (the block below is the exact text to add to `ba-cr/SKILL.md`):
 
-```
+````
 ### Phase 4.5 — Create genuinely-new requirements (if any)
 
 If impact analysis reported new requirements are needed (not just amendments):
@@ -668,7 +668,7 @@ If impact analysis reported new requirements are needed (not just amendments):
    `status: draft`, add the CR filename to `source_docs`, and add the new id to
    `requirements-index.md`.
 5. Report the new REQ IDs and that they require human approval before planning.
-```
+````
 
 Add to the Phase 7 report: `New requirements created: {list of REQ ids (draft — need approval)}`.
 

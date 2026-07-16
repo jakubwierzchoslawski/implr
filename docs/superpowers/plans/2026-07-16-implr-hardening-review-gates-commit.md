@@ -204,9 +204,9 @@ git commit -m "feat(validate): add --source-ref (git-or-fallback) helper"
 **Interfaces:**
 - Produces: the canonical structure of `docs/implr/plans/test-results/PLAN-F-NNN-results.md`, written by `plan-runner`, read by `code-review-worker`.
 
-- [ ] **Step 1: Write the schema**
+- [ ] **Step 1: Write the schema** (the block below is the exact file content)
 
-```markdown
+````markdown
 # Test Results Schema
 
 Per-plan record of test execution, written by `plan-runner` and consumed by
@@ -239,7 +239,7 @@ A review downgrades to at least `changes-required` when this file is:
 - `run_at` earlier than the plan's `executed_at`.
 
 Otherwise the review fails the plan on any covered test whose Result is not `pass`.
-```
+````
 
 - [ ] **Step 2: Verify repo clean (schema is not in schema_machine_map, so no enum check)**
 
