@@ -38,18 +38,19 @@ Read the CR. Read the target. Apply the change exactly as described in the CR's
 
 For plans:
 - For `action: patch`, apply the specific task additions/removals.
-- For `action: replan`, write a stub `replan_required: true` marker; the orchestrator will
-  invoke dev-planner separately. Do not regenerate the plan body yourself.
+- For `action: replan`, set the plan `status: needs-rework` (see `status-vocabulary.json`);
+  the orchestrator invokes `dev-planner --replan` separately. Do not regenerate the plan body
+  yourself.
 
 ## Return summary
 
 ```
 target_path: <path>
 target_kind: requirement | plan
-action_applied: patch | replan | replan_marker_set
+action_applied: patch | replan | needs_rework_set
 fields_changed:
   - source_docs
   - status: <old> → <new>
   - acceptance_criteria: +<n>
-status: applied | replan_required
+status: applied | needs-rework
 ```

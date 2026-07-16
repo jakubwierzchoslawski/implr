@@ -24,10 +24,10 @@ Apply the CR change exactly as described in the CR's `before`/`after` fields. Up
 ```
 target_path: <path>
 target_kind: requirement | plan
-action_applied: patch | replan | replan_marker_set
+action_applied: patch | replan | needs_rework_set
 fields_changed:
   - source_docs
   - status: <old> → <new>
   - acceptance_criteria: +<n>
-status: applied | replan_required
+status: applied | needs-rework
 ```

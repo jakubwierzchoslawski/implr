@@ -15,7 +15,7 @@ docs/kb/**                      source documents (you own these)
    │
    ▼  doc-ingest
 docs/implr/kb-index/
-   ├── cache/{slug}.md         normalised text per file
+   ├── cache/{slug}.txt        normalised text per file
    ├── digests/per-doc/         one structured digest per file
    ├── domains/{domain}-synthesis.md   consolidated per domain + contradictions
    └── master-synthesis.md      system-wide view (bounded size)
@@ -163,7 +163,7 @@ for the details that matter — not back to the original raw document.
 - **Digester's input only.** The cache is the input to `doc-ingest-digester` and nothing else.
   Downstream skills (`ba-requirements-gen`, `arch-gen`) never read cache directly — they read
   digests, which are the complete structured extraction of each source file.
-- **Checksum gate.** `cache/{slug}.md` is written with the source checksum recorded. On
+- **Checksum gate.** `cache/{slug}.txt` is written with the source checksum recorded. On
   subsequent runs, if the checksum is unchanged the cache is skipped and the existing digest
   is reused — no re-extraction needed.
 
@@ -176,8 +176,10 @@ Contradictions are found at synthesis time, resolved before requirement generati
 1. When a document changes, its digest is rebuilt.
 2. The domain synthesis is rebuilt by reading **all** digests in that domain together — so a new
    document is automatically compared against every existing document in its domain.
-3. Contradictions are classified: Hard conflict, Soft conflict, Version drift, Scope overlap,
-   and assigned a C-xxx ID.
+3. Contradictions are classified: Hard conflict, Soft conflict, Version drift, Scope overlap.
+   Each is given a stable `(fingerprint_version, fingerprint)` — a versioned SHA-256 over its
+   normalised, order-independent fields, computed by `scripts/implr_validate --fingerprint`
+   (an LLM must not hand-compute it). A `C-xxx` ID is also assigned as a display label only.
 4. Cross-domain contradictions are caught when the master synthesis is rebuilt from domain
    syntheses.
 5. When you run `/ba-requirements-gen`, **Phase 0** reads all C-xxx IDs from the domain and
@@ -188,8 +190,9 @@ Contradictions are found at synthesis time, resolved before requirement generati
    with the C-ID preserved in the Source column (`Source: C-003 (deferred)`).
 
 `resolved-contradictions.md` is append-only. Re-running `/ba-requirements-gen` only prompts
-for contradictions not already in the file. To change a decision, edit the file manually and
-re-run.
+for contradictions whose `(fingerprint_version, fingerprint)` is not already in the file —
+matching is by fingerprint, never by `C-xxx` label. To change a decision, edit the file
+manually and re-run.
 
 To halt on any deferred contradictions that become Open Questions, set
 `contradictions_block: true` in `docs/implr/config/implr.config.yaml`.
@@ -246,21 +249,27 @@ return.*
 ```
 ready → in-progress → done
   ↑                     │
-  └── changes-required ◄┘  (set by dev-code-review)
-blocked → ready          (once the blocker is resolved)
+  │                     ├─► in-progress   (review verdict of changes-required or rejected)
+  │                     └─► needs-rework  (a CR mandates plan changes, set by cr-applier)
+blocked → ready               (once the blocker is resolved)
+needs-rework → ready          (dev-planner --replan regenerates the plan)
 ```
+
+Legal plan states and transitions are defined once in
+`docs/implr/schemas/status-vocabulary.json`; this table mirrors it. `changes-required` is a
+**review** verdict, not a plan status.
 
 | Transition | Who | Condition |
 |-----------|-----|-----------|
 | `ready` | dev-planner | Plan created; ready for a developer to start |
 | `ready` → `in-progress` | dev-executor | Developer starts implementation |
 | `in-progress` → `done` | dev-executor | All tasks complete; code submitted for review |
-| `done` → `changes-required` | dev-code-review | Review finds blocking issues |
-| `changes-required` → `in-progress` | dev-executor | Developer picks up the changes |
+| `done` → `in-progress` | dev-executor | Review verdict is changes-required or rejected; developer reopens the plan |
+| `done` → `needs-rework` | cr-applier | A CR mandates plan changes |
+| `needs-rework` → `ready` | dev-planner | `dev-planner --replan` regenerates the plan (only exit from needs-rework) |
 | `ready` → `blocked` | dev-planner | A required dependency has no plan yet |
+| `in-progress` → `blocked` | dev-executor | A hard blocker halts implementation |
 | `blocked` → `ready` | Human or dev-planner | Blocker resolved |
-
-A plan replanned by `dev-planner --replan` returns to `ready` regardless of prior status.
 
 ### Review verdict → plan effect
 | Verdict | Plan effect |
@@ -437,8 +446,8 @@ requirement update triggered by a CR is traceable: the CR file is added to the r
 5. You approve: all / selected / none
 
 6. On approval, ba-cr dispatches parallel `cr-applier` subagents (one per affected
-   requirement, one per affected plan). Plans marked `replan_required` are queued; ba-cr
-   then offers to run `/dev-planner --replan` for them. `/arch-gen --update` is suggested
+   requirement, one per affected plan). Plans the applier set to `needs-rework` are queued;
+   ba-cr then offers to run `/dev-planner --replan` for them. `/arch-gen --update` is suggested
    only if the architecture domain was touched.
 ```
 

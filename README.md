@@ -440,26 +440,35 @@ draft ──► approved ──► under-review ──► approved        (block
 
 ```
 ready ──► in-progress ──► done
-  ▲           │              │
-  │           ▼              ▼
-  └─── replan_required ◄─────┘  (via ba-cr)
+  │                        │
+  ├──► blocked ──► ready    ├──► needs-rework (via ba-cr) ──► ready (via dev-planner --replan)
+  └───────────────────────►┘  (done → in-progress on review changes-required/rejected)
 ```
+
+Legal plan states and transitions are defined once in
+`docs/implr/schemas/status-vocabulary.json`; this diagram mirrors it.
 
 | Transition | Triggered by | Who |
 |---|---|---|
 | `(none) → ready` | dev-planner writes a new plan for an approved requirement | dev-planner |
 | `ready → in-progress` | dev-executor begins implementing the plan | dev-executor |
 | `in-progress → done` | All tasks complete and tests pass | dev-executor |
-| `done → replan_required` | A CR mandates plan changes | ba-cr → cr-applier |
-| `replan_required → ready` | dev-planner --replan regenerates the plan | dev-planner |
+| `ready/in-progress → blocked` | Open questions or a hard blocker halt the plan | dev-planner / dev-executor |
+| `blocked → ready` | The blocker is resolved | dev-planner |
+| `done → in-progress` | A review verdict of changes-required/rejected reopens the plan | dev-executor |
+| `done → needs-rework` | A CR mandates plan changes | ba-cr → cr-applier |
+| `needs-rework → ready` | dev-planner --replan regenerates the plan | dev-planner |
 
 ### Change Requests
 
 ```
-draft ──► impact-analysed ──► approved ──► applied
-                │                  │
-                └─► rejected ◄─────┘
+draft ──► approved ──► applied
+   │          │
+   └─► rejected ◄┘
 ```
+
+Legal CR states and transitions are defined once in
+`docs/implr/schemas/status-vocabulary.json`; this diagram mirrors it.
 
 Three entry paths produce a CR:
 
@@ -471,9 +480,8 @@ Three entry paths produce a CR:
 | Transition | Triggered by | Who |
 |---|---|---|
 | `(none) → draft` | CR file created by one of the three paths | ba-cr or you |
-| `draft → impact-analysed` | cr-impact-analyzer dispatched and returns report | ba-cr |
-| `impact-analysed → approved` | You answer `yes` to the impact prompt | You |
-| `impact-analysed → rejected` | You answer `no` | You |
+| `draft → approved` | cr-impact-analyzer returns its report and you answer `yes` to the impact prompt | ba-cr / You |
+| `draft → rejected` | You answer `no` to the impact prompt | You |
 | `approved → applied` | cr-applier dispatches finish on all affected targets | ba-cr |
 
 Full diagrams (including replan loops and approval edge cases) in

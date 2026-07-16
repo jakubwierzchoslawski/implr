@@ -84,7 +84,7 @@ For each affected requirement and each affected plan:
 
 ### Phase 5 — Handle replan markers
 
-For plans where the applier set `replan_required: true`, queue them. After all appliers
+For plans the applier set to `needs-rework`, queue them. After all appliers
 return, present the user with:
 ```
 The following plans need replanning: {list}
