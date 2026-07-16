@@ -18,7 +18,7 @@ behaviour:
   default_tdd_threshold: M         # complexity at/above which TDD is enforced (XS/S skip)
   require_approved_status: true    # dev-planner only processes approved requirements
   contradictions_block: false      # false = generate with open questions; true = halt on conflict
-  kb_supported_formats: [md, pdf, docx, xlsx, csv, txt, vtt]
+  kb_supported_formats: [md, pdf, docx, xlsx, pptx, odp, odt, ods, csv, txt, vtt, png, jpg, jpeg, gif, webp, tiff, bmp]
 
 jira:
   # Used by the future ba-jira-populate skill. Safe to leave as-is until then.

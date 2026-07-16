@@ -24,9 +24,11 @@ A registry of every file discovered in the knowledge base. One YAML list entry p
 ```yaml
 - filename: auth-flow.md
   original_path: docs/kb/auth/auth-flow.md
-  cache_path: docs/implr/kb-index/cache/auth-flow.md
+  cache_path: docs/implr/kb-index/cache/auth-flow.txt
   digest_path: docs/implr/kb-index/digests/per-doc/auth-flow-digest.md
-  format: md                      # md | pdf | docx | xlsx | csv | txt | vtt | other
+  format: md                      # md | pdf | docx | xlsx | pptx | odp | odt | ods |
+                                  # csv | txt | vtt | png | jpg | jpeg | gif | webp |
+                                  # tiff | bmp | other
   format_supported: true
   checksum: abc123de              # md5 of the ORIGINAL file
   last_modified: 2025-01-15T10:32:00Z
@@ -58,9 +60,9 @@ A registry of every file discovered in the knowledge base. One YAML list entry p
 
 ---
 
-## 2. cache/{slug}.md — Normalised Text Cache
+## 2. cache/{slug}.txt — Normalised Text Cache
 
-Location: `docs/implr/kb-index/cache/{slug}.md`
+Location: `docs/implr/kb-index/cache/{slug}.txt`
 
 Plain-text extraction of each non-trivial source file. Created so digest logic is
 format-agnostic — it always reads text. For `.md` and `.txt` the cache may be a direct copy.
