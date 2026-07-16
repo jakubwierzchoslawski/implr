@@ -128,20 +128,15 @@ Expected: `ok`
 **Machine-readable source of truth:** `status-vocabulary.json` (this directory).
 
 This is the ONLY place implr defines legal states and transitions for its four artefact state
-machines. Every other file — prose schemas, templates, README, WORKFLOW, agents, SKILLs — must
-reference this vocabulary by name and MUST NOT restate an enum value inline. `implr-validate
---repo` fails the build if any file hardcodes a status value that diverges from the JSON.
+machines — `requirement`, `plan`, `review`, and `cr`. Every other file — prose schemas,
+templates, README, WORKFLOW, agents, SKILLs — must reference this vocabulary by name and MUST
+NOT restate an enum value inline. `implr-validate --repo` fails the build if any file hardcodes a
+status value that diverges from the JSON.
 
-| Machine | States |
-|---------|--------|
-| requirement | draft, under-review, approved, rejected, superseded |
-| plan | ready, in-progress, done, blocked, needs-rework |
-| review | approved, approved-with-warnings, changes-required, rejected |
-| cr | draft, approved, rejected, applied |
-
-See `status-vocabulary.json` for the authoritative list and the allowed transitions (including
-which actor performs each). This table is a convenience mirror; the JSON wins on any
-discrepancy, and the validator enforces it.
+To read the states and transitions, open `status-vocabulary.json`; each machine lists its
+`states`, `initial`, `terminal`, and `transitions` (with the actor that performs each). This
+document deliberately does NOT restate the state values — doing so would create exactly the
+drift surface the JSON exists to prevent.
 ```
 
 - [ ] **Step 4: Commit**
@@ -159,7 +154,7 @@ git commit -m "feat(schemas): add machine-readable status-vocabulary as single s
 - Create: `scaffold/schemas/frontmatter-rules.json`
 
 **Interfaces:**
-- Produces: `artefact_types` (map of type → `{id_field, id_pattern, status_machine, required[], path_globs[]}`), `schema_machine_map` (schema/template filename → machine), and `repo_prose_checks` (`banned_tokens[]`, `exempt_paths[]`, `enum_check_surfaces[]`, `enum_check_exempt[]`). Consumed by `contracts.py` (Task 5) and `checks.py` (Tasks 6–8).
+- Produces: `artefact_types` (map of type → `{id_field, id_pattern, status_machine, required[], index_file, path_globs[]}`), `schema_machine_map` (schema/template filename → machine), and `repo_prose_checks` (`banned_tokens[]`, `banned_token_surfaces[]`, `enum_comment_surfaces[]`, `exempt_paths[]`, `enum_check_exempt[]`, `cache_path_surfaces[]`, `canonical_formats[]`). Consumed by `contracts.py` (Task 5) and `checks.py` (Tasks 6–8).
 
 - [ ] **Step 1: Write `frontmatter-rules.json`**
 
@@ -172,6 +167,7 @@ git commit -m "feat(schemas): add machine-readable status-vocabulary as single s
       "id_pattern": "^REQ-[FN]-[0-9]{3}$",
       "status_machine": "requirement",
       "required": ["req_id", "slug", "title", "type", "status", "complexity", "tdd_required", "source_docs", "created_at", "updated_at"],
+      "index_file": "docs/implr/requirements/requirements-index.md",
       "path_globs": ["docs/implr/requirements/functional/*.md", "docs/implr/requirements/non-functional/*.md"]
     },
     "plan": {
@@ -179,6 +175,7 @@ git commit -m "feat(schemas): add machine-readable status-vocabulary as single s
       "id_pattern": "^PLAN-[FN]-[0-9]{3}$",
       "status_machine": "plan",
       "required": ["plan_id", "slug", "title", "linked_requirement", "type", "status", "complexity", "tdd_required", "created_at", "updated_at"],
+      "index_file": "docs/implr/plans/plans-index.md",
       "path_globs": ["docs/implr/plans/functional/*.md", "docs/implr/plans/non-functional/*.md"]
     },
     "cr": {
@@ -186,6 +183,7 @@ git commit -m "feat(schemas): add machine-readable status-vocabulary as single s
       "id_pattern": "^CR-[0-9]{3}$",
       "status_machine": "cr",
       "required": ["cr_id", "slug", "title", "status", "change_type", "source", "created_at"],
+      "index_file": "docs/implr/requirements/cr-index.md",
       "path_globs": ["docs/kb/change-requests/*.md"]
     },
     "review": {
@@ -193,7 +191,8 @@ git commit -m "feat(schemas): add machine-readable status-vocabulary as single s
       "id_pattern": "^REVIEW-[FN]-[0-9]{3}$",
       "status_machine": "review",
       "required": ["review_id", "status"],
-      "path_globs": ["docs/implr/reviews/functional/*.md", "docs/implr/reviews/non-functional/*.md"]
+      "index_file": "docs/implr/reviews/reviews-index.md",
+      "path_globs": ["docs/implr/reviews/REVIEW-*.md"]
     }
   },
   "schema_machine_map": {
@@ -211,12 +210,20 @@ git commit -m "feat(schemas): add machine-readable status-vocabulary as single s
       {"token": "replan_required", "reason": "retired plan-status marker; use needs-rework"},
       {"token": "impact-analysed", "reason": "never a real CR status; CR states are draft|approved|rejected|applied"}
     ],
+    "banned_token_surfaces": ["scaffold/", "skills/", ".claude/agents/", "README.md", "docs/WORKFLOW.md"],
+    "enum_comment_surfaces": ["scaffold/schemas/", "scaffold/templates/"],
     "exempt_paths": ["CHANGELOG.md", "docs/superpowers/"],
-    "enum_check_surfaces": ["scaffold/schemas/", "scaffold/templates/"],
-    "enum_check_exempt": ["scaffold/schemas/status-vocabulary.json", "scaffold/schemas/status-vocabulary.md"]
+    "enum_check_exempt": ["scaffold/schemas/status-vocabulary.json", "scaffold/schemas/status-vocabulary.md"],
+    "cache_path_surfaces": ["scaffold/schemas/", "skills/", ".claude/agents/"],
+    "canonical_formats": ["md", "pdf", "docx", "xlsx", "pptx", "odp", "odt", "ods", "csv", "txt", "vtt", "png", "jpg", "jpeg", "gif", "webp", "tiff", "bmp"]
   }
 }
 ```
+
+Notes: `banned_token_surfaces` is deliberately broad (this is where the review found retired
+tokens — README, WORKFLOW, skills, agents). `enum_comment_surfaces` is narrow because the
+`status: x  # a | b | c` comment pattern only appears in schemas/templates. `cache_path_surfaces`
+and `canonical_formats` drive the Task 8 cache-path and format-list checks.
 
 - [ ] **Step 2: Verify the JSON parses**
 
@@ -825,7 +832,7 @@ git commit -m "feat(validate): add artefact frontmatter/enum/status checks"
 
 **Interfaces:**
 - Consumes: `Contracts`, `Finding`, `check_artefact_file` (Task 6).
-- Produces: `check_workspace(root: str, contracts) -> list[Finding]`. Discovers artefacts via each type's `path_globs` (relative to `root`), runs `check_artefact_file` on each, then checks `linked_requirement` on plans resolves to an existing requirement id, and that each plan `PLAN-x-NNN` has a matching requirement number when its linked requirement is present.
+- Produces: `check_workspace(root: str, contracts) -> list[Finding]`. Discovers artefacts via each type's `path_globs`, runs `check_artefact_file` on each, then verifies: (a) plan `linked_requirement` resolves to an existing requirement; (b) `PLAN-x-NNN` number matches its linked requirement number; (c) requirement `superseded_by` (when set) resolves to an existing requirement; (d) **index agreement** — for each type with an `index_file`, the set of artefact ids referenced in the index equals the set of discovered artefact ids (both a missing-from-index and a phantom-in-index id are findings).
 
 - [ ] **Step 1: Write the failing tests (append to `tests/test_checks.py`)**
 
@@ -848,14 +855,24 @@ updated_at: 2026-01-01T00:00:00Z
 # body
 """
 
+REQ_INDEX = "# Requirements Index\n\n| ID | ... |\n| REQ-F-001 | ok |\n"
+PLAN_INDEX = "# Plans Index\n\n| ID | ... |\n| PLAN-F-001 | ok |\n"
 
-def _mk_workspace(root):
+
+def _mk_workspace(root, req_index=REQ_INDEX, plan_index=PLAN_INDEX, with_plan=True):
     req_dir = os.path.join(root, "docs", "implr", "requirements", "functional")
     plan_dir = os.path.join(root, "docs", "implr", "plans", "functional")
     os.makedirs(req_dir)
     os.makedirs(plan_dir)
     with open(os.path.join(req_dir, "REQ-F-001-x.md"), "w", encoding="utf-8") as f:
         f.write(VALID_REQ)
+    with open(os.path.join(root, "docs", "implr", "requirements", "requirements-index.md"), "w", encoding="utf-8") as f:
+        f.write(req_index)
+    if with_plan:
+        with open(os.path.join(plan_dir, "PLAN-F-001-x.md"), "w", encoding="utf-8") as f:
+            f.write(VALID_PLAN)
+        with open(os.path.join(root, "docs", "implr", "plans", "plans-index.md"), "w", encoding="utf-8") as f:
+            f.write(plan_index)
     return req_dir, plan_dir
 
 
@@ -865,20 +882,45 @@ class TestWorkspace(unittest.TestCase):
 
     def test_valid_workspace_clean(self):
         with tempfile.TemporaryDirectory() as root:
-            _, plan_dir = _mk_workspace(root)
-            with open(os.path.join(plan_dir, "PLAN-F-001-x.md"), "w", encoding="utf-8") as f:
-                f.write(VALID_PLAN)
-            findings = check_workspace(root, self.c)
-            self.assertEqual(findings, [])
+            _mk_workspace(root)
+            self.assertEqual(check_workspace(root, self.c), [])
 
     def test_dangling_linked_requirement_flagged(self):
         with tempfile.TemporaryDirectory() as root:
-            _, plan_dir = _mk_workspace(root)
+            _mk_workspace(root, with_plan=False)
+            plan_dir = os.path.join(root, "docs", "implr", "plans", "functional")
             dangling = VALID_PLAN.replace("linked_requirement: REQ-F-001", "linked_requirement: REQ-F-099")
             with open(os.path.join(plan_dir, "PLAN-F-001-x.md"), "w", encoding="utf-8") as f:
                 f.write(dangling)
+            with open(os.path.join(root, "docs", "implr", "plans", "plans-index.md"), "w", encoding="utf-8") as f:
+                f.write(PLAN_INDEX)
             findings = check_workspace(root, self.c)
             self.assertTrue(any("REQ-F-099" in f.message for f in findings))
+
+    def test_dangling_superseded_by_flagged(self):
+        with tempfile.TemporaryDirectory() as root:
+            _mk_workspace(root, with_plan=False)
+            req = os.path.join(root, "docs", "implr", "requirements", "functional", "REQ-F-001-x.md")
+            with open(req, encoding="utf-8") as f:
+                text = f.read()
+            with open(req, "w", encoding="utf-8") as f:
+                f.write(text.replace("status: approved", "status: superseded\nsuperseded_by: REQ-F-777"))
+            findings = check_workspace(root, self.c)
+            self.assertTrue(any("REQ-F-777" in f.message for f in findings))
+
+    def test_index_missing_id_flagged(self):
+        with tempfile.TemporaryDirectory() as root:
+            # index omits REQ-F-001 that exists on disk
+            _mk_workspace(root, req_index="# Requirements Index\n\n(empty)\n", with_plan=False)
+            findings = check_workspace(root, self.c)
+            self.assertTrue(any("REQ-F-001" in f.message and "index" in f.message.lower() for f in findings))
+
+    def test_index_phantom_id_flagged(self):
+        with tempfile.TemporaryDirectory() as root:
+            # index lists REQ-F-050 with no file
+            _mk_workspace(root, req_index="# Requirements Index\n\n| REQ-F-001 | ok |\n| REQ-F-050 | phantom |\n", with_plan=False)
+            findings = check_workspace(root, self.c)
+            self.assertTrue(any("REQ-F-050" in f.message and "index" in f.message.lower() for f in findings))
 ```
 
 - [ ] **Step 2: Run to verify the new tests fail**
@@ -904,19 +946,29 @@ def _frontmatter_or_none(path):
 
 def check_workspace(root, contracts):
     findings = []
-    req_ids = set()
-    plans = []
+    ids_by_type = {}          # atype -> set of ids found on disk
+    plans = []                # (path, fm)
+    requirements = []         # (path, fm)
     for atype, spec in contracts.artefact_types.items():
+        found = set()
         for pattern in spec["path_globs"]:
             for path in glob.glob(os.path.join(root, pattern.replace("/", os.sep))):
                 findings.extend(check_artefact_file(path, atype, contracts))
                 fm = _frontmatter_or_none(path)
                 if fm is None:
                     continue
-                if atype == "requirement" and "req_id" in fm:
-                    req_ids.add(fm["req_id"])
+                idv = fm.get(spec["id_field"], "")
+                if idv:
+                    found.add(idv)
                 if atype == "plan":
                     plans.append((path, fm))
+                if atype == "requirement":
+                    requirements.append((path, fm))
+        ids_by_type[atype] = found
+
+    req_ids = ids_by_type.get("requirement", set())
+
+    # (a)/(b) plan linkage + numbering
     for path, fm in plans:
         linked = fm.get("linked_requirement", "")
         if linked and linked not in req_ids:
@@ -924,13 +976,38 @@ def check_workspace(root, contracts):
         pid = fm.get("plan_id", "")
         if linked and pid[-3:].isdigit() and linked[-3:].isdigit() and pid[-3:] != linked[-3:]:
             findings.append(Finding("error", path, "plan %s number does not match linked %s" % (pid, linked)))
+
+    # (c) superseded_by resolution
+    for path, fm in requirements:
+        sb = fm.get("superseded_by", "")
+        if sb and sb not in req_ids:
+            findings.append(Finding("error", path, "superseded_by %s does not exist" % sb))
+
+    # (d) index agreement
+    for atype, spec in contracts.artefact_types.items():
+        index_rel = spec.get("index_file")
+        if not index_rel:
+            continue
+        index_path = os.path.join(root, index_rel.replace("/", os.sep))
+        if not os.path.isfile(index_path):
+            if ids_by_type.get(atype):
+                findings.append(Finding("error", index_rel, "index file missing but %d %s artefact(s) exist" % (len(ids_by_type[atype]), atype)))
+            continue
+        with open(index_path, encoding="utf-8") as f:
+            index_text = f.read()
+        indexed = set(re.findall(spec["id_pattern"].strip("^$"), index_text))
+        disk = ids_by_type.get(atype, set())
+        for missing in sorted(disk - indexed):
+            findings.append(Finding("error", index_rel, "%s exists on disk but is not in the index" % missing))
+        for phantom in sorted(indexed - disk):
+            findings.append(Finding("error", index_rel, "%s is in the index but has no file" % phantom))
     return findings
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python -m unittest tests.test_checks -v`
-Expected: PASS (now 6 tests total in the file).
+Expected: PASS (10 tests now in the file — 4 from Task 6 plus 6 workspace tests).
 
 - [ ] **Step 5: Commit**
 
@@ -949,7 +1026,7 @@ git commit -m "feat(validate): add cross-reference and workspace discovery check
 
 **Interfaces:**
 - Consumes: `Contracts`, `Finding`.
-- Produces: `check_repo_prose(root: str, contracts) -> list[Finding]`. (a) fails on any `banned_tokens` token found in a file under `enum_check_surfaces` that is not under an `exempt_paths` prefix; (b) in files whose basename is in `schema_machine_map`, extracts status enum comments of the form `status: <val> # a | b | c` and flags any listed value not in that file's mapped machine states.
+- Produces: `check_repo_prose(root: str, contracts) -> list[Finding]`. (a) retired `banned_tokens` found on any `banned_token_surfaces` path (README, WORKFLOW, skills, agents, scaffold) not under `exempt_paths`; (b) divergent status enum comments in `schema_machine_map` files under `enum_comment_surfaces`; (c) retired `.md` cache-path references on `cache_path_surfaces`; (d) `kb_supported_formats` in the shipped config not equal to `canonical_formats`.
 
 - [ ] **Step 1: Write the failing tests (append to `tests/test_checks.py`)**
 
@@ -968,32 +1045,51 @@ class TestRepoProse(unittest.TestCase):
         with open(p, "w", encoding="utf-8") as f:
             f.write(text)
 
-    def test_banned_token_flagged_on_surface(self):
+    def test_banned_token_flagged_in_template(self):
         with tempfile.TemporaryDirectory() as root:
             self._repo(root, "scaffold/templates/plan-template.md", "status: replan_required\n")
+            self.assertTrue(any("replan_required" in f.message for f in check_repo_prose(root, self.c)))
+
+    def test_banned_token_flagged_in_readme_and_workflow(self):
+        # the drift class the original review found — must be caught on broad surfaces
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "README.md", "the plan can be replan_required after a CR\n")
+            self._repo(root, "docs/WORKFLOW.md", "CR goes draft -> impact-analysed -> approved\n")
             findings = check_repo_prose(root, self.c)
             self.assertTrue(any("replan_required" in f.message for f in findings))
+            self.assertTrue(any("impact-analysed" in f.message for f in findings))
+
+    def test_banned_token_flagged_in_skill(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "skills/ba-cr/SKILL.md", "sets replan_required on the plan\n")
+            self.assertTrue(any("replan_required" in f.message for f in check_repo_prose(root, self.c)))
 
     def test_banned_token_exempt_in_changelog(self):
         with tempfile.TemporaryDirectory() as root:
             self._repo(root, "CHANGELOG.md", "removed replan_required in v3\n")
-            findings = check_repo_prose(root, self.c)
-            self.assertEqual([f for f in findings if "replan_required" in f.message], [])
+            self.assertEqual([f for f in check_repo_prose(root, self.c) if "replan_required" in f.message], [])
 
     def test_divergent_enum_comment_flagged(self):
         with tempfile.TemporaryDirectory() as root:
-            # 'changes-required' is a review state, illegal for the plan machine
             self._repo(root, "scaffold/schemas/plan-schema.md",
                        "status: ready   # ready | in-progress | done | changes-required\n")
-            findings = check_repo_prose(root, self.c)
-            self.assertTrue(any("changes-required" in f.message for f in findings))
+            self.assertTrue(any("changes-required" in f.message for f in check_repo_prose(root, self.c)))
 
     def test_matching_enum_comment_clean(self):
         with tempfile.TemporaryDirectory() as root:
             self._repo(root, "scaffold/schemas/plan-schema.md",
                        "status: ready   # ready | in-progress | done | blocked | needs-rework\n")
-            findings = check_repo_prose(root, self.c)
-            self.assertEqual(findings, [])
+            self.assertEqual(check_repo_prose(root, self.c), [])
+
+    def test_cache_md_extension_flagged(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "scaffold/schemas/kb-index-schema.md", "cache_path: docs/implr/kb-index/cache/x.md\n")
+            self.assertTrue(any("cache" in f.message.lower() for f in check_repo_prose(root, self.c)))
+
+    def test_format_list_mismatch_flagged(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, "scaffold/config/implr.config.yaml", "  kb_supported_formats: [md, pdf, docx]\n")
+            self.assertTrue(any("kb_supported_formats" in f.message for f in check_repo_prose(root, self.c)))
 ```
 
 - [ ] **Step 2: Run to verify the new tests fail**
@@ -1013,13 +1109,19 @@ def _is_exempt(rel, exempt_prefixes):
     return any(rel == p or rel.startswith(p) for p in exempt_prefixes)
 
 
+CACHE_MD_RE = re.compile(r"cache/\{slug\}\.md|cache/[\w-]+\.md|cache_path:\s*\S+\.md")
+FORMATS_RE = re.compile(r"kb_supported_formats:\s*\[([^\]]*)\]")
+
+
 def check_repo_prose(root, contracts):
     cfg = contracts.repo_prose_checks
     findings = []
     banned = cfg["banned_tokens"]
     exempt = cfg["exempt_paths"]
-    surfaces = cfg["enum_check_surfaces"]
+    banned_surfaces = cfg["banned_token_surfaces"]
+    enum_surfaces = cfg["enum_comment_surfaces"]
     enum_exempt = cfg["enum_check_exempt"]
+    cache_surfaces = cfg["cache_path_surfaces"]
     machine_map = contracts.schema_machine_map
 
     for dirpath, _dirs, files in os.walk(root):
@@ -1031,26 +1133,43 @@ def check_repo_prose(root, contracts):
             with open(abspath, encoding="utf-8") as f:
                 text = f.read()
 
-            on_surface = any(rel.startswith(s) for s in surfaces)
-            if on_surface and not _is_exempt(rel, exempt):
+            # (a) retired tokens — broad surface (README/WORKFLOW/skills/agents/scaffold)
+            if any(rel == s or rel.startswith(s) for s in banned_surfaces) and not _is_exempt(rel, exempt):
                 for b in banned:
                     if b["token"] in text:
                         findings.append(Finding("error", rel, "banned token %r (%s)" % (b["token"], b["reason"])))
 
-            if name in machine_map and not _is_exempt(rel, enum_exempt):
+            # (b) divergent enum comments — narrow surface (schemas/templates)
+            if name in machine_map and any(rel.startswith(s) for s in enum_surfaces) and not _is_exempt(rel, enum_exempt):
                 legal = contracts.states_for(machine_map[name])
                 for m in ENUM_COMMENT_RE.finditer(text):
-                    listed = [v.strip() for v in m.group(1).split("|")]
-                    for v in listed:
+                    for v in [x.strip() for x in m.group(1).split("|")]:
                         if v not in legal:
                             findings.append(Finding("error", rel, "enum comment lists %r, illegal for %s machine" % (v, machine_map[name])))
+
+            # (c) cache-path drift — the retired .md cache extension
+            if any(rel.startswith(s) for s in cache_surfaces):
+                if CACHE_MD_RE.search(text):
+                    findings.append(Finding("error", rel, "cache path uses retired .md extension; cache files are cache/{slug}.txt"))
+
+    # (d) format-list drift — the shipped config must equal the canonical set
+    canonical = list(cfg["canonical_formats"])
+    cfg_path = os.path.join(root, "scaffold", "config", "implr.config.yaml")
+    if os.path.isfile(cfg_path):
+        with open(cfg_path, encoding="utf-8") as f:
+            m = FORMATS_RE.search(f.read())
+        if m:
+            listed = [x.strip() for x in m.group(1).split(",") if x.strip()]
+            if listed != canonical:
+                findings.append(Finding("error", "scaffold/config/implr.config.yaml",
+                                        "kb_supported_formats %s != canonical %s" % (listed, canonical)))
     return findings
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python -m unittest tests.test_checks -v`
-Expected: PASS (now 10 tests total in the file).
+Expected: PASS (all TestRepoProse tests, including the new broad-surface, cache-path, and format tests).
 
 - [ ] **Step 5: Commit**
 
@@ -1293,6 +1412,37 @@ created_at: 2026-01-03T00:00:00Z
 ## Description of Change
 The spec said 3 failed attempts; the correct threshold is 5.
 ```
+
+- [ ] **Step 2b: Create the index files (required by the index-agreement check)**
+
+`tests/fixtures/sample-kb/docs/implr/requirements/requirements-index.md`:
+
+```markdown
+# Requirements Index
+
+> Maintained by ba-requirements-gen. Do not edit manually.
+
+## Functional
+| ID | Title | Status |
+|----|-------|--------|
+| REQ-F-001 | User Login | approved |
+```
+
+`tests/fixtures/sample-kb/docs/implr/requirements/cr-index.md`:
+
+```markdown
+# CR Index
+
+> Maintained by ba-cr. Do not edit manually.
+
+## Change Requests
+| CR ID | Title | Status | Change Type | Affected Reqs | Applied At |
+|-------|-------|--------|-------------|---------------|------------|
+| CR-001 | Add remember-me option to login | draft | scope-expansion | | |
+| CR-002 | Correct lockout threshold from 3 to 5 attempts | draft | correction | | |
+```
+
+(No plans yet in this fixture, so no `plans-index.md` is required — Plan 2 adds a plan and its index. The CRs live under `docs/kb/change-requests/` and are indexed by `cr-index.md` under `docs/implr/requirements/`.)
 
 - [ ] **Step 3: Create `expected-validate.txt`**
 

@@ -396,11 +396,75 @@ In `checks.py`, before the final `return findings` of `check_artefact_file`, add
 Run: `python -m unittest tests.test_checks -v`
 Expected: PASS (all, including both TestConditionalRequired tests).
 
+- [ ] **Step 4b: Add a CR-`targets` cross-reference test (append to `tests/test_checks.py`)**
+
+This closes spec cross-ref item "CR targets" (deferred from Plan 1 because `targets` is a Plan 2
+field). Extend the workspace helper to drop a CR under `docs/kb/change-requests/` and assert a
+dangling target is flagged.
+
+```python
+# append to tests/test_checks.py
+CR_WITH_TARGET = """---
+cr_id: CR-001
+slug: x
+title: "A change"
+status: draft
+change_type: correction
+source: cli-direct
+targets: [REQ-F-001]
+created_at: 2026-01-01T00:00:00Z
+---
+# CR-001
+"""
+
+
+class TestCrTargets(unittest.TestCase):
+    def setUp(self):
+        self.c = load_contracts(SCHEMA_DIR)
+
+    def _ws_with_cr(self, root, cr_text):
+        _mk_workspace(root, with_plan=False)
+        cr_dir = os.path.join(root, "docs", "kb", "change-requests")
+        os.makedirs(cr_dir)
+        with open(os.path.join(cr_dir, "CR-001-x.md"), "w", encoding="utf-8") as f:
+            f.write(cr_text)
+        # index the CR so index-agreement stays clean
+        with open(os.path.join(root, "docs", "implr", "requirements", "cr-index.md"), "w", encoding="utf-8") as f:
+            f.write("# CR Index\n\n| CR-001 | ok |\n")
+
+    def test_valid_target_clean(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._ws_with_cr(root, CR_WITH_TARGET)
+            self.assertEqual([f for f in check_workspace(root, self.c) if "target" in f.message.lower()], [])
+
+    def test_dangling_target_flagged(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._ws_with_cr(root, CR_WITH_TARGET.replace("REQ-F-001", "REQ-F-404"))
+            self.assertTrue(any("REQ-F-404" in f.message for f in check_workspace(root, self.c)))
+```
+
+- [ ] **Step 4c: Add the CR-targets check to `check_workspace`**
+
+In `checks.py` `check_workspace`, collect CR frontmatter in the discovery loop
+(`if atype == "cr": crs.append((path, fm))`, initialising `crs = []`), then after the
+`superseded_by` block add:
+
+```python
+    # CR targets resolve to existing requirements
+    for path, fm in crs:
+        for tgt in fm.get("targets", []) or []:
+            if tgt not in req_ids:
+                findings.append(Finding("error", path, "CR target %s does not exist" % tgt))
+```
+
+Run: `python -m unittest tests.test_checks -v`
+Expected: PASS (including `TestCrTargets`).
+
 - [ ] **Step 5: Commit**
 
 ```bash
 git add scripts/implr_validate/checks.py tests/test_checks.py
-git commit -m "feat(validate): enforce needs-rework plans carry rework_cr"
+git commit -m "feat(validate): enforce needs-rework rework_cr and CR target resolution"
 ```
 
 ---
@@ -684,7 +748,7 @@ git commit -m "feat(dev-planner): --replan is the sole exit from needs-rework"
 - Modify: `.claude/agents/task-executor.md` (Inputs; Work; Return summary)
 
 **Interfaces:**
-- Consumes: `--task-fingerprint` (Task 3). Produces: `dev-executor` refuses `needs-rework`; `plan-runner` computes and stores `task_fingerprints` and `implemented_files` on completion and passes each task's `prior_fingerprint` and `prior_tests_pass` into the executor envelope.
+- Consumes: `--task-fingerprint` (Task 3). Produces: `dev-executor` refuses `needs-rework`; `plan-runner` computes and stores `task_fingerprints` and `implemented_files` on completion and passes each task's `prior_fingerprint` into the executor envelope.
 
 - [ ] **Step 1: `dev-executor` refuses `needs-rework`**
 
@@ -702,23 +766,24 @@ fields to a temp JSON file and running
 `python scripts/implr_validate --task-fingerprint <tmp>`; store the printed value in
 `task_fingerprints[TASK-NNN]`."
 
-Add to Inputs a note that each envelope may carry `prior_fingerprint` and `prior_tests_pass`
-(passed through to task-executor).
+Add to Inputs a note that each envelope may carry `prior_fingerprint` (from
+`plan.task_fingerprints[TASK-NNN]`), passed through to task-executor.
 
 - [ ] **Step 3: `task-executor` idempotent skip**
 
 In `task-executor.md` Inputs, add to the envelope:
 ```
   prior_fingerprint: "t1:<hash> or empty"   # from plan.task_fingerprints, if any
-  prior_tests_pass: true | false | null      # last recorded result for this task
 ```
 
 Add a new Work step 0 before step 1:
 "0. **Idempotent skip check.** If `prior_fingerprint` is non-empty, recompute this task's
-fingerprint (the orchestrator supplies the same fields; if you cannot recompute, treat as
-non-matching). If it matches `prior_fingerprint` AND `prior_tests_pass` is true AND the task's
-tests currently pass, do NOT re-implement: return `task_status: done` with a note
-`already-satisfied` and no file changes. Otherwise proceed with the normal flow."
+fingerprint from the envelope fields (the orchestrator supplies the same fields; if you cannot
+recompute, treat as non-matching). If it matches `prior_fingerprint` AND the task's tests
+currently pass when run, do NOT re-implement: return `task_status: done` with a note
+`already-satisfied` and no file changes. Otherwise proceed with the normal flow. (Note: the skip
+relies on a live test run, not a stored pass flag — there is no `prior_tests_pass` in Plan 2.
+Plan 3's `test-results.md` is for review evidence, a separate concern.)"
 
 Add `already_satisfied: true | false` to the return summary.
 
@@ -743,6 +808,7 @@ git commit -m "feat(dev-executor): halt on needs-rework; record fingerprints; id
 
 **Files:**
 - Create: `tests/fixtures/sample-kb/docs/implr/plans/functional/PLAN-F-001-login.md`
+- Create: `tests/fixtures/sample-kb/docs/implr/plans/plans-index.md`
 - Modify: `tests/fixtures/sample-kb/docs/kb/change-requests/CR-001-additive.md`
 - Modify: `tests/test_cli.py`
 
@@ -775,6 +841,21 @@ updated_at: 2026-01-01T00:00:00Z
 ## Acceptance Criteria Coverage
 - AC-001: → TASK-001
 - AC-002: → TASK-001
+```
+
+- [ ] **Step 1b: Add the plans index (required by the index-agreement check)**
+
+`tests/fixtures/sample-kb/docs/implr/plans/plans-index.md`:
+
+```markdown
+# Plans Index
+
+> Maintained by dev-planner. Do not edit manually.
+
+## Functional Plans
+| ID | Title | Requirement | Complexity | TDD | Status | File |
+|----|-------|-------------|-----------|-----|--------|------|
+| PLAN-F-001 | User Login Implementation | REQ-F-001 | M | true | ready | functional/PLAN-F-001-login.md |
 ```
 
 - [ ] **Step 2: Add `targets` to the CR fixture**
@@ -878,9 +959,11 @@ git commit -m "docs: document delta-safe CR lifecycle, needs-rework, and require
 - **C.3 new reqs:** ba-cr Phase 4.5 via requirements-domain-worker (T8). ✓
 - **C.4 needs-rework:** fields (T2), conditional-required check (T4), cr-applier sets it (T9), dev-planner sole exit (T10), dev-executor halts (T11). ✓
 - **C.5 requirement transitions:** table in cr-applier (T9) and WORKFLOW (T13). ✓
-- **C.6/C.7 idempotent executor + provenance:** task_fingerprint helper (T3), plan-runner records fingerprints+implemented_files (T11), task-executor skip (T11). ✓
+- **C.6/C.7 idempotent executor + provenance:** task_fingerprint helper (T3), plan-runner records fingerprints+implemented_files (T11), task-executor skip on fingerprint-match + live test pass — **no `prior_tests_pass` dependency** (T11); test-results persistence stays a Plan 3 concern. ✓
 - **C.8 traceability + E audit trail:** CR stamping, cr-log with applied/excluded (T7), cr-log seed (T7). ✓
 - **E all/selected/none:** T6. ✓
+- **CR-targets cross-ref (spec §B):** deferred from Plan 1 (field introduced here); validated in T4 (Steps 4b/4c). ✓
+- **Fixture index files:** Plan 1's index-agreement check requires the fixture to ship indices — cr-index in Plan 1, plans-index added in T12. ✓
 - **Placeholder scan:** prompt-edit steps show exact text to add; code steps show full code. ✓
 - **Type consistency:** `task_fingerprint`/`TASK_FINGERPRINT_VERSION` (T3) used by CLI (T3) and plan-runner (T11); `conditional_required` shape defined in T2, consumed in T4; `confirmed_targets` produced T5, consumed T6.
 - **Deferred to Plan 3 (correct):** review test-awareness, preconditions in every skill, commit default. This plan leaves `commit_mode: auto` as-is (Plan 3 flips it).

@@ -50,7 +50,7 @@
 - Test: `tests/test_sourceref.py`, `tests/test_cli.py`
 
 **Interfaces:**
-- Produces: `source_ref_fallback(root: str, rel_paths: list[str]) -> str` = `"fb:" + sha256(sorted (relpath,size,mtime_ns) tuples)[:16]`; `source_ref(root: str, rel_paths: list[str]) -> str` tries `git rev-parse HEAD` + hash of `git diff -- <paths>` (returns `"git:<12hex>:<8hex>"`) and falls back to `source_ref_fallback` when git is unavailable or the tree is not a repo. CLI `--source-ref PATH [PATH ...]` prints the ref.
+- Produces: `source_ref_fallback(root: str, rel_paths: list[str]) -> str` = `"fb:" + sha256(sorted (relpath,size,mtime_ns) tuples)[:16]`; `source_ref(root: str, rel_paths: list[str]) -> str` tries `git rev-parse HEAD` + hash of (`git diff HEAD -- <paths>` **plus** the content hashes of untracked files from `git ls-files --others --exclude-standard -- <paths>`) — so staged AND untracked changes are captured — returning `"git:<12hex>:<8hex>"`, and falls back to `source_ref_fallback` when git is unavailable. CLI `--source-ref PATH [PATH ...]` prints the ref.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -137,9 +137,25 @@ def _git(root, args):
 def source_ref(root, rel_paths):
     try:
         head = _git(root, ["rev-parse", "HEAD"])
-        diff = _git(root, ["diff", "--"] + list(rel_paths))
-        diff_hash = hashlib.sha256(diff.encode("utf-8")).hexdigest()[:8]
-        return "git:%s:%s" % (head[:12], diff_hash)
+        # tracked changes vs HEAD — includes BOTH staged and unstaged
+        diff = _git(root, ["diff", "HEAD", "--"] + list(rel_paths))
+        # untracked files (respecting .gitignore) — hash their contents
+        others = _git(root, ["ls-files", "--others", "--exclude-standard", "--"] + list(rel_paths))
+        untracked = []
+        for rel in others.splitlines():
+            rel = rel.strip()
+            if not rel:
+                continue
+            p = os.path.join(root, rel)
+            try:
+                with open(p, "rb") as fh:
+                    content = fh.read()
+            except OSError:
+                content = b""
+            untracked.append(rel + "\0" + hashlib.sha256(content).hexdigest())
+        combined = diff + "\n--untracked--\n" + "\n".join(sorted(untracked))
+        state_hash = hashlib.sha256(combined.encode("utf-8")).hexdigest()[:8]
+        return "git:%s:%s" % (head[:12], state_hash)
     except Exception:
         return source_ref_fallback(root, rel_paths)
 ```
@@ -372,20 +388,21 @@ git commit -m "feat(dev-code-review): worker consumes test-results with stalenes
 - Modify: `skills/dev-executor/SKILL.md` (Parameters ~lines 26-34; Phase 5 dispatch ~lines 119-125)
 
 **Interfaces:**
-- Produces: `plan-runner` treats absent/`defer` commit_mode as no-commit; `dev-executor` passes `commit_mode: auto` only when `--commit` is present (otherwise `defer`).
+- Produces: `plan-runner` treats absent/`defer` commit_mode as **do-nothing-to-git** (no `git add`, no `git commit` — the worktree is left exactly as the executor left it); `dev-executor` passes `commit_mode: auto` only when `--commit` is present (otherwise `defer`).
 
-- [ ] **Step 1: `plan-runner` default to defer**
+- [ ] **Step 1: `plan-runner` default to defer, and defer touches nothing in git**
 
 Change the description clause "commits if commit_mode=auto" to "commits only when
 commit_mode=auto (default defer)". In Inputs, change `commit_mode: auto | defer` to
-`commit_mode: auto | defer   # default defer if absent`. In Work step 3, prepend: "If
-`commit_mode` is absent or `defer`: leave changes staged, do not commit. Only when
-`commit_mode: auto`: run the git add/commit."
+`commit_mode: auto | defer   # default defer if absent`. In Work step 3, replace the whole
+commit block with: "If `commit_mode` is absent or `defer`: **do NOT run `git add` or
+`git commit`; leave the worktree exactly as-is** (staging is itself a side effect in an
+arbitrary repo). Only when `commit_mode: auto`: run `git add -A` then `git commit`."
 
 - [ ] **Step 2: `dev-executor` opt-in `--commit`**
 
 Add a parameter line: "`/dev-executor --commit ...` — commit each plan's changes after success
-(default: leave changes staged, no commit)."
+(default: no commit; the worktree is left exactly as-is, nothing staged)."
 In Phase 5 dispatch, change `commit_mode (auto; defer for --dry-run)` to
 `commit_mode (auto only when --commit passed; otherwise defer)`.
 
