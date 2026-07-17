@@ -81,6 +81,19 @@ class TestFixture(unittest.TestCase):
             rc = main(["--workspace", dst, "--schema-dir", SCHEMA_DIR])
             self.assertEqual(rc, 1)
 
+    def test_needs_rework_missing_cr_fails(self):
+        import shutil, tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            dst = os.path.join(tmp, "sample-kb")
+            shutil.copytree(FIXTURE, dst)
+            plan = os.path.join(dst, "docs", "implr", "plans", "functional", "PLAN-F-001-login.md")
+            with open(plan, encoding="utf-8") as f:
+                text = f.read()
+            with open(plan, "w", encoding="utf-8") as f:
+                f.write(text.replace("status: ready", "status: needs-rework"))  # no rework_cr
+            rc = main(["--workspace", dst, "--schema-dir", SCHEMA_DIR])
+            self.assertEqual(rc, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
