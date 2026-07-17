@@ -19,7 +19,12 @@ executed_at: {plan.executed_at at time of run}
 |------|---------|------|--------|-------------|
 | TASK-001 | pytest tests/test_auth.py | 0 | pass | ...last lines... |
 | TASK-002 | pytest tests/test_token.py | 1 | fail | ...last lines... |
+| TASK-003 |  | (empty) | skip | (empty) |
 ```
+
+`Result` is one of `pass` (`Exit` is `0`), `fail` (`Exit` is a nonzero int), or `skip`
+(`Exit` is empty/null — no test ran, e.g. a `tdd_required: false` task with no smoke
+test). `skip` is not a failure.
 
 ## Staleness rule (enforced by code-review-worker)
 
@@ -29,4 +34,5 @@ A review downgrades to at least `changes-required` when this file is:
 - `source_ref` ≠ the review's `current_source_ref`, OR
 - `run_at` earlier than the plan's `executed_at`.
 
-Otherwise the review fails the plan on any covered test whose Result is not `pass`.
+Otherwise the review fails the plan on any covered test whose Result is `fail`; `skip`
+rows are not a failure.

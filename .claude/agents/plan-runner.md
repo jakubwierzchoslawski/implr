@@ -116,7 +116,10 @@ equivalent). Then write `docs/implr/plans/test-results/<plan_id>-results.md` per
   status became `done` this run, or its existing value otherwise).
 - One table row per dispatched task, from the `test_results_log` built in step 1b: `Task`
   = `task_id`, `Command` = `test_command`, `Exit` = `test_exit_code`, `Result` = `pass` if
-  `test_exit_code` is `0` else `fail`, `Output tail` = `test_output_tail`.
+  `test_exit_code == 0`; `fail` if `test_exit_code` is a nonzero int; `skip` if
+  `test_exit_code` is `null` (no test ran — task-executor's field-setting rules define
+  this as the legitimate value for a `tdd_required: false` task with no smoke test; it is
+  not a failure). `Output tail` = `test_output_tail`.
 
 ### 4. Commit (if commit_mode: auto)
 
