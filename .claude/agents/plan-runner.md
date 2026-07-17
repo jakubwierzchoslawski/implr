@@ -1,6 +1,6 @@
 ---
 name: plan-runner
-description: Per-plan dispatcher. Receives pre-built task envelopes from dev-executor and dispatches one task-executor per envelope sequentially. Accumulates prior_decisions_summary between dispatches. Does NOT parse the plan, read schemas, ARCHITECTURE.md, DEV-STANDARDS.md, or config — all context is in the envelopes. Updates plan status after all tasks complete; commits if commit_mode=auto.
+description: Per-plan dispatcher. Receives pre-built task envelopes from dev-executor and dispatches one task-executor per envelope sequentially. Accumulates prior_decisions_summary between dispatches. Does NOT parse the plan, read schemas, ARCHITECTURE.md, DEV-STANDARDS.md, or config — all context is in the envelopes. Updates plan status after all tasks complete; commits only when commit_mode=auto (default defer).
 tools: [Read, Write, Edit, Bash, Agent]
 default_model: opus
 ---
@@ -27,7 +27,7 @@ to update its `status:` frontmatter field.
 plan_id: PLAN-F-NNN
 plan_path: docs/implr/plans/.../PLAN-F-NNN-<slug>.md
 resume_task: <task-id or empty>
-commit_mode: auto | defer
+commit_mode: auto | defer   # default defer if absent
 task_envelopes:
   - <envelope-1>
   - <envelope-2>
@@ -121,14 +121,16 @@ equivalent). Then write `docs/implr/plans/test-results/<plan_id>-results.md` per
   this as the legitimate value for a `tdd_required: false` task with no smoke test; it is
   not a failure). `Output tail` = `test_output_tail`.
 
-### 4. Commit (if commit_mode: auto)
+### 4. Commit (only if commit_mode: auto)
+
+If `commit_mode` is absent or `defer`: **do NOT run `git add` or `git commit`; leave the
+worktree exactly as-is** (staging is itself a side effect in an arbitrary repo). Only when
+`commit_mode: auto`: run `git add -A` then `git commit`.
 
 ```
 git add -A
 git commit -m "feat(<plan_id>): implement plan tasks"
 ```
-
-If `commit_mode: defer`: leave changes staged; do not commit.
 
 ## Return summary (your one final message)
 

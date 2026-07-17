@@ -32,6 +32,8 @@ Do NOT read `plan-schema.md` or `DEV-STANDARDS.md`.
 - `/dev-executor --dry-run PLAN-F-001` — list files that would be touched; write nothing.
 - `/dev-executor --verbose` — append per-task file lists to the report.
 - `/dev-executor --review` — chain `/dev-code-review` for executed plans after success.
+- `/dev-executor --commit ...` — commit each plan's changes after success (default: no
+  commit; the worktree is left exactly as-is, nothing staged).
 
 ## Execution
 
@@ -131,7 +133,7 @@ For each wave (in topological order), dispatch all wave plans IN PARALLEL (singl
 multiple Agent calls; cap 5). Each dispatch passes:
 
 ```
-plan_id, plan_path, resume_task (empty unless --task mode), commit_mode (auto; defer for --dry-run),
+plan_id, plan_path, resume_task (empty unless --task mode), commit_mode (auto only when --commit passed; otherwise defer),
 task_envelopes (the prepared list for this plan),
 arch_excerpt (already embedded in envelopes, but also pass top-level for plan-runner reference),
 standards_card (already embedded in envelopes),
