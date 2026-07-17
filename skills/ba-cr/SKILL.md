@@ -105,10 +105,16 @@ Run /dev-planner --replan {list} now? (yes / no)
 
 If yes, invoke `/dev-planner --replan` for each.
 
-### Phase 6 — Update `cr-index.md` and `requirements-log.md`
+### Phase 6 — Stamp CR, write logs and indices
 
-Add the CR entry to `cr-index.md`. Append entries to `requirements-log.md` for each
-affected requirement and to `plans-log.md` for each affected plan.
+1. If every dispatched applier succeeded: set the CR file `status: applied` and stamp
+   `applied_at: <ISO timestamp>`. If any applier failed: leave `status: approved` and do not
+   stamp applied_at.
+2. Prepend an entry to `docs/implr/requirements/cr-log.md` per cr-schema.md, including
+   `Applied targets` and `Excluded targets` for this run, and any failures.
+3. Add/update the CR row in `cr-index.md`.
+4. Append entries to `requirements-log.md` for each applied requirement and to `plans-log.md`
+   for each affected plan.
 
 ### Phase 7 — Report
 
@@ -126,4 +132,6 @@ Open questions added: {n}
 - CR file invalid → stop with field list.
 - Impact analyzer returns empty (no affected targets) → warn user; still allow apply for
   documentation purposes.
-- Applier fails on one target → report which, leave others applied, do not roll back.
+- Applier fails on one target → report which; leave successfully-applied targets applied; do
+  NOT roll back; do NOT stamp the CR `applied`. Record the failure in `cr-log.md`. The CR
+  stays `approved` so a re-run can complete it.
