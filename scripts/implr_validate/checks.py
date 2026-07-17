@@ -39,6 +39,11 @@ def check_artefact_file(path, atype, contracts):
         legal = contracts.states_for(spec["status_machine"])
         if fm["status"] not in legal:
             findings.append(Finding("error", path, "illegal status %r (legal: %s)" % (fm["status"], sorted(legal))))
+    for rule in spec.get("conditional_required", []):
+        if fm.get("status") == rule["when_status"]:
+            for req_field in rule["require"]:
+                if req_field not in fm or fm[req_field] == "":
+                    findings.append(Finding("error", path, "status %s requires field %s" % (rule["when_status"], req_field)))
     return findings
 
 
@@ -60,6 +65,7 @@ def check_workspace(root, contracts):
     ids_by_type = {}          # atype -> set of ids found on disk
     plans = []                # (path, fm)
     requirements = []         # (path, fm)
+    crs = []                  # (path, fm)
     for atype, spec in contracts.artefact_types.items():
         found = set()
         for pattern in spec["path_globs"]:
@@ -75,6 +81,8 @@ def check_workspace(root, contracts):
                     plans.append((path, fm))
                 if atype == "requirement":
                     requirements.append((path, fm))
+                if atype == "cr":
+                    crs.append((path, fm))
         ids_by_type[atype] = found
 
     req_ids = ids_by_type.get("requirement", set())
@@ -93,6 +101,12 @@ def check_workspace(root, contracts):
         sb = fm.get("superseded_by", "")
         if sb and sb not in req_ids:
             findings.append(Finding("error", path, "superseded_by %s does not exist" % sb))
+
+    # CR targets resolve to existing requirements
+    for path, fm in crs:
+        for tgt in fm.get("targets", []) or []:
+            if tgt not in req_ids:
+                findings.append(Finding("error", path, "CR target %s does not exist" % tgt))
 
     # (d) index agreement
     for atype, spec in contracts.artefact_types.items():
