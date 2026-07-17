@@ -94,6 +94,50 @@ For each requirement in `applied_targets` and each plan linked to those requirem
 - Dispatch `cr-applier` with scope `{cr_path, target_path, target_kind, action, status_change}`
 - Cap parallelism at 5
 
+### Phase 4.5 — Create genuinely-new requirements (if any)
+
+If impact analysis reported new requirements are needed (not just amendments):
+
+1. Determine the target domain for each new requirement (from the CR's affected_domains; if none,
+   use `root`).
+2. Create the staging dir `docs/implr/requirements/.staging/<domain>/` (delete first if present,
+   per the ba-requirements-gen Windows/Unix rules).
+3. Dispatch `requirements-domain-worker` with a **complete** `domain_envelope` that satisfies its
+   contract. Because there is no domain synthesis for a CR-originated requirement, synthesize the
+   inputs from the CR (the worker treats `domain_synthesis` as authoritative source material):
+
+   ```yaml
+   domain_envelope:
+     domain: <domain>
+     mode: create
+     reprocess_target: null
+     staging_dir: docs/implr/requirements/.staging/<domain>/
+     digests_dir: docs/implr/kb-index/digests/per-doc/    # may be empty; worker reads only if needed
+     requirements_card: |
+       <full inline content of docs/implr/config/requirements-card.md>
+     domain_synthesis: |
+       # Synthesized from CR <cr_id>
+       ## Consolidated Rules
+       <the CR's Description of Change + before/after, restated as the rule(s) to implement>
+       ## Ambiguities Detected
+       (none)
+       ## Contradictions Detected
+       (none)
+     master_synthesis_nfr: |
+       N/A
+     default_tdd_threshold: <behaviour.default_tdd_threshold from implr.config.yaml>
+     existing_reqs_summary:
+       req_ids: <all ids from requirements-index.md>
+       slugs_in_domain: <slugs already in this domain, or []>
+     resolved_contradictions: {}
+     deferred_contradictions: []
+   ```
+4. After the worker returns, assign the next sequential `REQ-F-NNN`/`REQ-N-NNN` (continue from
+   `requirements-index.md`), move the staged file into `functional/` or `non-functional/`, set
+   `status: draft`, add the CR filename to `source_docs`, and add the new id to
+   `requirements-index.md`.
+5. Report the new REQ IDs and that they require human approval before planning.
+
 ### Phase 5 — Handle replan markers
 
 For plans the applier set to `needs-rework`, queue them. After all appliers
@@ -125,6 +169,7 @@ Affected: {f} requirements, {p} plans
 Status changes: {summary}
 Replan needed: {list of plans}
 Open questions added: {n}
+New requirements created: {list of REQ ids (draft — need approval)}
 ```
 
 ## Failure handling
