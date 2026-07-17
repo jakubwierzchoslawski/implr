@@ -98,30 +98,7 @@ When all envelopes processed (or on stop), Edit `plan_path` frontmatter:
     — the validator CLI is the sole source of the fingerprint value.
 - Any stop condition → `status: in-progress`; if blocked, set `blocked_reason: <reason>`.
 
-### 3. Write test-results.md
-
-After updating plan status, ensure the directory `docs/implr/plans/test-results/` exists
-(create it if missing — e.g. `mkdir -p docs/implr/plans/test-results`, or the Windows
-equivalent). Then write `docs/implr/plans/test-results/<plan_id>-results.md` per
-`scaffold/schemas/test-results-schema.md`:
-
-- `plan_id`: this plan's `plan_id`.
-- `run_at`: now, as an ISO timestamp.
-- `source_ref`: run `python scripts/implr_validate --source-ref <src_path> <tests_path>`,
-  using the dispatched envelopes' top-level `src_path` and `tests_path` fields (the same
-  envelope fields task-executor's Inputs define; identical across all envelopes for this
-  plan), and use the printed `git:<hash>` / `fb:<hash>` output verbatim. **Never
-  hand-compute this value** — the validator CLI is the sole source.
-- `executed_at`: the plan's `executed_at` frontmatter value (as just written in step 2 if
-  status became `done` this run, or its existing value otherwise).
-- One table row per dispatched task, from the `test_results_log` built in step 1b: `Task`
-  = `task_id`, `Command` = `test_command`, `Exit` = `test_exit_code`, `Result` = `pass` if
-  `test_exit_code == 0`; `fail` if `test_exit_code` is a nonzero int; `skip` if
-  `test_exit_code` is `null` (no test ran — task-executor's field-setting rules define
-  this as the legitimate value for a `tdd_required: false` task with no smoke test; it is
-  not a failure). `Output tail` = `test_output_tail`.
-
-### 4. Commit (only if commit_mode: auto)
+### 3. Commit (only if commit_mode: auto)
 
 If `commit_mode` is absent or `defer`: **do NOT run `git add` or `git commit`; leave the
 worktree exactly as-is** (staging is itself a side effect in an arbitrary repo). Only when
@@ -131,6 +108,33 @@ worktree exactly as-is** (staging is itself a side effect in an arbitrary repo).
 git add -A
 git commit -m "feat(<plan_id>): implement plan tasks"
 ```
+
+### 4. Write test-results.md
+
+After updating plan status (and, if `commit_mode: auto`, after the commit in step 3),
+ensure the directory `docs/implr/plans/test-results/` exists (create it if missing — e.g.
+`mkdir -p docs/implr/plans/test-results`, or the Windows equivalent). Then write
+`docs/implr/plans/test-results/<plan_id>-results.md` per
+`docs/implr/schemas/test-results-schema.md`:
+
+- `plan_id`: this plan's `plan_id`.
+- `run_at`: now, as an ISO timestamp.
+- `source_ref`: run `python scripts/implr_validate --source-ref <src_path> <tests_path>`,
+  using the dispatched envelopes' top-level `src_path` and `tests_path` fields (the same
+  envelope fields task-executor's Inputs define; identical across all envelopes for this
+  plan), and use the printed `git:<hash>` / `fb:<hash>` output verbatim. **Never
+  hand-compute this value** — the validator CLI is the sole source. Computing this AFTER
+  any auto-commit (step 3) is what keeps it consistent with the `current_source_ref`
+  `dev-code-review` recomputes later — both then reflect the same, post-commit worktree
+  state, so they match instead of always mismatching.
+- `executed_at`: the plan's `executed_at` frontmatter value (as just written in step 2 if
+  status became `done` this run, or its existing value otherwise).
+- One table row per dispatched task, from the `test_results_log` built in step 1b: `Task`
+  = `task_id`, `Command` = `test_command`, `Exit` = `test_exit_code`, `Result` = `pass` if
+  `test_exit_code == 0`; `fail` if `test_exit_code` is a nonzero int; `skip` if
+  `test_exit_code` is `null` (no test ran — task-executor's field-setting rules define
+  this as the legitimate value for a `tdd_required: false` task with no smoke test; it is
+  not a failure). `Output tail` = `test_output_tail`.
 
 ## Return summary (your one final message)
 
