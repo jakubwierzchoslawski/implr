@@ -22,6 +22,11 @@ sequential IDs and finalise after all workers return.
 - `docs/implr/kb-index/master-synthesis.md`  (stop if missing — tell user to run /doc-ingest)
 - `docs/implr/config/implr.config.yaml`  (orchestrator only — for default_tdd_threshold and contradictions_block)
 
+## Preconditions
+
+- `docs/implr/kb-index/master-synthesis.md` exists (else: `❌ Run /doc-ingest first.`).
+- `docs/implr/config/requirements-card.md` exists (else the Phase 0 Step 6 error).
+
 ## Parameters
 
 - `/ba-requirements-gen` — use existing syntheses; no ingest.

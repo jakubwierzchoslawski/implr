@@ -38,9 +38,17 @@ For `--all`: read `plans-index.md`, pick `done` plans without an existing review
 
 ### Phase 2 — Dispatch `code-review-worker` per plan (parallel)
 
+Before dispatch, compute `current_source_ref` by running `python scripts/implr_validate
+--source-ref <src_path> <tests_path>` (read `src`/`tests` from `implr.config.yaml` paths) and
+use the printed value verbatim. **Never hand-compute this value** — the validator CLI is the
+sole source.
+
 Cap parallelism at 5.
 
-Per dispatch scope: `{plan_path, requirement_path, review_path_out, src_path, tests_path, standards_card}` where `standards_card` is the inline content of `docs/implr/config/standards-card.md`.
+Per dispatch scope: `{plan_path, requirement_path, review_path_out, src_path, tests_path, standards_card, current_source_ref, test_results_path}` where `standards_card` is the inline
+content of `docs/implr/config/standards-card.md`, `current_source_ref` is the value just
+computed, and `test_results_path` is `docs/implr/plans/test-results/<plan_id>-results.md` for
+that plan.
 
 The review paths follow: `docs/implr/reviews/REVIEW-F-NNN-<slug>.md` (numbering matches the
 plan).
@@ -52,6 +60,13 @@ Collect verdicts and finding counts by severity.
 ### Phase 4 — Update `reviews-index.md`
 
 Add entry per review with verdict and severity counts.
+
+### Phase 4.5 — Reflect verdict on plan status
+
+For each review with verdict `changes-required` or `rejected`: set the linked plan's
+`status: in-progress` in `plans-index.md` AND in the plan file, and record the blocking finding
+ids in the plan file's `## Risks and Notes` (or a `review_blockers:` frontmatter note). This
+implements review-schema.md's required review→plan status write.
 
 ### Phase 5 — Report
 

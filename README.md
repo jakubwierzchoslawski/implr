@@ -29,6 +29,7 @@ In v3.0, the cost model is rebuilt further: `dev-executor` parses plans into inl
 - [Quick Start](#quick-start)
 - [The Full Pipeline](#the-full-pipeline)
 - [How You Interact With implr](#how-you-interact-with-implr)
+  - [Ordering Gates](#ordering-gates)
 - [Status Flows](#status-flows)
 - [Skills Reference](#skills-reference)
 - [Changing Requirements](#changing-requirements)
@@ -367,12 +368,16 @@ cp ~/specs/*.md docs/kb/
    parallel waves. Each plan-runner dispatches one task-executor per task (sequential).
    task-executor writes production code and tests, enforcing TDD for M/L/XL tasks and
    SOLID throughout. Notes manual actions it cannot perform. Opus by default — TDD + SOLID
-   need a strong model.
+   need a strong model. plan-runner also writes each plan's test-results.md. Commits are
+   off by default (commit_mode: defer — no git side effects at all); pass --commit to opt
+   plan-runner into an auto-commit per plan once it reaches done.
 
 9. REVIEW            /dev-code-review
    Fresh context per plan via code-review-worker dispatches. Verifies every acceptance
    criterion, checks architecture/SOLID/security, audits tests, issues a verdict.
-   Blocks merge on Critical/High findings.
+   Consumes the plan's test-results.md and cannot approve code with failing or stale tests
+   (the staleness rule downgrades to at least changes-required). Blocks merge on
+   Critical/High findings; changes-required/rejected also reopens the plan as in-progress.
 ```
 
 ---
@@ -406,9 +411,34 @@ Regardless of skill, three **human gates** block the pipeline:
 2. **Approve CR impact** before applying — `ba-cr` shows the impact report
    (`confirmed_targets`) and waits for your `all` / `selected` / `none` / `impact-only`.
 3. **Resolve Critical/High findings** before merge — `dev-code-review` blocks merge on any
-   Critical or High finding; lower severities pass with warnings.
+   Critical or High finding; lower severities pass with warnings. Every worker is test-aware:
+   it reads the plan's `docs/implr/plans/test-results/<plan_id>-results.md` (written by
+   `plan-runner`) and applies the staleness rule — the file missing, its `plan_id` not
+   matching the reviewed plan, its `source_ref` not matching the review's freshly-computed
+   `current_source_ref`, or its `run_at` predating the plan's `executed_at` all downgrade the
+   verdict to at least `changes-required`. Otherwise, any AC-covering test row with Result
+   `fail` is a Critical finding (`skip` rows are never a failure). A `changes-required` or
+   `rejected` verdict also writes the plan's `status` back to `in-progress` so it re-enters
+   the execution queue.
+
+Beyond the three human-judgement gates above, five **ordering gates** are enforced
+automatically — see [Ordering gates](#ordering-gates) below.
 
 Full state diagrams and edge cases in [WORKFLOW.md](docs/WORKFLOW.md).
+
+### Ordering gates
+
+Every top-level skill halts with a clear error (rather than proceeding on a missing or
+wrongly-staged input) when its precondition isn't met. Each skill's `SKILL.md` states this
+under its own `## Preconditions` heading:
+
+| Skill | Precondition |
+|---|---|
+| `doc-ingest` | At least one KB source document exists under `docs/kb/`; otherwise halts: `No KB documents found under docs/kb/. Add source docs first.` |
+| `ba-requirements-gen` | `docs/implr/kb-index/master-synthesis.md` exists (else: run `/doc-ingest` first) and `docs/implr/config/requirements-card.md` exists (else the Phase 0 setup error). |
+| `dev-planner` | `docs/ARCHITECTURE.md` exists (else: run `/arch-gen` first) and each in-scope requirement is `status: approved` (unless named explicitly or `require_approved_status: false`). |
+| `dev-executor` | `docs/implr/config/standards-card.md` exists, and every in-scope plan is `status: ready` — a `needs-rework` plan is rejected outright, pointing at `/dev-planner --replan`. |
+| `ba-cr` | A requirements set exists under `docs/implr/requirements/` (else warns: a CR with no requirements to target can only create new ones). |
 
 ---
 
@@ -599,7 +629,14 @@ one `task-executor` per task (Opus default — TDD + SOLID need a strong model).
 - `/dev-executor --all` — execute all `ready` plans in dependency order from plans-index.md
 - `/dev-executor --task PLAN-F-001 TASK-003` — execute a single task (resume work)
 - `/dev-executor --dry-run PLAN-F-001` — list files that would be created/modified; write nothing
+- `/dev-executor --review` — chain `/dev-code-review` for executed plans after success
+- `/dev-executor --commit ...` — opt in to an auto-commit per plan after success
 ```
+
+Committing is **off by default** — `plan-runner`'s `commit_mode` defaults to `defer`, meaning
+no `git add`/`git commit` and the worktree is left exactly as-is. `--commit` is the only way
+to switch a run to `commit_mode: auto`. `plan-runner` also writes each plan's
+`docs/implr/plans/test-results/<plan_id>-results.md`, the artefact `dev-code-review` reads.
 
 ### dev-code-review
 Reviews produced code in a fresh context per plan.
@@ -611,7 +648,13 @@ Reviews produced code in a fresh context per plan.
 ```
 
 Verdicts: `approved`, `approved-with-warnings`, `changes-required`, `rejected`. Critical and
-High findings block merge.
+High findings block merge. Each `code-review-worker` computes `current_source_ref` (via
+`implr_validate --source-ref`) and reads the plan's `test-results.md`: a missing file,
+`plan_id` mismatch, `source_ref` mismatch, or a `run_at` earlier than the plan's
+`executed_at` downgrades the verdict to at least `changes-required`; otherwise any
+AC-covering test row with Result `fail` is a Critical finding (`skip` rows are never a
+failure). A `changes-required`/`rejected` verdict also writes the plan's `status` back to
+`in-progress`.
 
 ---
 

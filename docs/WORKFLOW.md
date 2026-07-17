@@ -35,8 +35,9 @@ docs/implr/plans/
    │
    ▼  dev-executor  (reads ARCHITECTURE.md + DEV-STANDARDS.md)
 src/**  tests/**
+docs/implr/plans/test-results/{plan_id}-results.md   (written by plan-runner)
    │
-   ▼  dev-code-review  (fresh context)
+   ▼  dev-code-review  (fresh context; test-aware — staleness rule on the file above)
 docs/implr/reviews/REVIEW-F-*.md
 ```
 
@@ -216,6 +217,27 @@ Everything else is automated.
 
 ---
 
+## Ordering Gates
+
+Separate from the human-judgement gates above, five stages each carry a machine-checked
+precondition: a required artefact or status that must already be in place before the stage
+runs. Each stage's own `SKILL.md` states this under a `## Preconditions` heading; this is
+where a reader checks the exact gate for any given stage.
+
+| Stage | Precondition | On failure |
+|---|---|---|
+| doc-ingest | At least one KB source document exists under `docs/kb/`. | Halts: "No KB documents found under docs/kb/. Add source docs first." |
+| ba-requirements-gen | `docs/implr/kb-index/master-synthesis.md` exists, and `docs/implr/config/requirements-card.md` exists. | Halts pointing at `/doc-ingest` (missing synthesis) or the Phase 0 setup error (missing requirements-card). |
+| dev-planner | `docs/ARCHITECTURE.md` exists, and each in-scope requirement is `status: approved` (unless named explicitly or `require_approved_status: false`). | Halts pointing at `/arch-gen` for the missing architecture doc. |
+| dev-executor | `docs/implr/config/standards-card.md` exists, and every in-scope plan is `status: ready`. | Halts before any dispatch if the card is missing; a `needs-rework` plan is rejected outright, pointing at `/dev-planner --replan`. |
+| ba-cr | A requirements set exists under `docs/implr/requirements/`. | Warns that a CR with no requirements to target can only create genuinely-new ones. |
+
+These gates are ordering constraints, not judgement calls — they exist so a stage never runs
+against an artefact that doesn't exist yet or a plan/requirement whose status says it isn't
+ready for this stage.
+
+---
+
 ## Status Lifecycles
 
 ### Requirement
@@ -274,13 +296,42 @@ Legal plan states and transitions are defined once in
 | `in-progress` → `blocked` | dev-executor | A hard blocker halts implementation |
 | `blocked` → `ready` | Human or dev-planner | Blocker resolved |
 
+Committing to git is **not** part of this transition table's side effects. `plan-runner`'s
+`commit_mode` defaults to `defer`: reaching `done` leaves the worktree exactly as-is (no
+`git add`/`git commit`). Only `/dev-executor --commit` switches a run to `commit_mode: auto`,
+which makes `plan-runner` run `git add -A` and commit once the plan reaches `done`.
+
+### Test-aware review
+
+Alongside code, `plan-runner` writes a per-plan test-results artefact —
+`docs/implr/plans/test-results/<plan_id>-results.md`, per
+`docs/implr/schemas/test-results-schema.md` — recording `plan_id`, `run_at`, `source_ref`
+(the same `implr_validate --source-ref` value used below), `executed_at`, and one row per
+task: `Task`, `Command`, `Exit`, `Result` (`pass`/`fail`/`skip`), `Output tail`. `Result` is
+`skip` only when no test ran for a task that doesn't require one — `skip` is never treated as
+a failure.
+
+Each `code-review-worker` dispatch computes `current_source_ref` (via
+`implr_validate --source-ref`) and, before checking any acceptance criterion, reads that
+plan's test-results file and applies the **staleness rule**: the review downgrades to at
+least `changes-required` when the file is missing, its `plan_id` doesn't match the reviewed
+plan, its `source_ref` doesn't match `current_source_ref`, or its `run_at` predates the
+plan's `executed_at`. When the file passes freshness, any AC-covering test row whose `Result`
+is `fail` is a Critical finding; `skip` rows are never a failure. Either way, a review can
+never approve code whose tests are stale or failing.
+
 ### Review verdict → plan effect
 | Verdict | Plan effect |
 |---------|------------|
 | approved / approved-with-warnings | plan stays `done` |
 | changes-required / rejected | plan set back to `in-progress`, blocking findings noted |
 
-*In v3.0, plan creation is performed by parallel `plan-worker` subagents (one per requirement per dependency wave). Plan execution is orchestrated by `dev-executor`: it parses each plan into per-task envelopes, dispatches `arch-excerpter` (Sonnet) once per plan, then dispatches `plan-runner` (Opus) per plan in parallel waves. Each plan-runner dispatches one `task-executor` (Opus) per task sequentially. Plan review is performed by parallel `code-review-worker` subagents (one per plan, receiving `standards-card` inline).*
+`dev-code-review` performs this write itself (Phase 4.5 of the orchestrator): for every
+review verdict of `changes-required` or `rejected`, it sets the linked plan's `status` to
+`in-progress` in both `plans-index.md` and the plan file, and records the blocking finding
+ids in the plan's `## Risks and Notes`.
+
+*In v3.0, plan creation is performed by parallel `plan-worker` subagents (one per requirement per dependency wave). Plan execution is orchestrated by `dev-executor`: it parses each plan into per-task envelopes, dispatches `arch-excerpter` (Sonnet) once per plan, then dispatches `plan-runner` (Opus) per plan in parallel waves. Each plan-runner dispatches one `task-executor` (Opus) per task sequentially, then writes the plan's test-results.md and commits only if `commit_mode: auto`. Plan review is performed by parallel `code-review-worker` subagents (one per plan, receiving `standards-card` inline and applying the test-results staleness rule above).*
 
 ---
 
@@ -350,8 +401,8 @@ tests match the plan's "tests first" list.
 | arch-gen | master-synthesis, arch docs, template | docs/ARCHITECTURE.md |
 | ba-requirements-gen | syntheses, requirement schema, config | requirements/** |
 | dev-planner | approved requirements, ARCHITECTURE.md, DEV-STANDARDS.md, plan schema | plans/** |
-| dev-executor | plans, standards-card.md (arch-excerpter reads ARCHITECTURE.md once per plan) | src/**, tests/**, plan status |
-| dev-code-review | plan, requirement, code, ARCHITECTURE.md, standards-card.md, review schema | reviews/** |
+| dev-executor | plans, standards-card.md (arch-excerpter reads ARCHITECTURE.md once per plan) | src/**, tests/**, plan status, plans/test-results/*-results.md; commits only with `--commit` (default: worktree untouched) |
+| dev-code-review | plan, requirement, code, ARCHITECTURE.md, standards-card.md, review schema, plans/test-results/*-results.md | reviews/**, plan status (on changes-required/rejected) |
 
 Note the clean separation: only doc-ingest writes kb-index; only ba-requirements-gen writes
 requirements; only dev-planner writes plans; only dev-executor writes code; only dev-code-review

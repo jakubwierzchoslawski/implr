@@ -18,6 +18,11 @@ runs in `cr-impact-analyzer`; per-target application runs in parallel `cr-applie
 - `docs/implr/schemas/cr-schema.md`
 - `docs/implr/config/implr.config.yaml`
 
+## Preconditions
+
+- A requirements set exists under `docs/implr/requirements/` (else warn: a CR with no
+  requirements to target can only create new ones).
+
 ## Parameters
 
 - `/ba-cr` — interactive CLI interview; create a CR, analyse impact, chain updates on approval.

@@ -44,6 +44,10 @@ class TestCli(unittest.TestCase):
             rc = main(["--task-fingerprint", p, "--schema-dir", os.path.join(REPO_ROOT, "scaffold", "schemas")])
             self.assertEqual(rc, 0)
 
+    def test_source_ref_mode(self):
+        rc = main(["--source-ref", "scaffold", "--root", REPO_ROOT, "--schema-dir", os.path.join(REPO_ROOT, "scaffold", "schemas")])
+        self.assertEqual(rc, 0)
+
 
 # --- Task 10: sample-kb fixture integration tests ---
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "sample-kb")
