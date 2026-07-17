@@ -23,6 +23,12 @@ plan-runner nor task-executor reads the plan file.
 Do NOT read `docs/ARCHITECTURE.md` — arch-excerpter handles that per plan.
 Do NOT read `plan-schema.md` or `DEV-STANDARDS.md`.
 
+## Preconditions
+
+- `docs/implr/config/standards-card.md` exists (else the existing halt).
+- Every in-scope plan is `status: ready`. A `needs-rework` plan is rejected with
+  `❌ PLAN-F-NNN is needs-rework — run /dev-planner --replan first.`
+
 ## Parameters
 
 - `/dev-executor PLAN-F-001` — execute one plan.

@@ -20,6 +20,11 @@ write the index, master synthesis, and log.
 - `docs/implr/schemas/kb-index-schema.md`
 - `docs/implr/config/implr.config.yaml`
 
+## Preconditions
+
+- At least one KB source document exists under `docs/kb/`. If none: halt with
+  `❌ No KB documents found under docs/kb/. Add source docs first.`
+
 ## Parameters
 
 - `/doc-ingest` — **full pipeline** (extract + digest + syntheses + master). New default in v3.0.

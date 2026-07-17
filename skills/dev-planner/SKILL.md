@@ -19,6 +19,11 @@ in parallel `plan-worker` subagents respecting dependency waves.
 - `docs/implr/config/DEV-STANDARDS.md`
 - `docs/implr/config/implr.config.yaml`
 
+## Preconditions
+
+- `docs/ARCHITECTURE.md` exists (else: `❌ Run /arch-gen first.`).
+- Each in-scope requirement is `status: approved` (unless named explicitly / require_approved_status:false).
+
 ## Parameters
 
 - `/dev-planner REQ-F-001` — plan one requirement.
