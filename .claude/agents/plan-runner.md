@@ -53,8 +53,11 @@ decisions_log so far (empty list on first dispatch).
 After each task-executor return:
 
 a. Parse the return summary (task_id, task_status, files_created, files_modified,
-   interfaces_added, decisions, tests_added, tests_pass, already_satisfied, manual_actions).
-b. Append a `completed_tasks` entry to the decisions_log.
+   interfaces_added, decisions, tests_added, tests_pass, already_satisfied,
+   test_command, test_exit_code, test_output_tail, manual_actions).
+b. Append a `completed_tasks` entry to the decisions_log. Also append a row
+   (`task_id`, `test_command`, `test_exit_code`, `test_output_tail`) to a running
+   `test_results_log`, used to write `test-results.md` in Work step 3.
 c. **Stop dispatching** if `task_status: blocked`, `task_status: failed`, or
    `tests_pass: false`. Record stopping task_id and reason.
 
@@ -95,7 +98,27 @@ When all envelopes processed (or on stop), Edit `plan_path` frontmatter:
     — the validator CLI is the sole source of the fingerprint value.
 - Any stop condition → `status: in-progress`; if blocked, set `blocked_reason: <reason>`.
 
-### 3. Commit (if commit_mode: auto)
+### 3. Write test-results.md
+
+After updating plan status, ensure the directory `docs/implr/plans/test-results/` exists
+(create it if missing — e.g. `mkdir -p docs/implr/plans/test-results`, or the Windows
+equivalent). Then write `docs/implr/plans/test-results/<plan_id>-results.md` per
+`scaffold/schemas/test-results-schema.md`:
+
+- `plan_id`: this plan's `plan_id`.
+- `run_at`: now, as an ISO timestamp.
+- `source_ref`: run `python scripts/implr_validate --source-ref <src_path> <tests_path>`,
+  using the dispatched envelopes' top-level `src_path` and `tests_path` fields (the same
+  envelope fields task-executor's Inputs define; identical across all envelopes for this
+  plan), and use the printed `git:<hash>` / `fb:<hash>` output verbatim. **Never
+  hand-compute this value** — the validator CLI is the sole source.
+- `executed_at`: the plan's `executed_at` frontmatter value (as just written in step 2 if
+  status became `done` this run, or its existing value otherwise).
+- One table row per dispatched task, from the `test_results_log` built in step 1b: `Task`
+  = `task_id`, `Command` = `test_command`, `Exit` = `test_exit_code`, `Result` = `pass` if
+  `test_exit_code` is `0` else `fail`, `Output tail` = `test_output_tail`.
+
+### 4. Commit (if commit_mode: auto)
 
 ```
 git add -A

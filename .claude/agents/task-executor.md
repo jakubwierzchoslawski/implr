@@ -114,7 +114,13 @@ plan_id_for_log: PLAN-F-NNN
    d. Implement minimal code to pass.
    e. Re-run; verify pass.
    f. Refactor if needed; re-verify.
-5. If `tdd_required` is false: write code + appropriate smoke tests.
+   The last command run in this loop (normally step e, or f if a refactor re-verify
+   ran after it) is the one you report as `test_command`/`test_exit_code` below; take
+   `test_output_tail` as the last ~15 lines of that run's tee'd tmp file.
+5. If `tdd_required` is false: write code + appropriate smoke tests. If you run a smoke
+   test, run it the same way (`<command> 2>&1 | tee <tmp> | head -80`) and report its
+   command/exit code/tail as below. If no smoke test is run, report `test_command: ""`,
+   `test_exit_code: null`, `test_output_tail: ""`.
 6. Note any manual action you cannot perform. Do not invent secrets.
 
 Do NOT commit. Do NOT update plan status. Do NOT modify the plan file. plan-runner handles both.
@@ -132,6 +138,9 @@ decisions:
 tests_added: <n>
 tests_pass: true | false
 already_satisfied: true | false
+test_command: "<runner invocation, or empty>"
+test_exit_code: <int or null>
+test_output_tail: "<last ~15 lines, or empty>"
 manual_actions:
   - <description if any>
 ```
