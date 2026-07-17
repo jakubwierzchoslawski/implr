@@ -21,6 +21,13 @@ Do NOT pre-read `docs/ARCHITECTURE.md` or `docs/implr/config/DEV-STANDARDS.md` h
 workers read ARCHITECTURE.md themselves (full read needed for review), and standards-card
 replaces DEV-STANDARDS.md.
 
+## Preconditions
+
+- `docs/implr/config/standards-card.md` exists (else: `❌ standards-card.md not found. Run
+  /implr-init --refresh-card first.`).
+- Each named plan is `status: done` — this is the ordering gate enforced in Phase 1; a plan
+  that has not reached `done` is not reviewable yet.
+
 ## Parameters
 
 - `/dev-code-review PLAN-F-001` — review one plan's output.

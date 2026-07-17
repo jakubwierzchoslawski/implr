@@ -47,7 +47,9 @@ missing, its `plan_id` mismatches, its `source_ref` ≠ `current_source_ref`, or
 earlier than the plan's `executed_at`, add a Critical finding `stale-or-missing-test-evidence`
 and set the verdict no higher than `changes-required`. Otherwise, for every AC-covering test row
 whose Result is `fail`, add a Critical finding (`skip` rows are never a failure — only `fail`
-rows are). You still do not run code.
+rows are). Policy: a `skip` row (no test ran, e.g. a legitimately untested non-TDD task) can
+still pass review via your read-through of its acceptance criteria — this is a deliberate
+choice, not a gap. You still do not run code.
 
 Classify findings by severity per schema: Critical, High, Medium, Low, Info. Verdict
 rules (deterministic):

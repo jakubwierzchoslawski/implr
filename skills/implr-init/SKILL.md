@@ -54,7 +54,7 @@ When invoked with `--refresh-card`:
 
 ---
 
-## Pre-flight
+## Preconditions
 
 Check whether `docs/implr/config/implr.config.yaml` exists. If it does not, halt with:
 

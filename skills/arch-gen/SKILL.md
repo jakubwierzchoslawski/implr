@@ -18,6 +18,10 @@ conversation, then dispatch the actual drafting to `arch-drafter`.
 - `docs/implr/config/implr.config.yaml`
 - `docs/implr/config/DEV-STANDARDS.md`
 
+## Preconditions
+
+- `docs/implr/kb-index/master-synthesis.md` exists (else: `❌ Run /doc-ingest --digest first.`).
+
 ## Parameters
 
 - `/arch-gen` — create (or, if `docs/ARCHITECTURE.md` exists, propose a diff for confirmation).

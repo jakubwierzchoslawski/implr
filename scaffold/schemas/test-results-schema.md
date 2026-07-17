@@ -36,3 +36,9 @@ A review downgrades to at least `changes-required` when this file is:
 
 Otherwise the review fails the plan on any covered test whose Result is `fail`; `skip`
 rows are not a failure.
+
+**Policy:** a task with `skip` (no test ran, e.g. a non-TDD task with no smoke test) can
+still pass review — its acceptance criteria are verified by the reviewer's read-through
+instead of by a test run. Only `fail` rows block approval. This is a deliberate choice:
+legitimately-untested small tasks should not be penalized by the same mechanism that
+catches genuinely broken or stale test evidence.
