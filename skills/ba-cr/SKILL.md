@@ -91,7 +91,9 @@ Write the full `confirmed_targets` set to the CR file's `targets:` frontmatter. 
 
 For each requirement in `applied_targets` and each plan linked to those requirements:
 - Resolve model
-- Dispatch `cr-applier` with scope `{cr_path, target_path, target_kind, action, status_change}`
+- Dispatch `cr-applier` with scope `{cr_path, target_path, target_kind, action, status_change}`,
+  adding `change_kind` (from the impact report's per-requirement `change_kind` field) when
+  `target_kind: requirement`; omit it for plan targets.
 - Cap parallelism at 5
 
 ### Phase 4.5 — Create genuinely-new requirements (if any)

@@ -25,6 +25,9 @@ target_path: docs/implr/requirements/.../REQ-F-NNN-<slug>.md
 target_kind: requirement | plan
 action: patch | replan
 status_change: <new-status>
+change_kind: additive | contradictory | correction | override
+             # only present/meaningful when target_kind: requirement; the impact
+             # analyzer's per-requirement change kind — omit for plan targets
 ```
 
 ## Work

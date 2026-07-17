@@ -63,6 +63,9 @@ dispatching any wave):
 
 Read the plan file. Extract:
 - Frontmatter (YAML between first and second `---`)
+- `task_fingerprints` from that frontmatter — a map `{TASK-NNN: "t1:<hash>"}` (may be
+  empty or absent on a plan's first run, or for a task added since the last run; that's
+  expected). Keep this map in memory for step f.
 - `## Objective` body (lines after header until next `##`)
 - `## Architecture Context` body (lines after header until next `##`)
 - `### Interfaces and Contracts` body (within Component Design, lines after header until next `##`)
@@ -111,8 +114,10 @@ For each parsed task, build a complete envelope per the `task-executor` input sc
 plan_id, plan_path, plan_objective, plan_arch_context, interfaces, applied_nfrs, task
 (id/title/complexity/tdd_required/files/body/ac_covered/tests_first), ac_full,
 requirement_updated_at (from step b, same value for every task envelope in this plan),
-arch_excerpt, standards_card, prior_decisions_summary (empty initially), src_path,
-tests_path, test_runner, plan_id_for_log.
+prior_fingerprint (`task_fingerprints.get(task.id, "")` from the map read in step a — empty
+string if the plan has no recorded fingerprint for this task yet), arch_excerpt,
+standards_card, prior_decisions_summary (empty initially), src_path, tests_path,
+test_runner, plan_id_for_log.
 
 For `--task` mode: build only the envelope for the named task; set it as the sole
 element of `task_envelopes`; set `resume_task` to the task id.

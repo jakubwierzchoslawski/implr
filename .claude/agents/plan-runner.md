@@ -53,7 +53,7 @@ decisions_log so far (empty list on first dispatch).
 After each task-executor return:
 
 a. Parse the return summary (task_id, task_status, files_created, files_modified,
-   interfaces_added, decisions, tests_added, tests_pass, manual_actions).
+   interfaces_added, decisions, tests_added, tests_pass, already_satisfied, manual_actions).
 b. Append a `completed_tasks` entry to the decisions_log.
 c. **Stop dispatching** if `task_status: blocked`, `task_status: failed`, or
    `tests_pass: false`. Record stopping task_id and reason.
@@ -67,7 +67,9 @@ When all envelopes processed (or on stop), Edit `plan_path` frontmatter:
 - All done AND all `tests_pass: true` → `status: done`; set `executed_at: <ISO timestamp>`.
   Also set:
   - `implemented_files:` to the union of every task's `files_created` and
-    `files_modified` (deduplicated) across all dispatched task-executor returns.
+    `files_modified` (deduplicated) across all dispatched task-executor returns, merged
+    with the plan's existing `implemented_files:` value if present (so a re-run where
+    every task skips does not wipe out a previously-recorded list).
   - `task_fingerprints[TASK-NNN]` for each task: build the fingerprint fields from the
     envelope you dispatched for that task, using the same mapping task-executor uses in
     its Work step 0 (both must agree, or a fingerprint recorded here will never match
