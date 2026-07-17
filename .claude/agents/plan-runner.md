@@ -68,13 +68,29 @@ When all envelopes processed (or on stop), Edit `plan_path` frontmatter:
   Also set:
   - `implemented_files:` to the union of every task's `files_created` and
     `files_modified` (deduplicated) across all dispatched task-executor returns.
-  - `task_fingerprints[TASK-NNN]` for each task: write that task's fingerprint fields
-    (`task_body`, `ac_ids`, `ac_text`, `files`, `tests_first`, `requirement_updated_at`,
-    `arch_excerpt_hash`, `interfaces_contracts`, `applied_nfrs`, `standards_card_hash`,
-    `test_runner` — taken from the envelope you dispatched for that task) to a temp JSON
-    file and run `python scripts/implr_validate --task-fingerprint <tmp>`. Store the
-    printed value (e.g. `t1:<hash>`) as `task_fingerprints[TASK-NNN]`. **Never hand-compute
-    the hash** — the validator CLI is the sole source of the fingerprint value.
+  - `task_fingerprints[TASK-NNN]` for each task: build the fingerprint fields from the
+    envelope you dispatched for that task, using the same mapping task-executor uses in
+    its Work step 0 (both must agree, or a fingerprint recorded here will never match
+    what task-executor recomputes on a later run):
+
+    | fingerprint field        | envelope source                                                    |
+    |---------------------------|--------------------------------------------------------------------|
+    | `task_body`                | `task.body`                                                         |
+    | `ac_ids`                   | `task.ac_covered` (list of AC ids)                                  |
+    | `ac_text`                  | for each id in `ac_covered`, its `text` from `ac_full` (matched by `id`) |
+    | `files`                    | `task.files`                                                        |
+    | `tests_first`              | `task.tests_first` (empty list if absent)                           |
+    | `requirement_updated_at`   | envelope's top-level `requirement_updated_at`                       |
+    | `arch_excerpt_hash`        | envelope's top-level `arch_excerpt` (raw text passthrough, not a computed hash) |
+    | `interfaces_contracts`     | envelope's `interfaces`                                             |
+    | `applied_nfrs`             | envelope's `applied_nfrs`                                           |
+    | `standards_card_hash`      | envelope's top-level `standards_card` (raw text passthrough)         |
+    | `test_runner`              | envelope's top-level `test_runner`                                  |
+
+    Write these fields to a temp JSON file and run
+    `python scripts/implr_validate --task-fingerprint <tmp>`. Store the printed value
+    (e.g. `t1:<hash>`) as `task_fingerprints[TASK-NNN]`. **Never hand-compute the hash**
+    — the validator CLI is the sole source of the fingerprint value.
 - Any stop condition → `status: in-progress`; if blocked, set `blocked_reason: <reason>`.
 
 ### 3. Commit (if commit_mode: auto)

@@ -84,6 +84,10 @@ Read the plan file. Extract:
 
 Read the linked requirement (`linked_requirement:` frontmatter → look up in
 `docs/implr/requirements/`). Extract each `- [ ] AC-NNN:` line. Build `ac_full` list.
+Also read that requirement's `updated_at:` frontmatter value and capture it as
+`requirement_updated_at` — every task in this plan shares the same linked requirement,
+so this value is resolved once per plan and reused in every task envelope built in
+step f below.
 
 **c. Dispatch arch-excerpter.**
 
@@ -106,6 +110,7 @@ Read `agents.plan-runner` from `implr.config.yaml`; fall back to `opus`.
 For each parsed task, build a complete envelope per the `task-executor` input schema:
 plan_id, plan_path, plan_objective, plan_arch_context, interfaces, applied_nfrs, task
 (id/title/complexity/tdd_required/files/body/ac_covered/tests_first), ac_full,
+requirement_updated_at (from step b, same value for every task envelope in this plan),
 arch_excerpt, standards_card, prior_decisions_summary (empty initially), src_path,
 tests_path, test_runner, plan_id_for_log.
 

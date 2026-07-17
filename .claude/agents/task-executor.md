@@ -48,6 +48,8 @@ task_envelope:
   ac_full:
     - { id: AC-001, text: "..." }
   prior_fingerprint: "t1:<hash> or empty"   # from plan.task_fingerprints, if any
+requirement_updated_at: <ISO timestamp>   # linked requirement's updated_at frontmatter;
+                                           # same value for every task envelope in this plan
 arch_excerpt: |
   <markdown from arch-excerpter>
 standards_card: |
@@ -71,12 +73,26 @@ plan_id_for_log: PLAN-F-NNN
 ## Work
 
 0. **Idempotent skip check.** If `prior_fingerprint` is non-empty, recompute this task's
-   fingerprint by writing the envelope's fingerprint fields (`task_body`, `ac_ids`,
-   `ac_text`, `files`, `tests_first`, `requirement_updated_at`, `arch_excerpt_hash`,
-   `interfaces_contracts`, `applied_nfrs`, `standards_card_hash`, `test_runner`) to a temp
-   JSON file and running `python scripts/implr_validate --task-fingerprint <tmp>` —
-   **never hand-compute the hash** (you have Bash; hashing is the validator's job, per the
-   global constraint). If the printed value matches `prior_fingerprint` AND the task's
+   fingerprint by writing a temp JSON file with the `task_fingerprint()` field set built
+   from the envelope as follows, and running
+   `python scripts/implr_validate --task-fingerprint <tmp>` — **never hand-compute the
+   hash** (you have Bash; hashing is the validator's job, per the global constraint):
+
+   | fingerprint field        | envelope source                                                    |
+   |---------------------------|--------------------------------------------------------------------|
+   | `task_body`                | `task_envelope.task.body`                                          |
+   | `ac_ids`                   | `task_envelope.task.ac_covered` (list of AC ids)                    |
+   | `ac_text`                  | for each id in `ac_covered`, its `text` from `task_envelope.ac_full` (matched by `id`) |
+   | `files`                    | `task_envelope.task.files`                                         |
+   | `tests_first`              | `task_envelope.task.tests_first` (empty list if absent)             |
+   | `requirement_updated_at`   | top-level `requirement_updated_at`                                  |
+   | `arch_excerpt_hash`        | top-level `arch_excerpt` (raw text passed through as-is; the field name says "hash" but the validator does the hashing — pass the content string, not a hash you compute) |
+   | `interfaces_contracts`     | `task_envelope.interfaces`                                          |
+   | `applied_nfrs`             | `task_envelope.applied_nfrs`                                        |
+   | `standards_card_hash`      | top-level `standards_card` (raw text passthrough, same rationale as `arch_excerpt_hash`) |
+   | `test_runner`              | top-level `test_runner`                                             |
+
+   If the printed value matches `prior_fingerprint` AND the task's
    tests currently pass when run live, do NOT re-implement: return `task_status: done`
    with a note `already-satisfied` and no file changes. Otherwise proceed with the normal
    flow below. (The skip relies on a live test run, not a stored pass flag — there is no
