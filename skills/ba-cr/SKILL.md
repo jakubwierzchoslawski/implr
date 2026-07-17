@@ -31,6 +31,9 @@ runs in `cr-impact-analyzer`; per-target application runs in parallel `cr-applie
 
 ### Phase 1 — Acquire the CR
 
+`ba-cr` is the only path that applies a CR. `/ba-requirements-gen --reprocess` is for
+re-deriving from changed KB source documents, not for CRs.
+
 Branch on the parameter:
 
 **Interactive (no flag):** Run the CLI interview in the main context:
@@ -68,16 +71,25 @@ New requirements proposed: {n}
 Contradictions with existing: {n}
 Risks: {n}
 
-Approve and apply? (yes / no / impact-only)
+Approve and apply?
+  all      — apply to every affected requirement/plan
+  selected — you pick which requirement IDs to apply; the rest are excluded this run
+  none     — do not apply (optionally save impact report)
+  impact-only — save the impact report to the CR and stop
 ```
 
 If `--dry-run`, print and stop without dispatching appliers.
 
-On `no`, stop. On `impact-only`, save the impact report to the CR file and stop.
+On `selected`, prompt for the requirement IDs to apply. Record `applied_targets` (chosen)
+and `excluded_targets` (the rest of `confirmed_targets`). On `none`/`impact-only`, stop
+without applying.
 
-### Phase 4 — Dispatch `cr-applier` per affected target (parallel)
+Write the full `confirmed_targets` set to the CR file's `targets:` frontmatter. Set the CR
+`status: approved` and stamp `approved_at: <ISO timestamp>`.
 
-For each affected requirement and each affected plan:
+### Phase 4 — Dispatch `cr-applier` per applied target (parallel)
+
+For each requirement in `applied_targets` and each plan linked to those requirements:
 - Resolve model
 - Dispatch `cr-applier` with scope `{cr_path, target_path, target_kind, action, status_change}`
 - Cap parallelism at 5
