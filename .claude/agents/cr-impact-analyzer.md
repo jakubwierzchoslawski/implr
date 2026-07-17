@@ -31,8 +31,17 @@ The CR may already carry `targets` (author-supplied list of requirement IDs the 
 Start from the CR's `targets` (author-supplied, possibly empty). Confirm each still exists and is affected; add any additional affected requirement you discover via Grep. The union is `confirmed_targets`. **Write nothing** — you are read-only; `ba-cr` persists the set after the approval gate.
 
 For each affected requirement:
-- Determine change kind: additive AC, contradictory rule, scope expansion, scope cut,
-  rewording-only
+- Determine change kind — one of:
+  - `additive`: adds a new acceptance criterion/rule without altering or conflicting with
+    any existing one.
+  - `contradictory`: the CR's new rule directly conflicts with the requirement's current
+    stated rule (both can't be true at once).
+  - `correction`: the requirement's existing rule was simply wrong, imprecise, or needs
+    rewording, with no outright conflict.
+  - `override`: the CR fully supersedes the requirement — the old requirement will be
+    marked `superseded` and a brand-new requirement created to replace it. Reserve this
+    for when the CR explicitly declares the requirement is being replaced wholesale, not
+    merely amended.
 - Check whether a plan exists; if so, determine whether the plan needs full replan or
   patch only
 
@@ -51,7 +60,7 @@ target_summary: <one-line>
 confirmed_targets: [REQ-F-NNN, ...]   # full impact set; ba-cr writes this to CR frontmatter
 affected_requirements:
   - id: REQ-F-NNN
-    change_kind: additive | contradictory | scope_expansion | scope_cut | rewording
+    change_kind: additive | contradictory | correction | override
     current_status: <status>
     proposed_status: <status>
     plan_exists: true | false
