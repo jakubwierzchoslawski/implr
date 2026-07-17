@@ -15,7 +15,10 @@
       "status_machine": "plan",
       "required": ["plan_id", "slug", "title", "linked_requirement", "type", "status", "complexity", "tdd_required", "created_at", "updated_at"],
       "index_file": "docs/implr/plans/plans-index.md",
-      "path_globs": ["docs/implr/plans/functional/*.md", "docs/implr/plans/non-functional/*.md"]
+      "path_globs": ["docs/implr/plans/functional/*.md", "docs/implr/plans/non-functional/*.md"],
+      "conditional_required": [
+        {"when_status": "needs-rework", "require": ["rework_cr"]}
+      ]
     },
     "cr": {
       "id_field": "cr_id",

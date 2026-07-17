@@ -6,6 +6,10 @@ linked_requirement: REQ-F-000
 type: functional
 status: ready
 blocked_reason:
+rework_cr:
+rework_reason:
+implemented_files: []
+task_fingerprints: {}
 complexity: M
 tdd_required: true
 linked_nfrs: []

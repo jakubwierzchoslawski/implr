@@ -18,6 +18,10 @@ linked_requirement: REQ-F-001
 type: functional                 # functional | non-functional
 status: ready                    # ready | in-progress | done | blocked
 blocked_reason:                  # text if status is blocked, else blank
+rework_cr:                       # CR id that put this plan in needs-rework, else blank
+rework_reason:                   # short text when status is needs-rework, else blank
+implemented_files: []            # files written for this plan; set by plan-runner on completion
+task_fingerprints: {}            # { TASK-NNN: "t1:<hash>" } recorded by plan-runner per task
 complexity: M
 tdd_required: true
 linked_nfrs:
@@ -156,11 +160,13 @@ ready → in-progress → done
   ↑                     |
   └──── (changes-required from review) ←┘
 blocked → ready (once blocker resolved)
+done → needs-rework (from cr-applier) → ready (from dev-planner --replan)
 ```
 
 - `dev-planner` creates plans as `ready` (or `blocked` if it cannot fully specify).
 - `dev-executor` sets `in-progress` at start, `done` on completion.
 - `dev-code-review` may set back to `in-progress` if the verdict is changes-required/rejected.
+- `needs-rework` is set only by `cr-applier` (from `done`); the only exit is `dev-planner --replan`, which returns the plan to `ready`. See `status-vocabulary.json`.
 
 ---
 
