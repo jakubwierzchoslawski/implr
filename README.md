@@ -403,8 +403,8 @@ Regardless of skill, three **human gates** block the pipeline:
 1. **Approve requirements** before planning — set `status: approved` on each REQ file you
    want planned. `dev-planner` skips draft/under-review/blocked requirements unless you
    explicitly name them.
-2. **Approve CR impact** before applying — `ba-cr` shows the impact report and waits for
-   your `yes`/`no`/`impact-only`.
+2. **Approve CR impact** before applying — `ba-cr` shows the impact report
+   (`confirmed_targets`) and waits for your `all` / `selected` / `none` / `impact-only`.
 3. **Resolve Critical/High findings** before merge — `dev-code-review` blocks merge on any
    Critical or High finding; lower severities pass with warnings.
 
@@ -477,12 +477,28 @@ Three entry paths produce a CR:
   `/ba-cr --file <path>`
 - **KB document** — a new/changed KB doc; `/ba-cr --ingest-file <path>` derives the CR
 
+The CR's `targets:` field is author-optional (name candidate requirement IDs, or leave it
+empty). Either way, `cr-impact-analyzer` runs read-only and returns the full impact set as
+`confirmed_targets`; it never writes to the CR file.
+
 | Transition | Triggered by | Who |
 |---|---|---|
 | `(none) → draft` | CR file created by one of the three paths | ba-cr or you |
-| `draft → approved` | cr-impact-analyzer returns its report and you answer `yes` to the impact prompt | ba-cr / You |
-| `draft → rejected` | You answer `no` to the impact prompt | You |
-| `approved → applied` | cr-applier dispatches finish on all affected targets | ba-cr |
+| `draft → approved` | cr-impact-analyzer returns `confirmed_targets` and you choose `all` or `selected` at the gate | ba-cr / You |
+| `draft → rejected` | You choose `none` at the gate | You |
+| `approved → applied` | Every `cr-applier` dispatch succeeded across all `applied_targets` | ba-cr |
+
+On approval, `ba-cr` writes `confirmed_targets` to the CR's `targets:` frontmatter, then
+dispatches `cr-applier` only against `applied_targets` (the requirement IDs you chose); any
+remaining `confirmed_targets` become `excluded_targets` for this run. `cr-applier` applies the
+requirement transition for each target's change kind (additive stays `approved`;
+contradictory/correction goes `under-review`; an override supersedes the old requirement and
+ba-cr creates the replacement) and sets `needs-rework` on any plan that needs full
+regeneration — `dev-planner --replan` is the only way back to `ready`. If the impact analysis
+proposed genuinely-new requirements, ba-cr creates them as `draft` (still requiring your
+approval before planning). Once every applied target succeeds, the CR is stamped `applied`
+and `cr-log.md` gets a new entry recording `Applied targets` and `Excluded targets` for the
+run.
 
 Full diagrams (including replan loops and approval edge cases) in
 [WORKFLOW.md](docs/WORKFLOW.md).
@@ -601,15 +617,33 @@ High findings block merge.
 
 ## Changing Requirements
 
-After requirements and plans are generated, use `ba-cr` to change them. Three paths are available:
+After requirements and plans are generated, use `ba-cr` to change them — the single,
+delta-safe path for amending already-generated requirements and plans. Three paths produce
+the CR; all three converge on the same apply flow.
 
 **CLI path** — tell ba-cr what you want to change in plain language:
 ```
 /ba-cr
 ```
-ba-cr interviews you, creates a Change Request document, analyses impact across all
-requirements and plans, shows you what will change, and chains the downstream updates on
-approval.
+ba-cr interviews you, creates a Change Request document (`targets:` is optional — name
+candidate requirement IDs or leave it empty), and dispatches `cr-impact-analyzer`
+(read-only) to confirm the full impact set as `confirmed_targets`.
+
+At the gate you choose:
+- `all` — apply to every confirmed target
+- `selected` — apply to a subset; the rest become `excluded_targets` for this run
+- `none` — do not apply
+- `impact-only` — save the impact report to the CR and stop
+
+ba-cr writes `confirmed_targets` to the CR's `targets:` frontmatter, then dispatches
+`cr-applier` only against `applied_targets`. `cr-applier` applies the requirement's
+change-kind transition (additive stays `approved`; contradictory/correction goes
+`under-review`; an override supersedes the old requirement and ba-cr creates its
+replacement) and sets any plan needing full regeneration to `needs-rework` —
+`/dev-planner --replan` is the only path back to `ready`. If the impact analysis proposed
+genuinely-new requirements, ba-cr creates them as `draft` (still requiring approval). Once
+every applied target succeeds, the CR is stamped `applied` and `cr-log.md` gets a new entry
+with `Applied targets` / `Excluded targets`.
 
 **Manual-file path** — author the CR file yourself, then apply it:
 ```
@@ -618,14 +652,16 @@ approval.
 3. /doc-ingest          ← detects the new CR, prompts you to run ba-cr
 4. /ba-cr --file docs/kb/change-requests/CR-NNN.md
 ```
+Continues from impact analysis onward — same gate, same apply path as the CLI path.
 
 **KB-document path** — added a new or updated doc to the KB that changes requirements:
 ```
 /doc-ingest --file docs/kb/your-new-doc.md
 /ba-cr --ingest-file docs/kb/your-new-doc.md            # then derive the CR
 ```
-ba-cr reads the document's digest, auto-generates a CR, runs impact analysis,
-and cascades updates on approval — no manual CR authoring needed.
+ba-cr reads the document's digest, auto-generates a CR, runs impact analysis, and — on
+approval — applies through the same `cr-applier`/`needs-rework`/`--replan` path as the CLI
+path. No manual CR authoring needed.
 
 See [WORKFLOW.md](docs/WORKFLOW.md) for the full state flow diagrams for requirements, plans, and change requests.
 
@@ -794,6 +830,7 @@ Do not edit these by hand — they are owned by the skills:
 | `docs/implr/requirements/functional/**` | ba-requirements-gen |
 | `docs/implr/requirements/non-functional/**` | ba-requirements-gen |
 | `docs/implr/requirements/cr-index.md` | ba-cr |
+| `docs/implr/requirements/cr-log.md` | ba-cr |
 | `docs/implr/plans/functional/**` | dev-planner |
 | `docs/implr/plans/non-functional/**` | dev-planner |
 | `docs/implr/reviews/**` | dev-code-review |

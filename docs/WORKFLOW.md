@@ -231,11 +231,14 @@ draft → under-review → approved → superseded
 | `draft` → `approved` | Human | Requirement is correct and complete |
 | `under-review` → `approved` | Human | Open questions resolved |
 | `under-review` → `rejected` | Human | Requirement is invalid or out of scope |
-| `approved` → `under-review` | ba-requirements-gen or ba-cr | A source doc changed and the requirement may be affected |
-| `approved` → `superseded` | Human | A new requirement replaces this one (`superseded_by` set) |
+| `approved` → `under-review` | ba-requirements-gen or cr-applier | A source doc changed, or a CR is contradictory/a correction, and the requirement may be affected |
+| `approved` → `superseded` | cr-applier | An override CR replaces this requirement (`superseded_by` set; ba-cr creates the new requirement) |
 
 Claude only ever creates `draft`. Only humans promote to `approved`. ba-requirements-gen
-and ba-cr can drop `approved` → `under-review` but never to `draft` (preserving review history).
+and cr-applier can drop `approved` → `under-review` but never to `draft` (preserving review
+history). See [Requirement Transitions from a CR](#requirement-transitions-from-a-cr) in
+[Change Requests](#change-requests) for the exact change-kind → status mapping cr-applier
+uses.
 
 *In v2.0, the requirement-write transitions are performed by the `requirements-domain-worker`
 subagent (one per domain, in parallel) dispatched from the `ba-requirements-gen`
@@ -291,16 +294,31 @@ draft → approved → applied
 | Transition | Who | Condition |
 |-----------|-----|-----------|
 | `draft` | ba-cr | CR created from CLI interview, manual file, or auto-generated from KB doc |
-| `draft` → `approved` | Human | Approved at the ba-cr approval gate |
-| `draft` → `rejected` | Human | Rejected at the ba-cr approval gate |
-| `approved` → `applied` | ba-cr | All downstream chains (ba-requirements-gen, dev-planner, arch-gen) completed |
+| `draft` → `approved` | Human | Chooses `all` or `selected` at the ba-cr approval gate |
+| `draft` → `rejected` | Human | Chooses `none` at the ba-cr approval gate |
+| `approved` → `applied` | ba-cr | Every dispatched `cr-applier` succeeded across all `applied_targets` |
 
 `rejected` is a terminal state. Create a new CR to supersede a rejected one. A CR is never
 edited after creation — it is a point-in-time record of intent.
 
+The CR's `targets:` field is author-optional: name candidate requirement IDs while authoring
+the CR, or leave it empty and let impact analysis find them. Either way, `cr-impact-analyzer`
+(read-only) returns the full `confirmed_targets` set — it never writes to the CR file. At the
+gate, `ba-cr` writes `confirmed_targets` to the CR's `targets:` frontmatter, then dispatches
+`cr-applier` only against the subset the human approved (`applied_targets`); the rest of
+`confirmed_targets` become `excluded_targets` for this run and are recorded in `cr-log.md`.
+
+`cr-applier` applies the change-kind-specific requirement transitions (see
+[Requirement Transitions from a CR](#requirement-transitions-from-a-cr)) and, for a plan that
+needs full regeneration, sets `status: needs-rework` — never `ready` directly; the only exit
+is `dev-planner --replan` (see [Plan](#plan) above). The CR is stamped `applied` only once
+every applied target succeeds.
+
 *In v2.0, impact analysis is performed by `cr-impact-analyzer` (read-only); applying the
-CR is performed by parallel `cr-applier` dispatches, one per affected requirement or plan.
-The `ba-cr` skill orchestrates both phases.*
+CR is performed by parallel `cr-applier` dispatches, one per applied target (requirement or
+plan). The `ba-cr` skill orchestrates both phases, and dispatches
+`requirements-domain-worker` (Phase 4.5) to draft any genuinely new requirement the impact
+analysis proposes.*
 
 ---
 
@@ -430,6 +448,30 @@ digested, and synthesised by `doc-ingest` exactly like any other source document
 requirement update triggered by a CR is traceable: the CR file is added to the requirement's
 `source_docs` list.
 
+### The delta-safe flow, end to end
+
+```
+author (optional) targets:  →  cr-impact-analyzer (read-only)  →  confirmed_targets
+                                                                        │
+                                                       all / selected / none / impact-only
+                                                                        │
+                             ba-cr writes targets: = confirmed_targets ▼
+                             ba-cr dispatches cr-applier only to applied_targets
+                             ba-cr creates genuinely-new requirements (Phase 4.5) if proposed
+                                                                        │
+                    cr-applier: requirement transitions + done → needs-rework on plans
+                                                                        │
+                              dev-planner --replan  (sole path back to ready)
+                                                                        │
+                          CR stamped applied + cr-log.md (applied/excluded targets)
+```
+
+The author may name candidate requirement IDs in the CR's `targets:` field, or leave it
+empty. `cr-impact-analyzer` never trusts (or requires) that list blindly — it confirms each
+named target still exists and is affected, discovers any additional affected requirement,
+and returns the union as `confirmed_targets`. It writes nothing; only `ba-cr`, after the
+human gate, persists `confirmed_targets` to the CR's `targets:` frontmatter.
+
 ### CLI path (most common)
 
 ```
@@ -439,17 +481,51 @@ requirement update triggered by a CR is traceable: the CR file is added to the r
 2. ba-cr interviews you for any missing required fields, then creates:
    docs/kb/change-requests/CR-NNN-slug.md
 
-3. ba-cr dispatches `cr-impact-analyzer` to analyse impact across all requirements/plans
+3. ba-cr dispatches `cr-impact-analyzer` to analyse impact across all requirements/plans;
+   it returns `confirmed_targets` (read-only — the CR file is not written yet)
 
-4. ba-cr presents impact report with affected requirements and their plans
+4. ba-cr presents the impact report with affected requirements, their plans, and any
+   genuinely-new requirements the analysis proposes
 
-5. You approve: all / selected / none
+5. You approve:
+   all         — apply to every confirmed target
+   selected    — you pick which requirement IDs to apply; the rest are recorded as
+                 excluded_targets for this run
+   none        — do not apply
+   impact-only — persist the impact report to the CR and stop without applying
 
-6. On approval, ba-cr dispatches parallel `cr-applier` subagents (one per affected
-   requirement, one per affected plan). Plans the applier set to `needs-rework` are queued;
-   ba-cr then offers to run `/dev-planner --replan` for them. `/arch-gen --update` is suggested
-   only if the architecture domain was touched.
+6. ba-cr writes the full `confirmed_targets` set to the CR's `targets:` frontmatter
+   (regardless of which option was chosen), then — on `all`/`selected` — dispatches
+   parallel `cr-applier` subagents against `applied_targets` only (one per affected
+   requirement, one per affected plan). If the impact analysis proposed genuinely-new
+   requirements, ba-cr dispatches `requirements-domain-worker` to draft them (Phase 4.5)
+   and adds them as `draft` — they still need human approval before planning.
+
+7. Plans the applier set to `needs-rework` are queued; ba-cr offers to run
+   `/dev-planner --replan` for them — the only transition out of `needs-rework`.
+   `/arch-gen --update` is suggested only if the architecture domain was touched.
+
+8. Once every applied target succeeds, ba-cr stamps the CR `status: applied` and
+   `applied_at`, then prepends an entry to `cr-log.md` recording `Applied targets` and
+   `Excluded targets` for this run.
 ```
+
+### Requirement Transitions from a CR
+
+`cr-applier` sets requirement status according to the CR's change kind — never a generic
+rule. This table is authoritative for what a CR-driven apply does to a requirement:
+
+| Change kind | Requirement status effect |
+|-------------|---------------------------|
+| additive | Requirement stays `approved`; the new acceptance criteria are appended, existing ACs untouched |
+| contradictory / correction | Requirement set to `under-review`; the rule is replaced; an Open Question citing the CR is added |
+| override that replaces | Old requirement set to `superseded` (`superseded_by` set to the new requirement's id); a new requirement is created |
+
+`source_docs` on the target requirement always gains the CR filename, regardless of change
+kind. Legal requirement states and transitions are defined once in
+`docs/implr/schemas/status-vocabulary.json`; this table describes the CR-specific subset of
+the `approved → under-review` and `approved → superseded` transitions already listed in
+[Requirement](#requirement) above.
 
 ### Manual-file path
 
@@ -484,10 +560,12 @@ requirements — without writing a CR file yourself.
    b. Reads the domain synthesis diff to understand what changed
    c. Auto-generates CR-NNN with source: kb-document
    d. Runs /doc-ingest --file on the CR file itself
-   e. Runs impact analysis → presents impact report
-   f. Waits for your approval (same gate as CLI path)
-   g. On approval: chains ba-requirements-gen --reprocess, dev-planner --replan,
-      optionally arch-gen --update
+   e. Runs impact analysis → presents impact report with confirmed_targets
+   f. Waits for your approval: all / selected / none / impact-only (same gate as CLI path)
+   g. On approval: same apply path as the CLI path from step 6 onward — ba-cr writes
+      targets:, dispatches cr-applier to applied_targets, creates new requirements via
+      Phase 4.5 if proposed, queues needs-rework plans for /dev-planner --replan, and
+      suggests /arch-gen --update only if the architecture domain was touched
 
 Alternatively, run /doc-ingest first (to refresh the KB), then use the hint it prints:
    💡 New KB document ingested: {filename}
@@ -508,3 +586,10 @@ the CR content is captured: interview (cli-direct), manual file, or digest extra
 | `docs/implr/requirements/cr-log.md` | Append-only history of ba-cr runs |
 | `docs/implr/schemas/cr-schema.md` | Canonical CR, cr-index, cr-log structures |
 | `docs/implr/templates/cr-template.md` | Blank template for manual CR authoring |
+
+Each `cr-log.md` entry records, per run: requirements updated, plans replanned, whether
+arch-gen was triggered, and — the audit trail for the approval gate — `Applied targets`
+(requirement IDs actually dispatched to `cr-applier` this run) and `Excluded targets`
+(confirmed targets the human declined this run). `targets:` on the CR frontmatter is the
+durable full impact set; `applied_targets`/`excluded_targets` are per-run, since a later run
+may apply a target excluded earlier.
