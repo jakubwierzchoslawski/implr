@@ -21,9 +21,10 @@ Analyse impact of the CR across all requirements and plans. Read-only.
 ```
 cr_id: CR-NNN
 target_summary: <one-line>
+confirmed_targets: [REQ-F-NNN, ...]   # full impact set; ba-cr writes this to CR frontmatter
 affected_requirements:
   - id: REQ-F-NNN
-    change_kind: additive | contradictory | scope_expansion | scope_cut | rewording
+    change_kind: additive | contradictory | correction | override
     current_status: <status>
     proposed_status: <status>
     plan_exists: true | false

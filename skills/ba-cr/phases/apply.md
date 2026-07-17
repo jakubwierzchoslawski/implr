@@ -16,6 +16,10 @@ target_path: {{TARGET_PATH}}
 target_kind: {{TARGET_KIND}}      # requirement | plan
 action: {{ACTION}}                # patch | replan
 status_change: {{STATUS_CHANGE}}
+change_kind: {{CHANGE_KIND}}      # additive | contradictory | correction | override
+                                  # only present/meaningful when target_kind: requirement;
+                                  # the impact analyzer's per-requirement change kind — omit
+                                  # for plan targets
 ```
 
 ## Task
@@ -26,7 +30,7 @@ Apply the CR change exactly as described in the CR's `before`/`after` fields. Up
 ```
 target_path: <path>
 target_kind: requirement | plan
-action_applied: patch | replan | needs_rework_set
+action_applied: patch | needs-rework-set | requirement-updated
 fields_changed:
   - source_docs
   - status: <old> → <new>
