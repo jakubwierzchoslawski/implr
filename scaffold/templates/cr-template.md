@@ -8,6 +8,7 @@ change_type: constraint-change
              # new-rule | correction | override
 source: manual-file
 affected_domains: []
+targets: []
 before: ""
 after: ""
 rationale: ""

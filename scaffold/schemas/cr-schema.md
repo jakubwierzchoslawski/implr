@@ -18,6 +18,10 @@ change_type: constraint-change
                         # new-rule | correction | override
 source: cli-direct      # cli-direct | manual-file | kb-document
 affected_domains: []    # populated by ba-cr after impact analysis
+targets: []             # all confirmed affected requirement IDs (full impact set).
+                        # written by ba-cr after the approval gate from cr-impact-analyzer's
+                        # returned set. NOT the applied subset — see cr-log.md for
+                        # applied_targets / excluded_targets.
 before: ""              # auto-extracted by ba-cr from user input; old value/behaviour
 after: ""               # auto-extracted by ba-cr from user input; new value/behaviour
 rationale: ""           # captured during ba-cr interview
@@ -92,8 +96,11 @@ Location: `docs/implr/requirements/cr-log.md`
 - **Requirements updated:** {list of req IDs, or none}
 - **Plans replanned:** {list of plan IDs, or none}
 - **arch-gen triggered:** yes | no
-- **Excluded from apply:** {list of req IDs user declined, or none}
+- **Applied targets:** {list of req IDs applied this run, or none}
+- **Excluded targets:** {list of req IDs the user declined this run, or none}
 ~~~
+
+`targets` on the CR frontmatter is the durable full impact set; `applied_targets`/`excluded_targets` here are per-run because a later run may apply a previously excluded target.
 
 ---
 

@@ -23,7 +23,8 @@
       "status_machine": "cr",
       "required": ["cr_id", "slug", "title", "status", "change_type", "source", "created_at"],
       "index_file": "docs/implr/requirements/cr-index.md",
-      "path_globs": ["docs/kb/change-requests/*.md"]
+      "path_globs": ["docs/kb/change-requests/*.md"],
+      "optional": ["targets", "affected_domains", "before", "after", "rationale", "approved_at", "applied_at"]
     },
     "review": {
       "id_field": "review_id",
