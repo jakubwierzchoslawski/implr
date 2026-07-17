@@ -15,7 +15,10 @@
       "status_machine": "plan",
       "required": ["plan_id", "slug", "title", "linked_requirement", "type", "status", "complexity", "tdd_required", "created_at", "updated_at"],
       "index_file": "docs/implr/plans/plans-index.md",
-      "path_globs": ["docs/implr/plans/functional/*.md", "docs/implr/plans/non-functional/*.md"]
+      "path_globs": ["docs/implr/plans/functional/*.md", "docs/implr/plans/non-functional/*.md"],
+      "conditional_required": [
+        {"when_status": "needs-rework", "require": ["rework_cr"]}
+      ]
     },
     "cr": {
       "id_field": "cr_id",
@@ -23,7 +26,8 @@
       "status_machine": "cr",
       "required": ["cr_id", "slug", "title", "status", "change_type", "source", "created_at"],
       "index_file": "docs/implr/requirements/cr-index.md",
-      "path_globs": ["docs/kb/change-requests/*.md"]
+      "path_globs": ["docs/kb/change-requests/*.md"],
+      "optional": ["targets", "affected_domains", "before", "after", "rationale", "approved_at", "applied_at"]
     },
     "review": {
       "id_field": "review_id",

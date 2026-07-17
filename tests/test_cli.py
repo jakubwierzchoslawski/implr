@@ -30,6 +30,20 @@ class TestCli(unittest.TestCase):
     def test_usage_error_returns_two(self):
         self.assertEqual(main([]), 2)
 
+    def test_task_fingerprint_mode(self):
+        import tempfile, json
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, "t.json")
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump({
+                    "task_body": "b", "ac_ids": ["AC-001"], "ac_text": ["x"],
+                    "files": ["a.py"], "tests_first": ["t"], "requirement_updated_at": "z",
+                    "arch_excerpt_hash": "h", "interfaces_contracts": "i",
+                    "applied_nfrs": "n", "standards_card_hash": "s", "test_runner": "pytest",
+                }, f)
+            rc = main(["--task-fingerprint", p, "--schema-dir", os.path.join(REPO_ROOT, "scaffold", "schemas")])
+            self.assertEqual(rc, 0)
+
 
 # --- Task 10: sample-kb fixture integration tests ---
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "sample-kb")
@@ -64,6 +78,19 @@ class TestFixture(unittest.TestCase):
                 text = f.read()
             with open(synth, "w", encoding="utf-8") as f:
                 f.write(text.replace("1:d5fe836f0aa838fd", "1:0000000000000000"))
+            rc = main(["--workspace", dst, "--schema-dir", SCHEMA_DIR])
+            self.assertEqual(rc, 1)
+
+    def test_needs_rework_missing_cr_fails(self):
+        import shutil, tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            dst = os.path.join(tmp, "sample-kb")
+            shutil.copytree(FIXTURE, dst)
+            plan = os.path.join(dst, "docs", "implr", "plans", "functional", "PLAN-F-001-login.md")
+            with open(plan, encoding="utf-8") as f:
+                text = f.read()
+            with open(plan, "w", encoding="utf-8") as f:
+                f.write(text.replace("status: ready", "status: needs-rework"))  # no rework_cr
             rc = main(["--workspace", dst, "--schema-dir", SCHEMA_DIR])
             self.assertEqual(rc, 1)
 

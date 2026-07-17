@@ -1,6 +1,8 @@
 # Phase: apply
 
-Dispatch prompt for `cr-applier`. One dispatch per affected target.
+Dispatch prompt for `cr-applier`. One dispatch per applied target: each requirement in
+`applied_targets` (the subset the human approved this run, not the full `confirmed_targets`
+impact set) and each plan linked to those requirements.
 
 ## Read first
 - `docs/implr/schemas/cr-schema.md`

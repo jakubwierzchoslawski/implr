@@ -6,7 +6,7 @@ import sys
 
 from .contracts import load_contracts
 from .checks import check_workspace, check_repo_prose
-from .fingerprint import contradiction_fingerprint
+from .fingerprint import contradiction_fingerprint, task_fingerprint
 
 
 def _resolve_schema_dir(root, override):
@@ -24,11 +24,12 @@ def main(argv):
     parser.add_argument("--workspace", nargs="?", const=".", default=None,
                         help="validate an installed docs/implr workspace at PATH (default cwd)")
     parser.add_argument("--fingerprint", metavar="FILE", help="print fingerprint of a JSON fields file")
+    parser.add_argument("--task-fingerprint", metavar="FILE", help="print task fingerprint of a JSON fields file")
     parser.add_argument("--root", default=".", help="repo root for --repo (default cwd)")
     parser.add_argument("--schema-dir", default=None, help="override contract directory")
     args = parser.parse_args(argv)
 
-    if not (args.repo or args.workspace is not None or args.fingerprint):
+    if not (args.repo or args.workspace is not None or args.fingerprint or args.task_fingerprint):
         sys.stderr.write("error: one of --repo, --workspace, --fingerprint is required\n")
         return 2
 
@@ -38,6 +39,12 @@ def main(argv):
         with open(args.fingerprint, encoding="utf-8") as f:
             fields = json.load(f)
         sys.stdout.write(contradiction_fingerprint(fields) + "\n")
+        return 0
+
+    if args.task_fingerprint:
+        with open(args.task_fingerprint, encoding="utf-8") as f:
+            fields = json.load(f)
+        sys.stdout.write(task_fingerprint(fields) + "\n")
         return 0
 
     findings = []

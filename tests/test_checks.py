@@ -311,5 +311,82 @@ class TestRepoProse(unittest.TestCase):
             self.assertEqual([f for f in check_repo_prose(root, self.c) if "transition" in f.message], [])
 
 
+VALID_PLAN_REWORK = """---
+plan_id: PLAN-F-001
+slug: x
+title: "Impl"
+linked_requirement: REQ-F-001
+type: functional
+status: needs-rework
+complexity: M
+tdd_required: true
+rework_cr: CR-014
+created_at: 2026-01-01T00:00:00Z
+updated_at: 2026-01-01T00:00:00Z
+---
+# body
+"""
+
+
+class TestConditionalRequired(unittest.TestCase):
+    def setUp(self):
+        self.c = load_contracts(SCHEMA_DIR)
+
+    def _write_plan(self, tmp, text):
+        p = os.path.join(tmp, "PLAN-F-001-x.md")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(text)
+        return p
+
+    def test_needs_rework_with_cr_is_clean(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(check_artefact_file(self._write_plan(tmp, VALID_PLAN_REWORK), "plan", self.c), [])
+
+    def test_needs_rework_without_cr_flagged(self):
+        bad = VALID_PLAN_REWORK.replace("rework_cr: CR-014\n", "")
+        with tempfile.TemporaryDirectory() as tmp:
+            findings = check_artefact_file(self._write_plan(tmp, bad), "plan", self.c)
+            self.assertTrue(any("rework_cr" in f.message for f in findings))
+
+
+CR_WITH_TARGET = """---
+cr_id: CR-001
+slug: x
+title: "A change"
+status: draft
+change_type: correction
+source: cli-direct
+targets: [REQ-F-001]
+created_at: 2026-01-01T00:00:00Z
+---
+# CR-001
+"""
+
+
+class TestCrTargets(unittest.TestCase):
+    def setUp(self):
+        self.c = load_contracts(SCHEMA_DIR)
+
+    def _ws_with_cr(self, root, cr_text):
+        _mk_workspace(root, with_plan=False)
+        cr_dir = os.path.join(root, "docs", "kb", "change-requests")
+        os.makedirs(cr_dir)
+        with open(os.path.join(cr_dir, "CR-001-x.md"), "w", encoding="utf-8") as f:
+            f.write(cr_text)
+        # index the CR so index-agreement stays clean
+        with open(os.path.join(root, "docs", "implr", "requirements", "cr-index.md"), "w", encoding="utf-8") as f:
+            f.write("# CR Index\n\n| CR-001 | ok |\n")
+
+    def test_valid_target_clean(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._ws_with_cr(root, CR_WITH_TARGET)
+            self.assertEqual([f for f in check_workspace(root, self.c) if "target" in f.message.lower()], [])
+
+    def test_dangling_target_flagged(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._ws_with_cr(root, CR_WITH_TARGET.replace("REQ-F-001", "REQ-F-404"))
+            self.assertTrue(any("REQ-F-404" in f.message for f in check_workspace(root, self.c)))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -25,7 +25,9 @@ in parallel `plan-worker` subagents respecting dependency waves.
 - `/dev-planner REQ-F-001 REQ-F-002 REQ-N-001` — plan several (deps respected).
 - `/dev-planner --all` — plan all approved requirements without a current plan. **Skips
   requirements that already have a plan** (per v1.x fix).
-- `/dev-planner --replan REQ-F-001` — regenerate an existing plan (preserve plan_id).
+- `/dev-planner --replan REQ-F-001` — regenerate an existing plan (preserve plan_id). Valid when
+  the plan is `ready`, `done`, or `needs-rework`. Regeneration sets the plan back to `ready` and
+  clears `rework_cr`/`rework_reason`. This is the ONLY transition out of `needs-rework`.
 - `/dev-planner --brainstorm REQ-F-001` — interactive design exploration before planning.
 - `/dev-planner --dry-run REQ-F-001` — preview; write nothing.
 - `/dev-planner --coherence-check ...` — force the cross-plan coherence sweep (Phase 6). Default: only auto-runs when ≥3 plans generated in this invocation.
@@ -39,6 +41,9 @@ For `--all`, read `requirements-index.md` and pick approved reqs without an exis
 
 For each in-scope req, check dependencies — every required REQ must have an existing plan.
 If not, mark blocked. Surface blockers up front.
+
+When replanning a `needs-rework` plan, read its `rework_cr`/`rework_reason` and incorporate
+the CR-driven changes; after writing, set `status: ready` and blank the rework fields.
 
 ### Phase 2 — Brainstorm (if `--brainstorm`)
 

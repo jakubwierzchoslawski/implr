@@ -41,6 +41,10 @@ Identify plans to execute (per parameter). For `--all`, read `plans-index.md` fo
 `status: ready`. For named plans, validate existence and `status: ready` (`--task` mode
 allowed on `in-progress` plans). For `--task`, identify the named task's plan.
 
+If a named or `--all`-selected plan has `status: needs-rework`, do NOT execute it. Emit:
+`❌ PLAN-F-NNN is needs-rework (CR {rework_cr}). Run /dev-planner --replan {plan} first.`
+and skip it.
+
 ### Phase 2 — Validate dependencies
 
 For each in-scope plan, every dependency in frontmatter `dependencies:` must be
@@ -59,6 +63,9 @@ dispatching any wave):
 
 Read the plan file. Extract:
 - Frontmatter (YAML between first and second `---`)
+- `task_fingerprints` from that frontmatter — a map `{TASK-NNN: "t1:<hash>"}` (may be
+  empty or absent on a plan's first run, or for a task added since the last run; that's
+  expected). Keep this map in memory for step f.
 - `## Objective` body (lines after header until next `##`)
 - `## Architecture Context` body (lines after header until next `##`)
 - `### Interfaces and Contracts` body (within Component Design, lines after header until next `##`)
@@ -80,6 +87,10 @@ Read the plan file. Extract:
 
 Read the linked requirement (`linked_requirement:` frontmatter → look up in
 `docs/implr/requirements/`). Extract each `- [ ] AC-NNN:` line. Build `ac_full` list.
+Also read that requirement's `updated_at:` frontmatter value and capture it as
+`requirement_updated_at` — every task in this plan shares the same linked requirement,
+so this value is resolved once per plan and reused in every task envelope built in
+step f below.
 
 **c. Dispatch arch-excerpter.**
 
@@ -102,8 +113,11 @@ Read `agents.plan-runner` from `implr.config.yaml`; fall back to `opus`.
 For each parsed task, build a complete envelope per the `task-executor` input schema:
 plan_id, plan_path, plan_objective, plan_arch_context, interfaces, applied_nfrs, task
 (id/title/complexity/tdd_required/files/body/ac_covered/tests_first), ac_full,
-arch_excerpt, standards_card, prior_decisions_summary (empty initially), src_path,
-tests_path, test_runner, plan_id_for_log.
+requirement_updated_at (from step b, same value for every task envelope in this plan),
+prior_fingerprint (`task_fingerprints.get(task.id, "")` from the map read in step a — empty
+string if the plan has no recorded fingerprint for this task yet), arch_excerpt,
+standards_card, prior_decisions_summary (empty initially), src_path, tests_path,
+test_runner, plan_id_for_log.
 
 For `--task` mode: build only the envelope for the named task; set it as the sole
 element of `task_envelopes`; set `resume_task` to the task id.
@@ -161,6 +175,7 @@ with the executed plan ids. Merge its verdict counts into this report.
 ## Failure handling
 
 - `standards-card.md` missing → halt before any dispatch (message above).
+- Plan is `needs-rework` → refuse to execute it; skip and report (message above).
 - Plan parse failure → skip that plan; continue others; report skipped plans.
 - Dependency not `done` → skip with warning unless explicitly named.
 - `plan-runner` returns `tests_pass: false` → plan stays `in-progress`; surface to user;

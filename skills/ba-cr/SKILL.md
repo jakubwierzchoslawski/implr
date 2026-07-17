@@ -31,6 +31,9 @@ runs in `cr-impact-analyzer`; per-target application runs in parallel `cr-applie
 
 ### Phase 1 — Acquire the CR
 
+`ba-cr` is the only path that applies a CR. `/ba-requirements-gen --reprocess` is for
+re-deriving from changed KB source documents, not for CRs.
+
 Branch on the parameter:
 
 **Interactive (no flag):** Run the CLI interview in the main context:
@@ -68,19 +71,74 @@ New requirements proposed: {n}
 Contradictions with existing: {n}
 Risks: {n}
 
-Approve and apply? (yes / no / impact-only)
+Approve and apply?
+  all      — apply to every affected requirement/plan
+  selected — you pick which requirement IDs to apply; the rest are excluded this run
+  none     — do not apply (optionally save impact report)
+  impact-only — save the impact report to the CR and stop
 ```
 
 If `--dry-run`, print and stop without dispatching appliers.
 
-On `no`, stop. On `impact-only`, save the impact report to the CR file and stop.
+On `selected`, prompt for the requirement IDs to apply. Record `applied_targets` (chosen)
+and `excluded_targets` (the rest of `confirmed_targets`). On `none`/`impact-only`, stop
+without applying.
 
-### Phase 4 — Dispatch `cr-applier` per affected target (parallel)
+Write the full `confirmed_targets` set to the CR file's `targets:` frontmatter. Set the CR
+`status: approved` and stamp `approved_at: <ISO timestamp>`.
 
-For each affected requirement and each affected plan:
+### Phase 4 — Dispatch `cr-applier` per applied target (parallel)
+
+For each requirement in `applied_targets` and each plan linked to those requirements:
 - Resolve model
-- Dispatch `cr-applier` with scope `{cr_path, target_path, target_kind, action, status_change}`
+- Dispatch `cr-applier` with scope `{cr_path, target_path, target_kind, action, status_change}`,
+  adding `change_kind` (from the impact report's per-requirement `change_kind` field) when
+  `target_kind: requirement`; omit it for plan targets.
 - Cap parallelism at 5
+
+### Phase 4.5 — Create genuinely-new requirements (if any)
+
+If impact analysis reported new requirements are needed (not just amendments):
+
+1. Determine the target domain for each new requirement (from the CR's affected_domains; if none,
+   use `root`).
+2. Create the staging dir `docs/implr/requirements/.staging/<domain>/` (delete first if present,
+   per the ba-requirements-gen Windows/Unix rules).
+3. Dispatch `requirements-domain-worker` with a **complete** `domain_envelope` that satisfies its
+   contract. Because there is no domain synthesis for a CR-originated requirement, synthesize the
+   inputs from the CR (the worker treats `domain_synthesis` as authoritative source material):
+
+   ```yaml
+   domain_envelope:
+     domain: <domain>
+     mode: create
+     reprocess_target: null
+     staging_dir: docs/implr/requirements/.staging/<domain>/
+     digests_dir: docs/implr/kb-index/digests/per-doc/    # may be empty; worker reads only if needed
+     requirements_card: |
+       <full inline content of docs/implr/config/requirements-card.md>
+     domain_synthesis: |
+       # Synthesized from CR <cr_id>
+       ## Consolidated Rules
+       <the CR's Description of Change + before/after, restated as the rule(s) to implement>
+       ## Ambiguities Detected
+       (none)
+       ## Contradictions Detected
+       (none)
+     master_synthesis_nfr: |
+       N/A
+     default_tdd_threshold: <behaviour.default_tdd_threshold from implr.config.yaml>
+     existing_reqs_summary:
+       req_ids: <all ids from requirements-index.md>
+       slugs_in_domain: <slugs already in this domain, or []>
+     resolved_contradictions: {}
+     deferred_contradictions: []
+   ```
+4. After the worker returns, assign the next sequential `REQ-F-NNN`/`REQ-N-NNN` (continue from
+   `requirements-index.md`), move the staged file into `functional/` or `non-functional/`, set
+   `status: draft`, add the CR filename to `source_docs`, and add the new id to
+   `requirements-index.md`.
+5. Report the new REQ IDs and that they require human approval before planning.
 
 ### Phase 5 — Handle replan markers
 
@@ -93,10 +151,16 @@ Run /dev-planner --replan {list} now? (yes / no)
 
 If yes, invoke `/dev-planner --replan` for each.
 
-### Phase 6 — Update `cr-index.md` and `requirements-log.md`
+### Phase 6 — Stamp CR, write logs and indices
 
-Add the CR entry to `cr-index.md`. Append entries to `requirements-log.md` for each
-affected requirement and to `plans-log.md` for each affected plan.
+1. If every dispatched applier succeeded: set the CR file `status: applied` and stamp
+   `applied_at: <ISO timestamp>`. If any applier failed: leave `status: approved` and do not
+   stamp applied_at.
+2. Prepend an entry to `docs/implr/requirements/cr-log.md` per cr-schema.md, including
+   `Applied targets` and `Excluded targets` for this run, and any failures.
+3. Add/update the CR row in `cr-index.md`.
+4. Append entries to `requirements-log.md` for each applied requirement and to `plans-log.md`
+   for each affected plan.
 
 ### Phase 7 — Report
 
@@ -107,6 +171,7 @@ Affected: {f} requirements, {p} plans
 Status changes: {summary}
 Replan needed: {list of plans}
 Open questions added: {n}
+New requirements created: {list of REQ ids (draft — need approval)}
 ```
 
 ## Failure handling
@@ -114,4 +179,6 @@ Open questions added: {n}
 - CR file invalid → stop with field list.
 - Impact analyzer returns empty (no affected targets) → warn user; still allow apply for
   documentation purposes.
-- Applier fails on one target → report which, leave others applied, do not roll back.
+- Applier fails on one target → report which; leave successfully-applied targets applied; do
+  NOT roll back; do NOT stamp the CR `applied`. Record the failure in `cr-log.md`. The CR
+  stays `approved` so a re-run can complete it.

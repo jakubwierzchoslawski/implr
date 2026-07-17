@@ -39,5 +39,49 @@ class TestFingerprint(unittest.TestCase):
         self.assertNotEqual(contradiction_fingerprint(BASE), contradiction_fingerprint(changed))
 
 
+from implr_validate.fingerprint import task_fingerprint, TASK_FINGERPRINT_VERSION
+
+TASK = {
+    "task_body": "Add reset endpoint",
+    "ac_ids": ["AC-001", "AC-002"],
+    "ac_text": ["given valid token — reset", "given expired token — reject"],
+    "files": ["src/auth.py", "tests/test_auth.py"],
+    "tests_first": ["test reset ok", "test expired rejected"],
+    "requirement_updated_at": "2026-01-01T00:00:00Z",
+    "arch_excerpt_hash": "abc123",
+    "interfaces_contracts": "IAuthRepo.reset()",
+    "applied_nfrs": "p99<200ms",
+    "standards_card_hash": "def456",
+    "test_runner": "pytest",
+}
+
+
+class TestTaskFingerprint(unittest.TestCase):
+    def test_prefix(self):
+        self.assertTrue(task_fingerprint(TASK).startswith("t%d:" % TASK_FINGERPRINT_VERSION))
+
+    def test_list_order_independent(self):
+        t2 = dict(TASK)
+        t2["ac_ids"] = ["AC-002", "AC-001"]
+        t2["files"] = ["tests/test_auth.py", "src/auth.py"]
+        self.assertEqual(task_fingerprint(TASK), task_fingerprint(t2))
+
+    def test_standards_change_changes_fingerprint(self):
+        t2 = dict(TASK)
+        t2["standards_card_hash"] = "CHANGED"
+        self.assertNotEqual(task_fingerprint(TASK), task_fingerprint(t2))
+
+    def test_nfr_change_changes_fingerprint(self):
+        t2 = dict(TASK)
+        t2["applied_nfrs"] = "p99<100ms"
+        self.assertNotEqual(task_fingerprint(TASK), task_fingerprint(t2))
+
+    def test_missing_field_raises(self):
+        t2 = dict(TASK)
+        del t2["test_runner"]
+        with self.assertRaises(KeyError):
+            task_fingerprint(t2)
+
+
 if __name__ == "__main__":
     unittest.main()
