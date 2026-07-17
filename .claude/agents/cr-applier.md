@@ -30,24 +30,29 @@ status_change: <new-status>
 ## Work
 
 Read the CR. Read the target. Apply the change exactly as described in the CR's
-`before`/`after` fields. For requirements:
-- Add the CR filename to `source_docs`
-- Update `status` per `status_change`
-- For an additive change, append the new AC(s); do not rewrite existing ACs.
-- For a contradictory change, replace the rule and add an Open Question entry citing the CR.
+`before`/`after` fields.
+
+For requirements, set status per the change kind (the orchestrator passes change_kind in scope):
+- additive (new AC): keep status `approved`; append the new AC(s); do not rewrite existing ACs.
+- contradictory or correction: set status `under-review`; replace the rule; add an Open Question
+  citing the CR. (dev-planner will not replan until a human re-approves.)
+- override that replaces the requirement: set the old requirement `status: superseded` and
+  `superseded_by: <new REQ id>`. (ba-cr creates the replacement; the applier does not.)
+Always add the CR filename to `source_docs`.
 
 For plans:
 - For `action: patch`, apply the specific task additions/removals.
-- For `action: replan`, set the plan `status: needs-rework` (see `status-vocabulary.json`);
-  the orchestrator invokes `dev-planner --replan` separately. Do not regenerate the plan body
-  yourself.
+- For `action: replan`: set the plan `status: needs-rework`, `rework_cr: <cr_id>`,
+  `rework_reason: <one line>`. Do NOT regenerate the plan body and do NOT write the old
+  replan-flag marker that this status replaces (that token is retired). Only
+  `dev-planner --replan` returns the plan to `ready`.
 
 ## Return summary
 
 ```
 target_path: <path>
 target_kind: requirement | plan
-action_applied: patch | replan | needs_rework_set
+action_applied: patch | needs-rework-set | requirement-updated
 fields_changed:
   - source_docs
   - status: <old> → <new>
