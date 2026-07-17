@@ -41,6 +41,10 @@ Identify plans to execute (per parameter). For `--all`, read `plans-index.md` fo
 `status: ready`. For named plans, validate existence and `status: ready` (`--task` mode
 allowed on `in-progress` plans). For `--task`, identify the named task's plan.
 
+If a named or `--all`-selected plan has `status: needs-rework`, do NOT execute it. Emit:
+`❌ PLAN-F-NNN is needs-rework (CR {rework_cr}). Run /dev-planner --replan {plan} first.`
+and skip it.
+
 ### Phase 2 — Validate dependencies
 
 For each in-scope plan, every dependency in frontmatter `dependencies:` must be
@@ -161,6 +165,7 @@ with the executed plan ids. Merge its verdict counts into this report.
 ## Failure handling
 
 - `standards-card.md` missing → halt before any dispatch (message above).
+- Plan is `needs-rework` → refuse to execute it; skip and report (message above).
 - Plan parse failure → skip that plan; continue others; report skipped plans.
 - Dependency not `done` → skip with warning unless explicitly named.
 - `plan-runner` returns `tests_pass: false` → plan stays `in-progress`; surface to user;

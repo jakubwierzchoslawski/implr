@@ -47,6 +47,7 @@ task_envelope:
     tests_first: [<test description>]   # only present when tdd_required=true
   ac_full:
     - { id: AC-001, text: "..." }
+  prior_fingerprint: "t1:<hash> or empty"   # from plan.task_fingerprints, if any
 arch_excerpt: |
   <markdown from arch-excerpter>
 standards_card: |
@@ -69,6 +70,18 @@ plan_id_for_log: PLAN-F-NNN
 
 ## Work
 
+0. **Idempotent skip check.** If `prior_fingerprint` is non-empty, recompute this task's
+   fingerprint by writing the envelope's fingerprint fields (`task_body`, `ac_ids`,
+   `ac_text`, `files`, `tests_first`, `requirement_updated_at`, `arch_excerpt_hash`,
+   `interfaces_contracts`, `applied_nfrs`, `standards_card_hash`, `test_runner`) to a temp
+   JSON file and running `python scripts/implr_validate --task-fingerprint <tmp>` —
+   **never hand-compute the hash** (you have Bash; hashing is the validator's job, per the
+   global constraint). If the printed value matches `prior_fingerprint` AND the task's
+   tests currently pass when run live, do NOT re-implement: return `task_status: done`
+   with a note `already-satisfied` and no file changes. Otherwise proceed with the normal
+   flow below. (The skip relies on a live test run, not a stored pass flag — there is no
+   `prior_tests_pass` field; a prior review's `test-results.md`, if any, is separate
+   evidence and is not consulted here.)
 1. Read `task_envelope.task` — that is your sole scope.
 2. Read `task_envelope.prior_decisions_summary` (accessed as `prior_decisions_summary` below) and commit to continuing every listed pattern.
    If `completed_tasks` is empty, Grep adjacent files for established conventions before writing.
@@ -102,6 +115,7 @@ decisions:
   - "<pattern and why — one line>"
 tests_added: <n>
 tests_pass: true | false
+already_satisfied: true | false
 manual_actions:
   - <description if any>
 ```

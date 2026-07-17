@@ -34,6 +34,11 @@ task_envelopes:
 task_executor_model: opus
 ```
 
+Each envelope may carry `prior_fingerprint: "t1:<hash> or empty"`, sourced by
+dev-executor from `plan.task_fingerprints[TASK-NNN]` for that task (empty if the plan
+has no prior recorded fingerprint for it). Pass each envelope through to task-executor
+unchanged, including this field.
+
 If `resume_task` is set, skip envelopes whose `task.id` is earlier in plan order.
 Start `decisions_log` empty when resuming.
 
@@ -60,6 +65,16 @@ Do NOT update the plan file between dispatches.
 When all envelopes processed (or on stop), Edit `plan_path` frontmatter:
 
 - All done AND all `tests_pass: true` → `status: done`; set `executed_at: <ISO timestamp>`.
+  Also set:
+  - `implemented_files:` to the union of every task's `files_created` and
+    `files_modified` (deduplicated) across all dispatched task-executor returns.
+  - `task_fingerprints[TASK-NNN]` for each task: write that task's fingerprint fields
+    (`task_body`, `ac_ids`, `ac_text`, `files`, `tests_first`, `requirement_updated_at`,
+    `arch_excerpt_hash`, `interfaces_contracts`, `applied_nfrs`, `standards_card_hash`,
+    `test_runner` — taken from the envelope you dispatched for that task) to a temp JSON
+    file and run `python scripts/implr_validate --task-fingerprint <tmp>`. Store the
+    printed value (e.g. `t1:<hash>`) as `task_fingerprints[TASK-NNN]`. **Never hand-compute
+    the hash** — the validator CLI is the sole source of the fingerprint value.
 - Any stop condition → `status: in-progress`; if blocked, set `blocked_reason: <reason>`.
 
 ### 3. Commit (if commit_mode: auto)
