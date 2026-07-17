@@ -32,3 +32,32 @@ def contradiction_fingerprint(fields):
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return "%d:%s" % (FINGERPRINT_VERSION, digest[:16])
+
+
+TASK_FINGERPRINT_VERSION = 1
+
+_TASK_FIELDS = [
+    "task_body", "ac_ids", "ac_text", "files", "tests_first",
+    "requirement_updated_at", "arch_excerpt_hash", "interfaces_contracts",
+    "applied_nfrs", "standards_card_hash", "test_runner",
+]
+_TASK_LIST_FIELDS = {"ac_ids", "ac_text", "files", "tests_first"}
+_TASK_PASSTHROUGH = {"arch_excerpt_hash", "standards_card_hash"}
+
+
+def task_fingerprint(fields):
+    for k in _TASK_FIELDS:
+        if k not in fields:
+            raise KeyError("missing task fingerprint field: %s" % k)
+    payload = {"version": TASK_FINGERPRINT_VERSION}
+    for k in _TASK_FIELDS:
+        v = fields[k]
+        if k in _TASK_LIST_FIELDS:
+            payload[k] = sorted(_normalize(item) for item in v)
+        elif k in _TASK_PASSTHROUGH:
+            payload[k] = str(v)
+        else:
+            payload[k] = _normalize(v)
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return "t%d:%s" % (TASK_FINGERPRINT_VERSION, digest[:16])

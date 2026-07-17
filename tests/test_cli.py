@@ -30,6 +30,20 @@ class TestCli(unittest.TestCase):
     def test_usage_error_returns_two(self):
         self.assertEqual(main([]), 2)
 
+    def test_task_fingerprint_mode(self):
+        import tempfile, json
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, "t.json")
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump({
+                    "task_body": "b", "ac_ids": ["AC-001"], "ac_text": ["x"],
+                    "files": ["a.py"], "tests_first": ["t"], "requirement_updated_at": "z",
+                    "arch_excerpt_hash": "h", "interfaces_contracts": "i",
+                    "applied_nfrs": "n", "standards_card_hash": "s", "test_runner": "pytest",
+                }, f)
+            rc = main(["--task-fingerprint", p, "--schema-dir", os.path.join(REPO_ROOT, "scaffold", "schemas")])
+            self.assertEqual(rc, 0)
+
 
 # --- Task 10: sample-kb fixture integration tests ---
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "sample-kb")
