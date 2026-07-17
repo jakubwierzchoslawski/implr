@@ -24,10 +24,13 @@ requirements_dir: docs/implr/requirements/
 plans_dir: docs/implr/plans/
 ```
 
+The CR may already carry `targets` (author-supplied list of requirement IDs the change is intended for).
+
 ## Work
 
-Read the CR. Identify its target (single requirement, multiple requirements, system-wide
-behaviour). For each affected requirement:
+Start from the CR's `targets` (author-supplied, possibly empty). Confirm each still exists and is affected; add any additional affected requirement you discover via Grep. The union is `confirmed_targets`. **Write nothing** — you are read-only; `ba-cr` persists the set after the approval gate.
+
+For each affected requirement:
 - Determine change kind: additive AC, contradictory rule, scope expansion, scope cut,
   rewording-only
 - Check whether a plan exists; if so, determine whether the plan needs full replan or
@@ -45,6 +48,7 @@ No file writes. Your return summary is the impact report.
 ```
 cr_id: CR-NNN
 target_summary: <one-line>
+confirmed_targets: [REQ-F-NNN, ...]   # full impact set; ba-cr writes this to CR frontmatter
 affected_requirements:
   - id: REQ-F-NNN
     change_kind: additive | contradictory | scope_expansion | scope_cut | rewording
