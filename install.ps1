@@ -17,6 +17,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SkillsSrc = Join-Path $ScriptDir "skills"
 $AgentsSrc = Join-Path $ScriptDir ".claude/agents"
 $ScaffoldSrc = Join-Path $ScriptDir "scaffold"
+$ValidateSrc = Join-Path $ScriptDir "scripts/implr_validate"
 $Skills = @("implr-init","doc-ingest","arch-gen","ba-requirements-gen","ba-cr","dev-planner","dev-executor","dev-code-review")
 
 function Scaffold-Workspace {
@@ -47,10 +48,20 @@ function Scaffold-Workspace {
     Get-ChildItem -Path (Join-Path $ScaffoldSrc "schemas") -Filter "*.md" | ForEach-Object {
         Copy-Item -Force $_.FullName "docs\implr\schemas\"
     }
+    Get-ChildItem -Path (Join-Path $ScaffoldSrc "schemas") -Filter "*.json" | ForEach-Object {
+        Copy-Item -Force $_.FullName "docs\implr\schemas\"
+    }
     Get-ChildItem -Path (Join-Path $ScaffoldSrc "templates") -Filter "*.md" | ForEach-Object {
         Copy-Item -Force $_.FullName "docs\implr\templates\"
     }
     Write-Host "  schemas and templates installed"
+
+    # Always overwrite: implr_validate tool (plugin-owned)
+    New-Item -ItemType Directory -Force -Path "scripts\implr_validate" | Out-Null
+    Get-ChildItem -Path $ValidateSrc -Filter "*.py" | ForEach-Object {
+        Copy-Item -Force $_.FullName "scripts\implr_validate\"
+    }
+    Write-Host "  implr_validate tool installed"
 
     # Skip if exists: config files (user-owned after first write)
     foreach ($f in @("implr.config.yaml", "DEV-STANDARDS.md")) {
@@ -124,6 +135,7 @@ foreach ($s in $Skills) {
 
 if (-not (Test-Path $AgentsSrc)) { Write-Error "Missing agents source: $AgentsSrc"; exit 1 }
 if (-not (Test-Path $ScaffoldSrc)) { Write-Error "Missing scaffold source: $ScaffoldSrc"; exit 1 }
+if (-not (Test-Path $ValidateSrc)) { Write-Error "Missing implr_validate source: $ValidateSrc"; exit 1 }
 New-Item -ItemType Directory -Force -Path $AgentsDest | Out-Null
 Copy-Item -Force (Join-Path $AgentsSrc "*.md") $AgentsDest
 $agentCount = (Get-ChildItem -Path $AgentsDest -Filter "*.md" -File).Count

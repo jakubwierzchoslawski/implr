@@ -13,6 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILLS_SRC="$SCRIPT_DIR/skills"
 AGENTS_SRC="$SCRIPT_DIR/.claude/agents"
 SCAFFOLD_SRC="$SCRIPT_DIR/scaffold"
+VALIDATE_SRC="$SCRIPT_DIR/scripts/implr_validate"
 SKILLS=(implr-init doc-ingest arch-gen ba-requirements-gen ba-cr dev-planner dev-executor dev-code-review)
 
 GLOBAL=false
@@ -48,8 +49,14 @@ scaffold_workspace() {
 
   # Always overwrite: schemas and templates (plugin-owned)
   cp -f "$SCAFFOLD_SRC"/schemas/*.md "docs/implr/schemas/"
+  cp -f "$SCAFFOLD_SRC"/schemas/*.json "docs/implr/schemas/"
   cp -f "$SCAFFOLD_SRC"/templates/*.md "docs/implr/templates/"
   echo "  schemas and templates installed"
+
+  # Always overwrite: implr_validate tool (plugin-owned)
+  mkdir -p "scripts/implr_validate"
+  cp -f "$VALIDATE_SRC"/*.py "scripts/implr_validate/"
+  echo "  implr_validate tool installed"
 
   # Skip if exists: config files (user-owned after first write)
   for f in implr.config.yaml DEV-STANDARDS.md; do
@@ -120,6 +127,7 @@ done
 
 if [ ! -d "$AGENTS_SRC" ]; then echo "ERROR: Missing agents source: $AGENTS_SRC"; exit 1; fi
 if [ ! -d "$SCAFFOLD_SRC" ]; then echo "ERROR: Missing scaffold source: $SCAFFOLD_SRC"; exit 1; fi
+if [ ! -d "$VALIDATE_SRC" ]; then echo "ERROR: Missing implr_validate source: $VALIDATE_SRC"; exit 1; fi
 mkdir -p "$AGENTS_DEST"
 cp -f "$AGENTS_SRC/"*.md "$AGENTS_DEST/"
 echo "  installed agents"

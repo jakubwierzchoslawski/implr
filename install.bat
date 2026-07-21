@@ -11,6 +11,7 @@ set "SCRIPT_DIR=%~dp0"
 set "SKILLS_SRC=%SCRIPT_DIR%skills"
 set "AGENTS_SRC=%SCRIPT_DIR%.claude\agents"
 set "SCAFFOLD_SRC=%SCRIPT_DIR%scaffold"
+set "VALIDATE_SRC=%SCRIPT_DIR%scripts\implr_validate"
 set "GLOBAL=0"
 
 :parseargs
@@ -51,6 +52,10 @@ if not exist "%AGENTS_SRC%" (
 )
 if not exist "%SCAFFOLD_SRC%" (
   echo ERROR: Missing scaffold source: %SCAFFOLD_SRC%
+  exit /b 1
+)
+if not exist "%VALIDATE_SRC%" (
+  echo ERROR: Missing implr_validate source: %VALIDATE_SRC%
   exit /b 1
 )
 if not exist "%AGENTS_DEST%" mkdir "%AGENTS_DEST%"
@@ -97,8 +102,13 @@ if not exist "docs\implr\plans\non-functional" mkdir "docs\implr\plans\non-funct
 if not exist "docs\implr\reviews" mkdir "docs\implr\reviews"
 
 for %%F in ("%SCAFFOLD_SRC%\schemas\*.md") do copy /y "%%F" "docs\implr\schemas\" >nul
+for %%F in ("%SCAFFOLD_SRC%\schemas\*.json") do copy /y "%%F" "docs\implr\schemas\" >nul
 for %%F in ("%SCAFFOLD_SRC%\templates\*.md") do copy /y "%%F" "docs\implr\templates\" >nul
 echo   schemas and templates installed
+
+if not exist "scripts\implr_validate" mkdir "scripts\implr_validate"
+for %%F in ("%VALIDATE_SRC%\*.py") do copy /y "%%F" "scripts\implr_validate\" >nul
+echo   implr_validate tool installed
 
 if not exist "docs\implr\config\implr.config.yaml" (
     copy /y "%SCAFFOLD_SRC%\config\implr.config.yaml" "docs\implr\config\implr.config.yaml" >nul

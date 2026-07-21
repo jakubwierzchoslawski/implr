@@ -72,15 +72,34 @@ Update requirement status if user marks blocked.
 
 ### Phase 4 — Compute dispatch waves
 
-Build the dependency graph among in-scope reqs. Topological sort into waves where each
-wave contains reqs whose dependencies are already planned.
+Build the dependency graph among in-scope reqs (edges = `dependencies[].id`, restricted to
+other in-scope reqs).
+
+**Cycle detection (run before topological sort):** Find strongly-connected components of
+size ≥ 2 in this graph (e.g. REQ-A depends on REQ-B and REQ-B depends on REQ-A, directly or
+via a longer loop). For each cycle found:
+
+- Collapse the whole cycle into a single dispatch group — every req in the cycle enters the
+  **same wave**, dispatched together. Do not treat the cycle as a blocker requiring a
+  pre-existing plan from a sibling still inside the same cycle.
+- Pass each requirement in the group the full list of sibling requirement paths in its cycle
+  (`cycle_siblings`) as part of its `plan-worker` scope, so each worker plans with awareness
+  of the others it's being planned alongside.
+- Record the cycle (member req IDs) for the Phase 8 report. This is a default, silent
+  resolution policy — do not stop to ask the user unless `--brainstorm` is active or a cycle
+  member also has an unresolved open question (Phase 3 already handles that separately).
+
+After cycles are collapsed to single wave-groups, topological sort the remaining graph
+(cycle-groups counted as one node) into waves, where each wave contains reqs/groups whose
+dependencies are already planned.
 
 ### Phase 5 — Dispatch `plan-worker` per requirement (parallel within wave)
 
 For each wave, dispatch all reqs in parallel (cap 5):
 
 Scope per dispatch: `{requirement_path, plan_path_out, mode, existing_plan_path,
-existing_reqs_index, existing_plans_index, brainstorm_decisions}`.
+existing_reqs_index, existing_plans_index, brainstorm_decisions, cycle_siblings}`.
+`cycle_siblings` is empty unless this req is part of a Phase 4 cycle group.
 
 Wait for the wave to complete before dispatching the next wave.
 
@@ -110,6 +129,7 @@ Recount, update tables, add entries.
 🧭 dev-planner complete  (v2.0)
 Plans created: {n}    Plans replanned: {n}
 Waves dispatched: {n}
+Dependency cycles resolved: {n}  {list of cycle groups, e.g. [REQ-F-003, REQ-F-004]}
 Blockers: {list}
 Average AC coverage: {pct}
 Cross-plan findings: {n}
