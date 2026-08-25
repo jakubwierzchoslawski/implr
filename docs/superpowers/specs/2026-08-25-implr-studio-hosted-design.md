@@ -745,7 +745,7 @@ Azurite, so hosted mode is developable without an Azure subscription.
 | **Blob Storage** | log archive, uploaded KB documents | the 18 ingest formats arrive as blobs, not repo commits |
 | **Key Vault** | `ANTHROPIC_API_KEY`, git PAT, DB password | referenced by Container Apps secrets, never in config |
 | **Container Registry** | images | ACR tasks can build on push |
-| **Managed Identity** (user-assigned) | ACR pull, Key Vault get, Blob write | **API only.** The worker gets none |
+| **Managed Identity** (user-assigned) | ACR pull, Key Vault get, Blob write | API: all three. **Worker: `AcrPull` plus `Key Vault Secrets User` on one secret, nothing else** — see the note below |
 | **Entra ID app registration** | authentication | Container Apps EasyAuth is the cheap path; the API still validates the token itself |
 | **VNet + private endpoint** | Postgres reachability | the database must not have a public endpoint |
 | **NAT Gateway + Azure Firewall** | worker egress allowlist | FQDN rules: `api.anthropic.com`, the git host, nothing else |
@@ -779,13 +779,33 @@ Azurite, so hosted mode is developable without an Azure subscription.
  └───────────────────┘   └──────────────┘
 ```
 
+**Correction to an earlier draft of this document.** It said the worker gets *no* managed
+identity. That is not achievable: a Container Apps Job must pull its own image, and pulling from
+a private registry requires `AcrPull`. The worker therefore has a user-assigned identity with
+**exactly two** role assignments — `AcrPull` on the registry, and `Key Vault Secrets User` scoped
+to a **single secret** (the tenant's Anthropic key).
+
+The rejected alternative was for the API to resolve the key and pass it as a job-start
+environment override. That is worse in a non-obvious way: template overrides land in **ARM
+activity logs and job execution history**, which are retained, exportable, and readable by anyone
+with Reader on the resource group. A secret-scoped identity keeps the key out of every log.
+
+The properties that actually mattered are unchanged and asserted by test in Phase 19: **no
+database credentials, no Blob access, no ARM permissions, no access to any other run's state.**
+
 The setup runbook — resource creation, role assignments, the firewall rules, and how to get
 a first project working — belongs in `deploy/azure/README.md` and is written alongside the
 bicep.
 
 ---
 
-## What this does to the fifteen phases
+## What this does to the phase sequence
+
+**Superseded, kept for its reasoning.** This section was written when the roadmap had fifteen
+phases. It now has twenty-one, `−1` through `19`, each with its own document —
+`2026-08-25-studio-phases.md` is authoritative for ordering, and hosting is phases 16–19. The
+four observations below are why those phases exist and are still worth reading; the numbers in
+the table are not current.
 
 The phase sequence survives; the deployment target is orthogonal to it. Four changes:
 
@@ -811,13 +831,24 @@ specified separately rather than smeared through the sequence.
    *Authorization*. The consequences carried through this document are row-level security as
    the isolation backstop, project-scoped routes, and a tenant check that runs before any
    other policy decision.
-2. **Who supplies the Anthropic credential?** Platform key (you pay, you meter) or
-   bring-your-own (they pay, you never see spend). BYO is safer and simpler; a platform key
-   needs quotas before it needs anything else.
-3. **How does the worker reach the customer's repo?** A GitHub App is the right answer for
-   scoped, revocable, auditable access. A PAT in Key Vault is the fast answer and ages badly.
-4. **Is `--dry-run` the default in hosted mode?** An agent that writes to a real branch on a
-   button press, in someone else's infrastructure, deserves a deliberate opt-in.
+2. ~~Who supplies the Anthropic credential?~~ **Settled: bring-your-own, per tenant.** You
+   never see their spend, they never wait on your quota, and a runaway loop is their bill and
+   their incident. One Key Vault secret per tenant, `anthropic-key-{tenant_id}`, with the worker
+   identity granted `Key Vault Secrets User` at **secret** scope. A platform key needs metering,
+   quotas and a spend alarm before it needs anything else — that is a product, not a phase.
+3. ~~How does the worker reach the customer's repo?~~ **Settled: a GitHub App.** Scoped to
+   selected repositories, revocable by the customer without involving you, auditable in their
+   org's log, and it issues short-lived installation tokens. A PAT is faster today and ages into
+   an incident: long-lived, broadly scoped, attributed to someone who will eventually leave, and
+   its rotation is a conversation.
+4. ~~Is `--dry-run` the default in hosted mode?~~ **Settled: yes, for a project's first run.**
+   An agent that writes to a real branch on a button press, in someone else's infrastructure,
+   deserves a deliberate opt-in. After one successful dry run the console offers "run for real"
+   and remembers the choice per project.
+
+All four are now settled. The reasoning for 2–4 is in
+`../plans/2026-08-25-studio-phase-19-deploy-azure.md`; each is a one-line change if you
+disagree.
 
 ---
 

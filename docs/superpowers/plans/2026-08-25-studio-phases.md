@@ -1,8 +1,9 @@
 # implr Studio — Phase Roadmap
 
-**Status:** authoritative task breakdown. Supersedes the six layer plans
-(`2026-08-25-studio-0{1..6}-*.md`), which are retained only until their content has been
-redistributed into the phases below.
+**Status:** authoritative task breakdown. Superseded and replaced the six layer plans
+(`2026-08-25-studio-0{1..6}-*.md`), which were **deleted** once every phase document was written
+— their content is redistributed into the phases below, and the table at the end of this document
+records where each one went.
 
 **Design references:**
 - `docs/superpowers/specs/2026-08-25-implr-studio-design.md` — what is being built.
@@ -98,18 +99,18 @@ phase is free. Phases 15, 18 and 19 are the only ones that cost anything.
 | 5 | [Pick models](2026-08-25-studio-phase-05-models.md) | Drop `task-executor` to Sonnet; the node's dots, the mix meter and the YAML all change | none |
 | 6 | [Conditions](2026-08-25-studio-phase-06-conditions.md) | Build an artefact gate; an illegal status is not offered, and is refused if hand-edited in | none |
 | 7 | [Input / Output tabs](2026-08-25-studio-phase-07-io-tabs.md) | The Output tab shows the ten real `plan` fields and five legal statuses | none |
-| 8 | **Author a step** | Create your own step in the UI — point it at any installed skill, or write its instruction and agents outright — and drag it onto the canvas | none |
+| 8 | **[Author a step](2026-08-25-studio-phase-08-author-a-step.md)** | Create your own step in the UI — point it at any installed skill, or write its instruction and agents outright — and drag it onto the canvas | none |
 | 9 | [Run one node](2026-08-25-studio-phase-09-run-one-node.md) | Press Run; one node goes green | none |
 | 10 | [Live logs](2026-08-25-studio-phase-10-live-logs.md) | Log lines appear *while* the step is running; a refresh loses nothing | none |
 | 11 | [Many nodes, real gates](2026-08-25-studio-phase-11-gates.md) | A gate holds; you edit a file on disk; it opens with no operator action | none |
 | 12 | [Questions](2026-08-25-studio-phase-12-questions.md) | Answer a question in the browser; the step continues in the same session | none |
 | 13 | **[Review & send back](2026-08-25-studio-phase-13-review.md)** | Reject a step's output with a note; it re-runs knowing why | none |
-| 14 | Failure & recovery | Kill the server mid-run, reopen, resume rather than restart | none |
-| 15 | Real model | A real `doc-ingest --dry-run` streams into the browser | **yes** |
-| 16 | **Containers** | `docker compose up` serves the console; the API image has no `git` and no Claude CLI | none |
-| 17 | **Tenancy & auth** | Two users in one Entra tenant see the same projects; a third tenant's user sees none | none |
+| 14 | [Failure & recovery](2026-08-25-studio-phase-14-failure-recovery.md) | Kill the server mid-run, reopen, resume rather than restart | none |
+| 15 | [Real model](2026-08-25-studio-phase-15-real-model.md) | A real `doc-ingest --dry-run` streams into the browser | **yes** |
+| 16 | **[Containers](2026-08-25-studio-phase-16-containers.md)** | `docker compose up` serves the console; the API image has no `git` and no Claude CLI | none |
+| 17 | **[Tenancy & auth](2026-08-25-studio-phase-17-tenancy-auth.md)** | Two users in one Entra tenant see the same projects; a third tenant's user sees none | none |
 | 18 | **[Onboarding](2026-08-25-studio-phase-18-onboarding.md)** | A new tenant goes from sign-in to a supervised dry run in under five minutes | **yes** |
-| 19 | **Deploy to Azure** | A run executes in a Container Apps Job and streams to the browser | **yes** |
+| 19 | **[Deploy to Azure](2026-08-25-studio-phase-19-deploy-azure.md)** | A run executes in a Container Apps Job and streams to the browser | **yes** |
 
 Twenty-one phases, `−1` through `19`. Phases 16–19 are the hosting work, and none is
 reachable until 15 is done: deploying a console that cannot run a pipeline proves nothing.
@@ -124,7 +125,9 @@ a retry. See *Component: Human-in-the-loop* in the design spec. Without 13, "HIT
 
 ## Phase specifications
 
-Phases −1, 0–7, 9–13 and 18 have their own documents. Phases 8, 14–17 and 19 are specified here until theirs are written.
+**Every phase now has its own document**, linked from the table above. The sections below are
+the one-paragraph summaries the roadmap keeps for orientation; the linked document is
+authoritative for each phase, and where the two differ the document wins.
 
 ### Phase −1 — Restructure
 
@@ -465,7 +468,11 @@ accept a subset on re-entry. Deferred, and worth doing.
 
 
 **Backend slice.** `failed` / `skipped` / `cancelled`, retry / skip / cancel routes,
-`Orchestrator.recover()`, the exception-safe driver loop, and the `Store` lock.
+`Orchestrator.recover()`, and run history.
+
+*(The exception-safe driver loop and the `Store` lock were pulled forward into Phase 9 — a driver
+that dies on an exception and a store that races between the event loop and the threadpool are
+floor-level correctness, not recovery features. This phase builds on them.)*
 
 **Ships:** Retry / Skip / Abort in `RunPanel`, the error block, run history.
 
@@ -611,7 +618,14 @@ runbook; a GitHub Actions workflow building both images to ACR.
 
 **Backend slice.** `ContainerAppsJobLauncher`. Key Vault references for
 `ANTHROPIC_API_KEY`, the git credential and the database password. Blob Storage for the log
-archive and uploaded KB documents. Managed identity for the API — **and none for the worker**.
+archive and uploaded KB documents.
+
+**Correction, made while writing the phase document.** "No managed identity for the worker" is not
+achievable: a Container Apps Job must pull its own image, and pulling from a private ACR requires
+`AcrPull`. So the worker has a user-assigned identity with **exactly two** grants — `AcrPull`, and
+`Key Vault Secrets User` scoped to **one secret**. The alternative, passing the key in the
+job-start payload, writes it into retained ARM activity logs. The properties that mattered are
+unchanged: no database credentials, no Blob, no ARM, no other run's state.
 
 **Demo:** a real run, in a real subscription, streaming to a browser over HTTPS with Entra
 sign-in. Then the controls, each verified rather than assumed: the worker cannot resolve
@@ -668,17 +682,18 @@ the configurator. If execution matters more to you than configuration, 4–8 can
 
 ## Where the old plans' content went
 
-The six layer plans are retained until every row below is done. They are the source; nothing
-in them is discarded, only redistributed.
+**Every row below is now done.** The six layer plans were the source; nothing in them was
+discarded, only redistributed — and with phases −1 through 19 all written, they can be deleted.
+The table stays as the record of where each one went.
 
 | Old plan | Redistributed into |
 |---|---|
 | **1** Foundation | 0 (bridge, hygiene) · 1 (registry) · 2 (pipeline config) · 3 (DAG validation) · 4 (arg values) · 5 (models) · 6 (gate validation) · 8 (`steps.yaml` merge, discovery) |
 | **2** Executor contract | 9 (base + fake) · 12 (question arming rule) |
-| **3** Orchestrator | 9 (store, runstate, single-node driver) · 10 (events) · 11 (gates, scheduling) · 12 (questions) · 13 (recovery, lock, operator actions) |
+| **3** Orchestrator | 9 (store, runstate, single-node driver, lock, exception guard) · 10 (events) · 11 (gates, scheduling) · 12 (questions) · 13 (review) · **14** (recovery, operator actions) |
 | **4** API | 0 (server, static mount) · 1 (registry route) · 2 (pipeline routes) · 3 (422 findings) · 5 (agent payloads) · 6 (contracts) · 8 (`/api/skills`, `/api/steps`) · 9 (run routes) · 10 (WebSocket) · 13 (operator routes) |
 | **5** Frontend | 0 (scaffolding, tokens) · 1 (palette) · 2 (canvas) · 3 (findings) · 4 (modal + Run tab) · 5 (Agents tab, meter) · 6 (gate editor) · 7 (Input/Output tabs) · 8 (authoring surface) · 9–13 (run mode, incrementally) |
-| **6** Claude adapter | 14, whole — plus `agent_definitions` gaining authored prompts and tool grants |
+| **6** Claude adapter | **15**, whole — plus `agent_definitions` gaining authored prompts and tool grants |
 
 Phase 8 is the one phase with no ancestor in the six layer plans. It exists because the old
 breakdown assumed a closed catalogue, and never asked whether a project could add a step of
