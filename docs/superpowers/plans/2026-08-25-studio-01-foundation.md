@@ -36,6 +36,9 @@
 | `studio/backend/tests/test_registry.py` | Registry tests. |
 | `studio/backend/tests/test_pipeline.py` | Config and DAG tests. |
 | `studio/backend/tests/test_gates.py` | Gate validation and evaluation tests. |
+| `scripts/implr_validate/checks.py` | **Modified** — gains `check_step_registry`. Stays stdlib-only. |
+| `scripts/implr_validate/cli.py` | **Modified** — calls the new check; exit code becomes level-aware. |
+| `tests/test_step_registry_check.py` | Registry validation inside the existing validator suite. |
 
 ---
 
@@ -1504,6 +1507,299 @@ git commit -m "feat(studio): gate validation and evaluation against artefact fro
 
 ---
 
+### Task 6: Wire the registry check into implr-validate
+
+**Files:**
+- Modify: `scripts/implr_validate/checks.py` (add `check_step_registry`)
+- Modify: `scripts/implr_validate/cli.py` (call it under `--repo`; make the exit code level-aware)
+- Test: `tests/test_step_registry_check.py`
+
+**Interfaces:**
+- Consumes: nothing from the studio package — this runs inside the **existing stdlib-only**
+  validator and must not import `implr_studio`, `yaml`, or anything third-party.
+- Produces:
+  - `checks.check_step_registry(root) -> list[Finding]` — validates
+    `scaffold/schemas/step-registry.json` against `skills/`.
+  - `cli` exits `1` only when at least one finding is `level == "error"`. Findings at
+    `level == "info"` print but do not fail the build.
+
+This task exists because the spec's *Step Registry → Validation* section requires it and no
+other task delivers it. A planned step must be reported without failing CI — otherwise
+adding `sec-review` to the registry before writing the skill would break the build, which is
+exactly the workflow the registry is meant to enable.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/test_step_registry_check.py`:
+
+```python
+import json
+import os
+
+from implr_validate.checks import check_step_registry
+
+
+def _write(root, steps):
+    schema_dir = os.path.join(root, "scaffold", "schemas")
+    os.makedirs(schema_dir, exist_ok=True)
+    with open(os.path.join(schema_dir, "step-registry.json"), "w", encoding="utf-8") as f:
+        json.dump({"steps": steps}, f)
+
+
+def _skill(root, name):
+    d = os.path.join(root, "skills", name)
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "SKILL.md"), "w", encoding="utf-8") as f:
+        f.write("---\nname: %s\n---\n" % name)
+
+
+BASE = {
+    "id": "doc-ingest", "label": "Document Ingestion", "phase": "discovery",
+    "skill": "doc-ingest", "args_allowed": ["--dry-run"], "args_default": [],
+    "interactive": False, "produces": [], "description": "d",
+}
+
+
+def test_valid_registry_has_no_findings(tmp_path):
+    root = str(tmp_path)
+    _write(root, [BASE])
+    _skill(root, "doc-ingest")
+
+    assert check_step_registry(root) == []
+
+
+def test_missing_registry_file_is_not_an_error(tmp_path):
+    """The registry is optional for repos that predate implr Studio."""
+    assert check_step_registry(str(tmp_path)) == []
+
+
+def test_planned_step_is_info_not_error(tmp_path):
+    """Designing ahead of implementation must not fail the build."""
+    root = str(tmp_path)
+    _write(root, [dict(BASE, id="sec-review", skill="sec-review", phase="verify")])
+    os.makedirs(os.path.join(root, "skills"), exist_ok=True)
+
+    findings = check_step_registry(root)
+
+    assert len(findings) == 1
+    assert findings[0].level == "info"
+    assert "sec-review" in findings[0].message
+
+
+def test_duplicate_id_is_an_error(tmp_path):
+    root = str(tmp_path)
+    _write(root, [BASE, dict(BASE)])
+    _skill(root, "doc-ingest")
+
+    findings = check_step_registry(root)
+
+    assert [f.level for f in findings] == ["error"]
+    assert "duplicate" in findings[0].message
+
+
+def test_unknown_phase_is_an_error(tmp_path):
+    root = str(tmp_path)
+    _write(root, [dict(BASE, phase="wibble")])
+    _skill(root, "doc-ingest")
+
+    findings = check_step_registry(root)
+
+    assert findings[0].level == "error"
+    assert "wibble" in findings[0].message
+
+
+def test_missing_required_field_is_an_error(tmp_path):
+    root = str(tmp_path)
+    _write(root, [{k: v for k, v in BASE.items() if k != "skill"}])
+
+    findings = check_step_registry(root)
+
+    assert findings[0].level == "error"
+    assert "skill" in findings[0].message
+
+
+def test_args_default_outside_args_allowed_is_an_error(tmp_path):
+    root = str(tmp_path)
+    _write(root, [dict(BASE, args_default=["--nope"])])
+    _skill(root, "doc-ingest")
+
+    findings = check_step_registry(root)
+
+    assert findings[0].level == "error"
+    assert "--nope" in findings[0].message
+
+
+def test_malformed_json_is_an_error_not_a_crash(tmp_path):
+    root = str(tmp_path)
+    schema_dir = os.path.join(root, "scaffold", "schemas")
+    os.makedirs(schema_dir)
+    with open(os.path.join(schema_dir, "step-registry.json"), "w", encoding="utf-8") as f:
+        f.write("{not json")
+
+    findings = check_step_registry(root)
+
+    assert findings[0].level == "error"
+
+
+def test_the_real_repo_registry_passes():
+    """The shipped registry must be valid, with the two planned steps reported as info."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    findings = check_step_registry(root)
+
+    assert [f for f in findings if f.level == "error"] == []
+    planned = {f.message for f in findings if f.level == "info"}
+    assert any("qa-testing" in m for m in planned)
+    assert any("sec-review" in m for m in planned)
+```
+
+Also add to `tests/test_cli.py`:
+
+```python
+def test_info_findings_do_not_fail_the_exit_code(tmp_path, capsys):
+    """A planned step prints but must not break the build."""
+    from implr_validate.cli import main
+
+    assert main(["--repo", "--root", "."]) == 0
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `python -m pytest tests/test_step_registry_check.py -v`
+Expected: FAIL — `ImportError: cannot import name 'check_step_registry'`
+
+- [ ] **Step 3: Add the check to `checks.py`**
+
+Append to `scripts/implr_validate/checks.py`:
+
+```python
+# --- step registry (implr Studio) ---
+
+_REGISTRY_PHASES = ("discovery", "design", "requirements", "planning", "build", "verify")
+_REGISTRY_FIELDS = (
+    "id", "label", "phase", "skill",
+    "args_allowed", "args_default", "interactive", "produces", "description",
+)
+
+
+def check_step_registry(root):
+    """Validate scaffold/schemas/step-registry.json against skills/.
+
+    A registered step whose skill does not exist yet is reported at level "info",
+    never "error": designing a pipeline ahead of implementing its steps is the
+    workflow the registry exists to support.
+    """
+    rel = os.path.join("scaffold", "schemas", "step-registry.json")
+    path = os.path.join(root, rel)
+    if not os.path.isfile(path):
+        return []
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+    except ValueError as e:
+        return [Finding("error", rel, "invalid JSON: %s" % e)]
+
+    findings = []
+    seen = set()
+    for entry in raw.get("steps", []):
+        step_id = entry.get("id", "<no id>")
+
+        missing = [f for f in _REGISTRY_FIELDS if f not in entry]
+        if missing:
+            findings.append(Finding(
+                "error", rel, "step %s missing required field(s): %s" % (step_id, ", ".join(missing))
+            ))
+            continue
+
+        if step_id in seen:
+            findings.append(Finding("error", rel, "duplicate step id: %s" % step_id))
+            continue
+        seen.add(step_id)
+
+        if entry["phase"] not in _REGISTRY_PHASES:
+            findings.append(Finding(
+                "error", rel,
+                "step %s has unknown phase %r (legal: %s)"
+                % (step_id, entry["phase"], list(_REGISTRY_PHASES)),
+            ))
+
+        for arg in entry["args_default"]:
+            if arg not in entry["args_allowed"]:
+                findings.append(Finding(
+                    "error", rel,
+                    "step %s args_default entry %r is not in args_allowed" % (step_id, arg),
+                ))
+
+        skill_md = os.path.join(root, "skills", entry["skill"], "SKILL.md")
+        if not os.path.isfile(skill_md):
+            findings.append(Finding(
+                "info", rel,
+                "step %s is planned: skills/%s/SKILL.md does not exist yet"
+                % (step_id, entry["skill"]),
+            ))
+
+    return findings
+```
+
+Add `import json` to the top of `checks.py` if it is not already imported.
+
+- [ ] **Step 4: Wire it into `cli.py` and make the exit code level-aware**
+
+In `scripts/implr_validate/cli.py`, change the import line:
+
+```python
+from .checks import check_workspace, check_repo_prose, check_step_registry
+```
+
+In the `if args.repo:` block, append one line:
+
+```python
+        findings.extend(check_step_registry(args.root))
+```
+
+Replace the reporting block at the end of `main`:
+
+```python
+    if findings:
+        for fnd in findings:
+            sys.stderr.write("%s: %s: %s\n" % (fnd.level, fnd.path, fnd.message))
+        errors = [f for f in findings if f.level == "error"]
+        sys.stderr.write("\n%d finding(s), %d error(s)\n" % (len(findings), len(errors)))
+        if errors:
+            return 1
+    sys.stdout.write("implr-validate: OK\n")
+    return 0
+```
+
+Every one of the 20 findings that existed before this change is level `"error"`, so no
+previously-failing case starts passing. The only new behaviour is that `"info"` findings
+print without failing.
+
+- [ ] **Step 5: Run the tests**
+
+Run: `python -m pytest tests/test_step_registry_check.py tests/test_cli.py -v`
+Expected: all pass
+
+- [ ] **Step 6: Run the full pre-existing suite for regressions**
+
+Run: `python -m pytest tests/ -q`
+Expected: all 68 pre-existing tests still pass, plus the new ones
+
+- [ ] **Step 7: Verify against the real repo**
+
+Run: `python -m implr_validate --repo --root .`
+Expected: exit code 0, with two `info:` lines naming `qa-testing` and `sec-review`
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add scripts/implr_validate/checks.py scripts/implr_validate/cli.py tests/test_step_registry_check.py tests/test_cli.py
+git commit -m "feat(validate): check step-registry.json, with planned steps reported as info"
+```
+
+---
+
 ## Definition of Done
 
 - [ ] `python -m pytest` in `studio/backend/` passes with all tests from Tasks 1-5.
@@ -1512,3 +1808,6 @@ git commit -m "feat(studio): gate validation and evaluation against artefact fro
 - [ ] No third-party import was added to `scripts/implr_validate`.
 - [ ] A gate requiring `status: complete` on a `plan` is rejected with a message naming the legal plan states.
 - [ ] An `all` gate over zero matching files evaluates `False`.
+- [ ] `python -m implr_validate --repo --root .` exits `0` and reports the two planned
+      steps at `info` level.
+- [ ] The 68 pre-existing `implr_validate` tests still pass.

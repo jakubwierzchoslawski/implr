@@ -49,14 +49,26 @@
   - `_sdk.ALLOWED_TOOLS: tuple[str, ...]` — the allowlist implr skills need.
   - `_sdk.PERMISSION_MODE = "acceptEdits"`
   - `_sdk.QUESTION_INSTRUCTION: str` — the appended instruction text.
+  - `_sdk.allow(updated_input: dict | None = None)` → a `PermissionResultAllow`.
+  - `_sdk.deny(message: str, interrupt: bool = False)` → a `PermissionResultDeny`.
+  - `_sdk.ANSWER_TEMPLATE: str` — wraps the operator's reply for the return trip.
+
+The `allow`/`deny` helpers exist because `can_use_tool` must return the SDK's
+**dataclass** results, not dicts, and the field is `updated_input` (snake_case).
+Routing construction through `_sdk` keeps `claude_code.py` testable with the SDK absent.
 
 - [ ] **Step 1: Add the dependency**
 
 In `studio/backend/pyproject.toml`, add to `dependencies`:
 
 ```toml
-    "claude-agent-sdk>=0.1.0",
+    "claude-agent-sdk>=0.2.144,<0.3",
 ```
+
+The floor is verified against PyPI, not guessed: the 0.1.x series ends at 0.1.81 and
+the current release is 0.2.144. `PermissionResultAllow` / `PermissionResultDeny` and
+`ClaudeAgentOptions.can_use_tool` are 0.2-series API, so a 0.1 floor would resolve to
+a release without them.
 
 Then: `cd studio/backend && python -m pip install -e ".[dev]"`
 
@@ -121,6 +133,51 @@ def test_require_sdk_explains_how_to_install_when_missing(monkeypatch):
 
     with pytest.raises(Exception, match="claude-agent-sdk"):
         _sdk.require_sdk()
+
+
+def test_allow_uses_snake_case_updated_input():
+    """The SDK field is updated_input, not updatedInput. A dict would be rejected."""
+    result = _sdk.allow({"command": "ls"})
+
+    assert result.behavior == "allow"
+    assert result.updated_input == {"command": "ls"}
+    assert not isinstance(result, dict)
+
+
+def test_deny_carries_a_message():
+    result = _sdk.deny("nope")
+
+    assert result.behavior == "deny"
+    assert result.message == "nope"
+    assert result.interrupt is False
+
+
+def test_answer_template_frames_the_reply_as_a_decision_not_a_refusal():
+    text = _sdk.ANSWER_TEMPLATE.format(answer="Postgres")
+
+    assert "Postgres" in text
+    assert "not a refusal" in text
+
+
+@pytest.mark.skipif(not _sdk.SDK_AVAILABLE, reason="claude-agent-sdk is not installed")
+def test_helpers_return_the_real_sdk_types_when_installed():
+    """Guards against the stand-ins silently masking an SDK API change."""
+    from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
+
+    assert isinstance(_sdk.allow(None), PermissionResultAllow)
+    assert isinstance(_sdk.deny("x"), PermissionResultDeny)
+
+
+@pytest.mark.skipif(not _sdk.SDK_AVAILABLE, reason="claude-agent-sdk is not installed")
+def test_permission_mode_is_a_value_the_sdk_accepts():
+    import dataclasses
+    import typing
+
+    from claude_agent_sdk import ClaudeAgentOptions
+
+    field = {f.name: f for f in dataclasses.fields(ClaudeAgentOptions)}["permission_mode"]
+    legal = typing.get_args(field.type)
+    assert _sdk.PERMISSION_MODE in legal, "permission_mode %r is not accepted by the SDK" % _sdk.PERMISSION_MODE
 ```
 
 - [ ] **Step 3: Run test to verify it fails**
@@ -170,6 +227,44 @@ QUESTION_INSTRUCTION = (
     "human reading your text output directly; a prose question will not be seen and "
     "the run will proceed without an answer."
 )
+
+
+# The operator's reply travels back to the agent through the permission-denial
+# message, which is the only channel can_use_tool offers to the model. Allowing
+# AskUserQuestion instead would let the tool execute, and in a headless session
+# there is no human on the other end of it. The wording below matters: a bare
+# denial reads as a refusal, so it states plainly that this is the answer.
+ANSWER_TEMPLATE = (
+    "The operator answered: {answer}
+
+"
+    "This is their decision, not a refusal of your request. Proceed using it, and do "
+    "not ask the same question again."
+)
+
+if SDK_AVAILABLE:  # pragma: no cover - environment dependent
+    from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
+else:  # pragma: no cover
+    from dataclasses import dataclass
+
+    @dataclass
+    class PermissionResultAllow:  # type: ignore[no-redef]
+        behavior: str = "allow"
+        updated_input: dict | None = None
+
+    @dataclass
+    class PermissionResultDeny:  # type: ignore[no-redef]
+        behavior: str = "deny"
+        message: str = ""
+        interrupt: bool = False
+
+
+def allow(updated_input: dict | None = None):
+    return PermissionResultAllow(updated_input=updated_input)
+
+
+def deny(message: str, interrupt: bool = False):
+    return PermissionResultDeny(message=message, interrupt=interrupt)
 
 
 def require_sdk() -> None:
@@ -528,7 +623,20 @@ git commit -m "feat(studio): pure SDK message to StepEvent translation"
 - Produces:
   - `ClaudeCodeExecutor(client_factory=None)` — `client_factory(request) -> client` is injected in tests; in production it builds a real `ClaudeSDKClient`.
   - Satisfies `StepExecutor`: `start`, `events`, `answer`, `cancel`.
-  - `ClaudeCodeExecutor.can_use_tool(tool_name, tool_input, context)` — the interception hook. For `AskUserQuestion` it emits a `question` event and blocks until answered, then returns an allow-decision carrying the operator's reply. Every other tool is allowed unchanged.
+  - `ClaudeCodeExecutor.can_use_tool(handle_id, tool_name, tool_input)` — the interception hook. For `AskUserQuestion` it emits a `question` event, blocks until answered, and returns `_sdk.deny(ANSWER_TEMPLATE...)` carrying the reply. Every other tool returns `_sdk.allow(tool_input)`.
+
+**Why `handle_id` is a parameter and not read from the SDK's context.** The SDK passes a
+`ToolPermissionContext` **dataclass** (fields: `signal`, `suggestions`, `tool_use_id`,
+`agent_id`, `blocked_path`, …) — not a dict, and with no field this adapter may add. The
+per-step identity therefore comes from the closure built in the client factory, which
+already knows the handle. Do not attempt `context.get(...)`; it will raise.
+
+**Why the answer returns through `deny`.** `can_use_tool` may return only
+`PermissionResultAllow` or `PermissionResultDeny`. Allowing `AskUserQuestion` would let the
+tool execute, and a headless session has no human to answer it. `PermissionResultDeny`
+carries a `message` that reaches the model, so it is the only path back. `ANSWER_TEMPLATE`
+states explicitly that the message is the operator's decision rather than a refusal.
+See *Risks requiring live verification* at the end of this plan.
 
 The stub client contract used by tests (and satisfied by a thin wrapper over the real SDK):
 
@@ -706,7 +814,7 @@ async def test_ask_user_question_becomes_a_question_event_and_blocks():
                     {"label": "MySQL", "description": "simple"}],
     }]}
     intercept = asyncio.create_task(
-        executor.can_use_tool("AskUserQuestion", tool_input, {"handle_id": handle.id})
+        executor.can_use_tool(handle.id, "AskUserQuestion", tool_input)
     )
 
     await asyncio.sleep(0.05)
@@ -718,7 +826,11 @@ async def test_ask_user_question_becomes_a_question_event_and_blocks():
     await executor.answer(handle, question.question_id, "Postgres")
     decision = await asyncio.wait_for(intercept, timeout=2)
 
-    assert "Postgres" in str(decision)
+    # The answer returns through the denial message - the only channel to the model.
+    assert decision.behavior == "deny"
+    assert "Postgres" in decision.message
+    assert "not a refusal" in decision.message
+    assert decision.interrupt is False
     await asyncio.wait_for(task, timeout=5)
 
 
@@ -727,10 +839,46 @@ async def test_other_tools_are_not_intercepted():
     handle = await executor.start(_req())
 
     decision = await asyncio.wait_for(
-        executor.can_use_tool("Bash", {"command": "ls"}, {"handle_id": handle.id}), timeout=2
+        executor.can_use_tool(handle.id, "Bash", {"command": "ls"}), timeout=2
     )
 
-    assert decision is not None
+    assert decision.behavior == "allow"
+    assert decision.updated_input == {"command": "ls"}
+
+
+async def test_permission_results_are_sdk_objects_not_dicts():
+    """can_use_tool must return PermissionResult dataclasses; a dict is rejected."""
+    executor, _ = _executor([ResultMessage()])
+    handle = await executor.start(_req())
+
+    decision = await executor.can_use_tool(handle.id, "Read", {"file_path": "/ws/a.md"})
+
+    assert not isinstance(decision, dict)
+    assert hasattr(decision, "behavior")
+
+
+async def test_cancel_denies_a_blocked_question_with_interrupt():
+    executor, _ = _executor([ResultMessage()])
+    handle = await executor.start(_req("arch-gen"))
+
+    async def consume():
+        async for _ in executor.events(handle):
+            pass
+
+    task = asyncio.create_task(consume())
+    intercept = asyncio.create_task(
+        executor.can_use_tool(handle.id, "AskUserQuestion", {"questions": [
+            {"question": "Which?", "header": "H", "options": [{"label": "A", "description": ""}]},
+        ]})
+    )
+    await asyncio.sleep(0.05)
+
+    await executor.cancel(handle)
+    decision = await asyncio.wait_for(intercept, timeout=2)
+
+    assert decision.behavior == "deny"
+    assert decision.interrupt is True
+    await asyncio.wait_for(task, timeout=5)
 
 
 async def test_step_without_a_question_runs_to_completion():
@@ -803,7 +951,7 @@ import asyncio
 import itertools
 from typing import AsyncIterator
 
-from . import translate
+from . import _sdk, translate
 from ._sdk import ALLOWED_TOOLS, PERMISSION_MODE, build_prompt, require_sdk
 from .base import (
     OUTCOME_FAILURE,
@@ -832,11 +980,10 @@ def _default_client_factory(request: StepRequest, can_use_tool, handle_id: str):
     require_sdk()
     from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
-    async def _hook(tool_name, tool_input, context):
-        # The SDK does not know which step this callback belongs to; bind it here.
-        ctx = dict(context or {})
-        ctx["handle_id"] = handle_id
-        return await can_use_tool(tool_name, tool_input, ctx)
+    async def _hook(tool_name, tool_input, _context):
+        # _context is the SDK's ToolPermissionContext dataclass. It carries no field
+        # for our step identity, so the handle comes from this closure instead.
+        return await can_use_tool(handle_id, tool_name, tool_input)
 
     options = ClaudeAgentOptions(
         cwd=str(request.workspace),
@@ -904,11 +1051,16 @@ class ClaudeCodeExecutor:
 
     # --- tool interception ---
 
-    async def can_use_tool(self, tool_name: str, tool_input: dict, context: dict):
-        """Intercept AskUserQuestion; allow every other tool unchanged."""
-        session = self._sessions.get(context.get("handle_id", ""))
+    async def can_use_tool(self, handle_id: str, tool_name: str, tool_input: dict):
+        """Intercept AskUserQuestion; allow every other tool unchanged.
+
+        `handle_id` is supplied by the closure in the client factory. The SDK's own
+        ToolPermissionContext is a dataclass with no field this adapter may add, so
+        it is not the carrier for per-step identity.
+        """
+        session = self._sessions.get(handle_id)
         if tool_name != _ASK_TOOL or session is None:
-            return {"behavior": "allow", "updatedInput": tool_input}
+            return _sdk.allow(tool_input)
 
         question_id = "q-%d" % next(self._ids)
         prompt_md, options = translate.question_from_tool_input(tool_input)
@@ -919,13 +1071,10 @@ class ClaudeCodeExecutor:
 
         await session.answered.wait()
         if session.cancelled.is_set():
-            return {"behavior": "deny", "message": "run cancelled by operator"}
+            return _sdk.deny("run cancelled by the operator", interrupt=True)
 
-        return {
-            "behavior": "allow",
-            "updatedInput": tool_input,
-            "operator_answer": session.answer_text,
-        }
+        # Deny is the return channel, not a refusal - see ANSWER_TEMPLATE.
+        return _sdk.deny(_sdk.ANSWER_TEMPLATE.format(answer=session.answer_text))
 
     # --- internals ---
 
@@ -1020,10 +1169,16 @@ Create `studio/backend/tests/test_claude_live.py`:
 
 Run with:  python -m pytest tests/test_claude_live.py -m live -v
 
-Skipped by default. This is the only test in the suite that spends tokens, and it
-exists to confirm the wiring the stubbed tests cannot: that the SDK accepts our
-options, that a slash command reaches the skill, and that a result comes back.
+Skipped by default. These are the only tests in the suite that spend tokens, and
+they exist to prove the two things the stubbed tests cannot:
+
+  1. the SDK accepts our options and returns a result at all;
+  2. the agent treats a PermissionResultDeny message as an ANSWER and carries on -
+     the single assumption in this plan that no offline test can settle.
+
+Both use a throwaway workspace and a trivial prompt, not a real implr skill.
 """
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -1031,25 +1186,137 @@ import pytest
 from implr_studio.executors import _sdk, base
 from implr_studio.executors.claude_code import ClaudeCodeExecutor
 
-pytestmark = [pytest.mark.live, pytest.mark.asyncio]
+pytestmark = [
+    pytest.mark.live,
+    pytest.mark.asyncio,
+    pytest.mark.skipif(not _sdk.SDK_AVAILABLE, reason="claude-agent-sdk is not installed"),
+]
 
 
-@pytest.mark.skipif(not _sdk.SDK_AVAILABLE, reason="claude-agent-sdk is not installed")
-async def test_trivial_step_runs_end_to_end(tmp_path: Path):
-    executor = ClaudeCodeExecutor()
+class _FixedPromptClient:
+    """Wraps a real ClaudeSDKClient, substituting the prompt on query().
+
+    ClaudeCodeExecutor.start always sends build_prompt(skill, args). A live probe
+    wants a plain instruction rather than a slash command, so the substitution
+    happens here instead of adding a test-only branch to production code.
+    """
+
+    def __init__(self, inner, prompt: str) -> None:
+        self._inner = inner
+        self._prompt = prompt
+
+    async def connect(self):
+        return await self._inner.connect()
+
+    async def query(self, _prompt: str):
+        return await self._inner.query(self._prompt)
+
+    def receive_messages(self):
+        return self._inner.receive_messages()
+
+    async def interrupt(self):
+        return await self._inner.interrupt()
+
+    async def disconnect(self):
+        return await self._inner.disconnect()
+
+
+def _client_factory_with_prompt(prompt: str):
+    """A factory matching the production signature but sending a fixed prompt.
+
+    The point is to exercise transport and the permission callback, not to run an
+    implr skill - a live test must never mutate a real workspace.
+    """
+    def factory(request, can_use_tool, handle_id):
+        from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+
+        async def hook(tool_name, tool_input, _context):
+            return await can_use_tool(handle_id, tool_name, tool_input)
+
+        options = ClaudeAgentOptions(
+            cwd=str(request.workspace),
+            permission_mode=_sdk.PERMISSION_MODE,
+            allowed_tools=list(_sdk.ALLOWED_TOOLS),
+            can_use_tool=hook,
+        )
+        return _FixedPromptClient(ClaudeSDKClient(options=options), prompt)
+
+    return factory
+
+
+async def test_transport_returns_a_result(tmp_path: Path):
+    """Confirms options are accepted and a ResultMessage comes back."""
+    executor = ClaudeCodeExecutor(
+        client_factory=_client_factory_with_prompt("Reply with the single word: ready")
+    )
     request = base.StepRequest(
-        node_id="live", skill="", args=(), workspace=tmp_path, timeout_seconds=120
+        node_id="live", skill="__probe__", args=(), workspace=tmp_path, timeout_seconds=120
     )
 
     handle = await executor.start(request)
     events = [e async for e in executor.events(handle)]
 
     assert events[-1].kind == "done"
-    assert events[-1].outcome == base.OUTCOME_SUCCESS
+    assert events[-1].outcome == base.OUTCOME_SUCCESS, events[-1].error
     assert any(e.kind == "log" for e in events)
+
+
+async def test_agent_treats_a_denial_message_as_an_answer(tmp_path: Path):
+    """THE load-bearing assumption of this plan.
+
+    The agent is told to ask via AskUserQuestion. The adapter answers through the
+    permission-denial message. This test proves the agent then acts on that answer
+    instead of treating it as a refusal and giving up.
+
+    If this fails, the fallback is the Phase 2 follow-up: edit arch-gen and
+    dev-planner to call AskUserQuestion directly and return the answer as a real
+    tool result. Do not paper over a failure here with a prose-parsing heuristic.
+    """
+    prompt = (
+        "Ask me, using the AskUserQuestion tool, whether to use Postgres or MySQL. "
+        "Once you have my answer, reply with exactly: CHOSEN=<my answer>\n\n"
+        + _sdk.QUESTION_INSTRUCTION
+    )
+    executor = ClaudeCodeExecutor(client_factory=_client_factory_with_prompt(prompt))
+    request = base.StepRequest(
+        node_id="live", skill="__probe__", args=(), workspace=tmp_path, timeout_seconds=180
+    )
+
+    handle = await executor.start(request)
+    collected: list[base.StepEvent] = []
+
+    async def consume():
+        async for event in executor.events(handle):
+            collected.append(event)
+
+    task = asyncio.create_task(consume())
+
+    # Wait for the agent to ask.
+    for _ in range(120):
+        question = next((e for e in collected if e.kind == "question"), None)
+        if question is not None:
+            break
+        await asyncio.sleep(0.5)
+    assert question is not None, "the agent never called AskUserQuestion"
+
+    await executor.answer(handle, question.question_id, "Postgres")
+    await asyncio.wait_for(task, timeout=180)
+
+    transcript = "\n".join(e.text or "" for e in collected if e.kind == "log")
+    assert "CHOSEN=Postgres" in transcript or "Postgres" in transcript, (
+        "the agent did not act on the answer delivered via the denial message.\n"
+        "Transcript:\n%s" % transcript
+    )
 ```
 
-Note: `skill=""` makes `build_prompt` emit a bare `/` line, which is not a useful probe. Before running this test, change the request to a real read-only skill invocation available in your workspace — the point is to exercise transport, not to assert on a specific skill's output. If no implr skill is safe to run live, replace the prompt with a plain instruction by temporarily passing a `client_factory` that queries `"Reply with the word ready and nothing else."`
+Note on `_FixedPromptClient`: `ClaudeCodeExecutor.start` always sends
+`build_prompt(req.skill, req.args)`. The wrapper substitutes a plain instruction at
+`query()` time, so production code needs no test-only branch. `skill="__probe__"` is
+therefore never sent anywhere — it only satisfies `StepRequest`.
+
+If you would rather exercise a real slash command, use a read-only one
+(`/doc-ingest --dry-run`) against a scratch workspace — **never** a skill that writes, and
+never the repository you are working in.
 
 - [ ] **Step 3: Verify the marker actually excludes the live test**
 
@@ -1096,6 +1363,25 @@ git commit -m "feat(studio): opt-in live adapter test and can_use_tool wiring"
 - [ ] A step whose agent never calls `AskUserQuestion` completes rather than hanging.
 - [ ] An SDK exception, and a stream that ends without a result, both produce a terminal `done` failure rather than a hang.
 - [ ] `events()` terminates on every path.
+
+## Risks requiring live verification
+
+Everything else in this plan is settled by offline tests. These two are not, and both are
+proven or disproven by `pytest -m live`:
+
+1. **The agent must treat a `PermissionResultDeny` message as an answer.** This is the
+   return path for every operator reply. `can_use_tool` can only return allow or deny, and
+   allowing `AskUserQuestion` would let a tool run that needs a human who is not there. If
+   the agent reads the denial as a refusal and abandons the decision, the mechanism does
+   not work and the fix is the Phase 2 follow-up below — **not** a prose-parsing fallback.
+2. **The agent must honour the `AskUserQuestion` instruction.** `QUESTION_INSTRUCTION` is
+   an instruction, not a guarantee. A step that asks in prose anyway completes without
+   pausing rather than hanging, which is the safe failure, but the operator never sees the
+   question.
+
+Run `python -m pytest tests/test_claude_live.py -m live -v` before trusting an interactive
+step (`arch-gen`, `ba-cr`, `dev-planner --brainstorm`) in a real run. Non-interactive steps
+— `doc-ingest`, `dev-executor`, `dev-code-review` — do not depend on either assumption.
 
 ## Phase 2 follow-ups this plan makes concrete
 
