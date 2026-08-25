@@ -89,7 +89,7 @@ phase is free. Phases 15, 18 and 19 are the only ones that cost anything.
 
 | # | Phase | Demo at the end | Tokens |
 |---|---|---|---|
-| **−1** | **Restructure** | `pip install implr-validate` works; no test contains `sys.path.insert` | none |
+| **−1** | **[Restructure](2026-08-25-studio-phase-minus1-restructure.md)** | `pip install implr-validate` works; no test contains `sys.path.insert` | none |
 | 0 | [Skeleton](2026-08-25-studio-phase-00-skeleton.md) | `implr-studio` starts; browser shows the dark shell and a live health dot | none |
 | 1 | [See the steps](2026-08-25-studio-phase-01-palette.md) | Nine real steps grouped by phase; the two unimplemented ones dashed; search filters | none |
 | 2 | [Draw a pipeline](2026-08-25-studio-phase-02-canvas.md) | Drag two steps, connect them, Save → `pipeline.yaml` on disk; reload keeps the graph | none |
@@ -103,7 +103,7 @@ phase is free. Phases 15, 18 and 19 are the only ones that cost anything.
 | 10 | Live logs | Log lines appear *while* the step is running; a refresh loses nothing | none |
 | 11 | Many nodes, real gates | A gate holds; you edit a file on disk; it opens with no operator action | none |
 | 12 | Questions | Answer a question in the browser; the step continues in the same session | none |
-| 13 | **Review & send back** | Reject a step's output with a note; it re-runs knowing why | none |
+| 13 | **[Review & send back](2026-08-25-studio-phase-13-review.md)** | Reject a step's output with a note; it re-runs knowing why | none |
 | 14 | Failure & recovery | Kill the server mid-run, reopen, resume rather than restart | none |
 | 15 | Real model | A real `doc-ingest --dry-run` streams into the browser | **yes** |
 | 16 | **Containers** | `docker compose up` serves the console; the API image has no `git` and no Claude CLI | none |
@@ -124,7 +124,7 @@ a retry. See *Component: Human-in-the-loop* in the design spec. Without 13, "HIT
 
 ## Phase specifications
 
-Phases 0–3 and 18 have their own documents. The rest are specified here until theirs are written.
+Phases −1, 0–3, 13 and 18 have their own documents. The rest are specified here until theirs are written.
 
 ### Phase −1 — Restructure
 
