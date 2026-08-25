@@ -946,6 +946,29 @@ repository. Accordingly:
 - `args` are validated against the registry's `args_allowed` whitelist before reaching the
   adapter, and are passed as an argument vector — never interpolated into a shell string.
 
+> ### These constraints describe **local mode**
+>
+> `docs/superpowers/specs/2026-08-25-implr-studio-hosted-design.md` adds a second deployment
+> target and **reverses the first two** — public ingress, Entra authentication, and
+> multi-tenant isolation. That is not this document being wrong; it is a different threat
+> model, and the hosted design does not soften these rules so much as replace them with much
+> stricter ones:
+>
+> | | Local (this document) | Hosted |
+> |---|---|---|
+> | Reachability | loopback only | public HTTPS behind Entra |
+> | Authentication | none, by design | required on every route |
+> | Who executes a step | the API process | a per-run job with no database credentials |
+> | Workspace | your repo, in place | a fresh clone, destroyed after |
+> | Network egress | unrestricted | allowlist: the model API and the git remote |
+> | Isolation boundary | your machine | tenant, enforced by row-level security |
+>
+> The last two rows are the ones that matter. Locally, "the agent can run anything" is
+> equivalent to "you can run anything", which is true and unremarkable. Hosted, it is remote
+> code execution unless the run is isolated — so the hosted design moves execution out of the
+> API entirely. **Do not deploy this document's architecture to a network.** Deploy the
+> hosted one.
+
 ---
 
 ## Known Limitations

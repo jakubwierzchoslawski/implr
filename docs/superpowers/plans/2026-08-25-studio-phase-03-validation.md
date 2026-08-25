@@ -8,6 +8,10 @@
 
 **Depends on:** Phases 0–2.
 
+> `PUT /api/projects/{pid}/pipeline` gains validation. The `authorize()` call added in
+> Phase 2 is unchanged — validation is not an authorization concern, and conflating them
+> is how you end up with a 422 that leaks whether a resource exists.
+
 ---
 
 ## Demo
@@ -457,19 +461,19 @@ git commit -m "feat(studio): DAG validation for pipeline configs"
 **Interfaces:**
 - Produces:
   - `serialize.finding_to_dict(f) -> dict` → `{"code", "message", "node_id"}`
-  - `PUT /api/pipeline` returns `422` with `{"findings": [...]}` when validation fails, and
-    writes nothing.
+  - `PUT /api/projects/{pid}/pipeline` returns `422` with `{"findings": [...]}` when
+    validation fails, and writes nothing.
 
 - [ ] **Step 1: Extend the test**
 
-Add to `studio/backend/tests/test_api_pipeline.py`:
+Add to `studio/backend/tests/test_api_pipeline.py` (which already defines `PID`):
 
 ```python
 def test_put_rejects_a_cycle_with_422_and_findings(client):
     bad = dict(VALID, edges=[
         {"from": "ingest", "to": "arch"}, {"from": "arch", "to": "ingest"}])
 
-    r = client.put("/api/pipeline", json=bad)
+    r = client.put(f"/api/projects/{PID}/pipeline", json=bad)
 
     assert r.status_code == 422
     codes = [f["code"] for f in r.json()["findings"]]
@@ -481,7 +485,7 @@ def test_put_rejects_an_unknown_step(client):
     bad = dict(VALID, nodes=[{"id": "x", "step": "not-a-step", "args": [],
                               "position": {"x": 0, "y": 0}}], edges=[])
 
-    r = client.put("/api/pipeline", json=bad)
+    r = client.put(f"/api/projects/{PID}/pipeline", json=bad)
 
     assert r.status_code == 422
     assert [f["code"] for f in r.json()["findings"]] == ["unknown-step"]
@@ -491,7 +495,7 @@ def test_put_rejects_a_disallowed_arg(client):
     bad = dict(VALID, nodes=[{"id": "x", "step": "doc-ingest", "args": ["--wat"],
                               "position": {"x": 0, "y": 0}}], edges=[])
 
-    r = client.put("/api/pipeline", json=bad)
+    r = client.put(f"/api/projects/{PID}/pipeline", json=bad)
 
     assert r.status_code == 422
     assert [f["code"] for f in r.json()["findings"]] == ["disallowed-arg"]
@@ -501,18 +505,18 @@ def test_findings_carry_the_node_id(client):
     bad = dict(VALID, nodes=[{"id": "culprit", "step": "nope", "args": [],
                               "position": {"x": 0, "y": 0}}], edges=[])
 
-    findings = client.put("/api/pipeline", json=bad).json()["findings"]
+    findings = client.put(f"/api/projects/{PID}/pipeline", json=bad).json()["findings"]
 
     assert findings[0]["node_id"] == "culprit"
 
 
 def test_a_rejected_put_does_not_overwrite_a_good_file(client, workspace):
     """The previous save must survive a failed one."""
-    client.put("/api/pipeline", json=VALID)
+    client.put(f"/api/projects/{PID}/pipeline", json=VALID)
     path = workspace / "docs" / "implr" / "config" / "pipeline.yaml"
     before = path.read_text(encoding="utf-8")
 
-    client.put("/api/pipeline", json=dict(VALID, nodes=[
+    client.put(f"/api/projects/{PID}/pipeline", json=dict(VALID, nodes=[
         {"id": "x", "step": "nope", "args": [], "position": {"x": 0, "y": 0}}], edges=[]))
 
     assert path.read_text(encoding="utf-8") == before
@@ -523,7 +527,7 @@ def test_put_accepts_a_registered_but_unimplemented_step(client):
     ahead = dict(VALID, nodes=[{"id": "sec", "step": "sec-review", "args": [],
                                 "position": {"x": 0, "y": 0}}], edges=[])
 
-    assert client.put("/api/pipeline", json=ahead).status_code == 200
+    assert client.put(f"/api/projects/{PID}/pipeline", json=ahead).status_code == 200
 
 
 def test_put_still_accepts_an_unvalidated_gate(client):
@@ -533,7 +537,7 @@ def test_put_still_accepts_an_unvalidated_gate(client):
         "gate": {"type": "artifact", "artefact": "unicorn",
                  "quantifier": "all", "require": {"status": "approved"}}}])
 
-    assert client.put("/api/pipeline", json=gated).status_code == 200
+    assert client.put(f"/api/projects/{PID}/pipeline", json=gated).status_code == 200
 ```
 
 > The last test is a **scope marker**, not an endorsement. Phase 6 replaces it with one
@@ -557,8 +561,11 @@ def finding_to_dict(f: Finding) -> dict:
 In `api.py`, import `validate_pipeline`, then replace the Phase 2 comment placeholder:
 
 ```python
-    @app.put("/api/pipeline")
-    def put_pipeline(body: dict = Body(...)) -> dict:
+    @app.put("/api/projects/{pid}/pipeline")
+    def put_pipeline(pid: str, body: dict = Body(...),
+                     principal=Depends(current_principal)) -> dict:
+        project = resolve_project(pid, principal)
+        authorize(principal, Permission.PROJECT_WRITE, project=project)
         try:
             p = pipeline_from_dict(body)
         except PipelineError as e:
@@ -572,7 +579,7 @@ In `api.py`, import `validate_pipeline`, then replace the Phase 2 comment placeh
             # the previous good file untouched.
             raise HTTPException(422, detail={"findings": findings})
 
-        save_pipeline(context.pipeline_path, p)
+        save_pipeline(project.pipeline_path, p)
         return {"pipeline": pipeline_to_dict(p), "exists": True}
 ```
 

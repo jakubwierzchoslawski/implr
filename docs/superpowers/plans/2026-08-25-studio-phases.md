@@ -4,10 +4,47 @@
 (`2026-08-25-studio-0{1..6}-*.md`), which are retained only until their content has been
 redistributed into the phases below.
 
-**Design reference:** `docs/superpowers/specs/2026-08-25-implr-studio-design.md` — still the
-single source of truth for *what* is being built. This document governs *in what order*.
+**Design references:**
+- `docs/superpowers/specs/2026-08-25-implr-studio-design.md` — what is being built.
+- `docs/superpowers/specs/2026-08-25-implr-studio-hosted-design.md` — tenancy, authorization,
+  containers, Azure. **Supersedes parts of the first**, notably the security posture and the
+  route shape.
+
+This document governs *in what order*.
 
 **Runtime verification:** `docs/RUNTIME.md`
+
+---
+
+## Two things that cut across every phase
+
+Both come from the hosted design and neither is a phase of its own, because both must be
+present from the first route rather than retrofitted.
+
+### 1. Routes are project-scoped from Phase 1
+
+`/api/projects/{pid}/pipeline`, not `/api/pipeline`. **Local mode is the degenerate case** —
+one tenant, one user, one project pinned to the `--workspace` directory — so there is one API
+shape, not two. A local UI reads its single project from `/api/projects` and never renders a
+picker.
+
+The alternative, resolving the project implicitly in local mode, produces two route shapes
+that every client, test and runbook has to distinguish. One extra path segment buys the
+removal of that entire class of divergence.
+
+### 2. `authorize()` is called by every route from Phase 1
+
+Even in local mode, where the policy always says yes. The seam is
+`authz.authorize(principal, permission, project=…)`, and the permission verbs are named in
+full from the start — `project.read`, `project.write`, `run.start`, `run.control`,
+`step.author`, `skill.author`, `tenant.admin`.
+
+**Naming them later would mean revisiting every call site to decide which verb it meant**,
+which is exactly the audit the seam exists to prevent. Phase 16 swaps `LocalPolicy` for
+`TenantWidePolicy` and no route changes.
+
+A test walks the FastAPI route table and fails on any handler that does not call
+`authorize` — added in Phase 1 and kept green from then on.
 
 ---
 
@@ -52,6 +89,7 @@ phase is free. Only Phase 14 costs anything.
 
 | # | Phase | Demo at the end | Tokens |
 |---|---|---|---|
+| **−1** | **Restructure** | `pip install implr-validate` works; no test contains `sys.path.insert` | none |
 | 0 | [Skeleton](2026-08-25-studio-phase-00-skeleton.md) | `implr-studio` starts; browser shows the dark shell and a live health dot | none |
 | 1 | [See the steps](2026-08-25-studio-phase-01-palette.md) | Nine real steps grouped by phase; the two unimplemented ones dashed; search filters | none |
 | 2 | [Draw a pipeline](2026-08-25-studio-phase-02-canvas.md) | Drag two steps, connect them, Save → `pipeline.yaml` on disk; reload keeps the graph | none |
@@ -67,6 +105,14 @@ phase is free. Only Phase 14 costs anything.
 | 12 | Questions | Answer a question in the browser; the step continues in the same session | none |
 | 13 | Failure & recovery | Kill the server mid-run, reopen, resume rather than restart | none |
 | 14 | Real model | A real `doc-ingest --dry-run` streams into the browser | **yes** |
+| 15 | **Containers** | `docker compose up` serves the console; the API image has no `git` and no Claude CLI | none |
+| 16 | **Tenancy & auth** | Two users in one Entra tenant see the same projects; a third tenant's user sees none | none |
+| 17 | **Deploy to Azure** | A run executes in a Container Apps Job and streams to the browser | **yes** |
+
+Nineteen phases, `−1` through `17`. The count grew from fifteen when hosting entered scope;
+**0–14 are unchanged in content** — only their route shape and the `authorize()` call gained
+a prefix. Phases 15–17 are the hosting work, and none of them is reachable until 14 is done,
+because deploying a console that cannot run a pipeline proves nothing.
 
 ---
 
@@ -350,15 +396,113 @@ suite:
 
 ---
 
+### Phase −1 — Restructure
+
+**Must precede Phase 0**, which currently writes `studio/backend/pyproject.toml` at a path
+this phase deletes.
+
+The tree today is a clean plugin source with **no packaging story**: no root manifest,
+`implr_validate` vendored into target projects by `cp -f` in `install.sh`, every test doing
+its own `sys.path.insert`, and a Python library living in a directory called `scripts/`. A
+Dockerfile has nothing to install.
+
+**Ships:** a root `pyproject.toml` + lock declaring three packages; `scripts/implr_validate`
+→ `packages/implr_validate`; `studio/backend/implr_studio` → `packages/implr_studio`;
+`scaffold/schemas/*.json` → `packages/implr_contracts`; `skills/`, `.claude/agents/` and the
+rest of `scaffold/` → `plugin/`; `studio/frontend` → `web/`. The three installers become one
+directory copy plus a `pip install`.
+
+**Demo:** `pip install -e packages/implr_validate && python -m implr_validate --repo --root .`
+with **no** `PYTHONPATH`. `grep -r sys.path.insert tests/` returns nothing.
+
+**Minimal alternative** if the full move is too much churn: root manifest, move
+`implr_validate` only, add `docker/`. Leave `skills/` and `.claude/agents/` where they are and
+let the Dockerfile `COPY` three directories instead of one. Everything downstream still works.
+
+---
+
+### Phase 15 — Containers
+
+**Ships:** `docker/api.Dockerfile`, `docker/worker.Dockerfile`, `docker/compose.yaml` — all
+three already written and committed; this phase makes them build and pass tests. Plus the
+`RunLauncher` seam: `InProcessLauncher` for local, `SubprocessLauncher` for compose.
+
+**Backend slice.** `IMPLR_MODE` (`local` | `hosted` | `worker`). A `CatalogueSource` seam:
+files in local mode, tables in hosted. Postgres behind the existing `Store` interface. The
+worker entrypoint: clone, materialise, run, report.
+
+**Demo:** `docker compose up --build`. The console loads at `127.0.0.1:8000`, the palette
+lists steps **from Postgres** seeded in flight from `plugin/skills/`, and a run executes in a
+separate worker container. Then two assertions that are security properties, not packaging
+details: `docker run --rm implr-studio-api which git` finds nothing, and the worker container
+has no `DATABASE_URL`.
+
+**Why the launcher is a seam and not an `if`.** Local runs in-process; compose shells out;
+Azure starts a Container Apps Job. Three implementations of one interface, chosen by mode —
+the same discipline the `StepExecutor` Protocol applies to providers.
+
+---
+
+### Phase 16 — Tenancy & auth
+
+The phase where the authorization seam built in Phase 1 gets a real policy.
+
+**Backend slice.** `tenants`, `users`, `tenant_members`, `projects`, `project_grants`. Entra
+token validation (issuer, audience, signature, expiry) resolving `tid` → tenant and `oid` →
+user, creating both on first sign-in. **Postgres row-level security** on every tenant-owned
+table, with the API connecting as a role that does **not** have `BYPASSRLS`. `LocalPolicy` is
+replaced by `TenantWidePolicy`.
+
+**Ships:** `/api/me`, `/api/projects` (list + create), and a project switcher in the app bar —
+hidden when the tenant has exactly one project, so local mode looks unchanged.
+
+**Demo:** sign in as two users from the same Entra tenant; both see the same project list and
+either can save a pipeline. Sign in from a *different* tenant: the list is empty, and a direct
+`GET` on the first tenant's project id returns **404, not 403** — a resource you may not see
+does not exist. Then insert one `project_grants` row by hand and watch exactly that project
+become restricted while its siblings do not.
+
+**The load-bearing test.** With RLS on, run a deliberately tenant-unscoped query and assert it
+returns **zero rows** rather than another tenant's data. That is what converts the worst class
+of multi-tenant bug from a breach into an empty list, and it only holds if the API's role
+lacks `BYPASSRLS` — so assert that too.
+
+**What is deliberately not built.** Per-project role enforcement. `project_grants` exists and
+is empty; `ProjectGrantPolicy` is written but not wired. The rule shipping here is the one
+asked for: any member of a tenant may act on any project in it.
+
+---
+
+### Phase 17 — Deploy to Azure
+
+**Ships:** `deploy/azure/main.bicep` and modules; `deploy/azure/README.md` as the setup
+runbook; a GitHub Actions workflow building both images to ACR.
+
+**Backend slice.** `ContainerAppsJobLauncher`. Key Vault references for
+`ANTHROPIC_API_KEY`, the git credential and the database password. Blob Storage for the log
+archive and uploaded KB documents. Managed identity for the API — **and none for the worker**.
+
+**Demo:** a real run, in a real subscription, streaming to a browser over HTTPS with Entra
+sign-in. Then the controls, each verified rather than assumed: the worker cannot resolve
+`example.com` but can resolve `api.anthropic.com`; Postgres has no public endpoint; the
+worker job has no managed identity and no database credentials.
+
+**This phase spends tokens** and writes to a real repository. Run it with `--dry-run` on the
+pipeline first.
+
+---
+
 ## Dependency graph
 
 Not a straight line. Phases 4–7 depend only on 1–3, so they can be reordered or
 parallelised. Phases 9–14 are strictly sequential.
 
 ```
-0 ─> 1 ─> 2 ─> 3 ─┬─> 4 ─> 5 ─┐
-                  ├─> 6 ─> 7 ─┴─> 8
-                  └──────────────────> 9 ─> 10 ─> 11 ─> 12 ─> 13 ─> 14
+-1 ─> 0 ─> 1 ─> 2 ─> 3 ─┬─> 4 ─> 5 ─┐
+                        ├─> 6 ─> 7 ─┴─> 8
+                        └────────────────> 9 ─> 10 ─> 11 ─> 12 ─> 13 ─> 14
+                                                                        │
+                                                          15 ─> 16 ─> 17┘
 ```
 
 - **4 before 5** — the Agents tab reuses the modal shell the Run tab introduces.
@@ -371,10 +515,15 @@ parallelised. Phases 9–14 are strictly sequential.
 - **9 before 10** — the 202 contract must exist before streaming can prove it.
 - **8 is not on the run path.** Nothing in 9–14 depends on it, so it can be deferred or
   skipped if the shipped nine steps are enough for now.
+- **−1 before 0** — Phase 0 writes a manifest at a path the restructure deletes.
+- **14 before 15** — deploying a console that cannot run a pipeline proves nothing.
+- **15 before 16** — tenancy needs Postgres, and Postgres arrives with the containers.
+- **16 before 17** — do not put an unauthenticated agent runner on the public internet. Of
+  every edge in this graph, this is the one not to reorder.
 
-Two useful stopping points. **Phase 7** is a complete pipeline *designer* for the steps implr
-ships — shippable on its own. **Phase 8** makes that designer open-ended. Neither can execute
-anything; execution starts at 9.
+Three useful stopping points. **Phase 7** is a complete pipeline *designer* for the steps
+implr ships. **Phase 8** makes that designer open-ended. **Phase 14** is the whole local
+product, working, with no hosting. Each is shippable; execution starts at 9 and hosting at 15.
 
 ---
 

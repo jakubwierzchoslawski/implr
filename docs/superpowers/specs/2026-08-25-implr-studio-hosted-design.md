@@ -35,11 +35,14 @@ execution model.
 
 ### In scope
 
-- Two deployment modes — `local` and `hosted` — from one codebase.
+- Two deployment modes — `local` and `hosted` — from one codebase and **one API**.
+- **Multi-tenant**: many tenants, many users per tenant, many projects per tenant.
+- Authorization behind a **single seam**, permissive today, granular later without
+  touching a call site.
 - Containerisation: an API image and a **separate, isolated worker image** for run execution.
-- Postgres as the control-plane store, replacing SQLite in hosted mode.
+- Postgres as the control-plane store, replacing SQLite in hosted mode, with **row-level
+  security** as the tenant backstop.
 - Skills and agents stored in the database, materialised to disk per run.
-- Authentication, projects, and per-project isolation.
 - Azure service topology, with infrastructure-as-code.
 - A repository restructure that makes the above buildable.
 
@@ -47,6 +50,9 @@ execution model.
 
 - Multi-region, HA, or autoscaling beyond Container Apps defaults.
 - Billing, quotas, or usage metering.
+- A user belonging to more than one tenant. Tenancy comes from the identity provider.
+- Per-project roles *enforced* — the tables and the seam exist, the policy does not use
+  them yet. See *Authorization*.
 - A migration path for existing local `runs.db` files. Local runs stay local.
 - Running the *target repository* anywhere but a fresh clone per run.
 
@@ -76,6 +82,225 @@ run's container. That is unchanged from the local design, and it is why gates ke
 row was rendered.
 
 Everything else moves to Postgres. Including, notably, skills — which is the interesting case.
+
+---
+
+## Tenancy
+
+**Tenant → users → projects.** A tenant is the isolation boundary; every user and every
+project belongs to exactly one. Nothing crosses it, ever, by any route.
+
+**Tenancy is derived from the identity provider, not administered by us.** An Entra access
+token carries `tid` (the Entra tenant) and `oid` (the object id of the user). The API resolves
+`tenant = tenants WHERE entra_tid = tid` and `user = users WHERE (tenant_id, entra_oid)`.
+That means:
+
+- there is no "which tenant am I?" question for a client to get wrong, and no header a
+  request can spoof;
+- a user cannot belong to two tenants, because a token has one `tid`;
+- an Entra B2B guest presents the *host* tenant's `tid`, which is the correct answer — they
+  are acting inside that tenant;
+- onboarding a tenant is one row, created on first successful sign-in from an allowed `tid`.
+
+**Local mode is a single implicit tenant.** One tenant (`local`), one user (the operator,
+tenant owner), one project (the `--workspace` directory). Nothing about local mode is
+special-cased in the routes — it is the degenerate case of the same model, which is what
+keeps the two modes from drifting.
+
+| | Local | Hosted |
+|---|---|---|
+| Tenant | one, `local` | one row per Entra tenant |
+| User | one, implicit owner | resolved from `oid` on every request |
+| Projects | exactly one, the workspace | many |
+| Auth | `AUTH_MODE=none` | `AUTH_MODE=entra`, bearer token validated per request |
+
+### One API, project-scoped
+
+Every project resource is addressed under its project. This is the single most consequential
+change to the existing plans, because it moves `/api/pipeline` to
+`/api/projects/{project_id}/pipeline`.
+
+```
+GET  /api/health                                     unauthenticated (liveness probe)
+GET  /api/me                                         principal, tenant, granted permissions
+
+GET  /api/projects                                   the tenant's projects
+POST /api/projects                                   create
+
+GET  /api/projects/{pid}/registry                    builtins + this project's catalogue
+GET  /api/projects/{pid}/skills                      installed + custom, for the picker
+GET  /api/projects/{pid}/steps                       authored steps
+PUT  /api/projects/{pid}/steps
+GET  /api/projects/{pid}/pipeline
+PUT  /api/projects/{pid}/pipeline
+GET  /api/projects/{pid}/runs
+POST /api/projects/{pid}/runs
+GET  /api/projects/{pid}/runs/{rid}
+POST /api/projects/{pid}/runs/{rid}/answer
+POST /api/projects/{pid}/runs/{rid}/approve
+POST /api/projects/{pid}/runs/{rid}/nodes/{node}/retry
+POST /api/projects/{pid}/runs/{rid}/nodes/{node}/skip
+POST /api/projects/{pid}/runs/{rid}/cancel
+WS   /api/projects/{pid}/runs/{rid}/stream
+
+POST /api/internal/runs/{rid}/events                 worker callback, run-scoped token only
+```
+
+**Why not keep `/api/pipeline` and resolve the project implicitly?** Because that produces
+two route shapes — one for local, one for hosted — and every client, test and runbook then
+has to know which it is talking to. A single project-scoped shape with local mode pinning
+`pid` to a well-known value costs one path segment and removes an entire class of divergence.
+In local mode the UI reads its single project from `/api/projects` and never shows a picker.
+
+**Run ids are UUIDv4**, not sequential, so a leaked id from one tenant reveals nothing and
+guesses go nowhere. The run must still be verified to belong to `{pid}` — an unguessable id
+is not authorization.
+
+---
+
+## Authorization
+
+### What is enforced today
+
+**Any member of a tenant may do anything to any project in that tenant.** That is the rule
+you asked for, and it is the whole policy. What matters is that it lives in one place, so
+tightening it later is a one-file change rather than an audit of forty routes.
+
+### The seam
+
+Three pieces, and the third is the one that makes the future cheap.
+
+```python
+# packages/implr_studio/authz.py
+
+class Permission(StrEnum):
+    PROJECT_READ   = "project.read"     # see a project, its pipeline, its runs
+    PROJECT_WRITE  = "project.write"    # save a pipeline
+    PROJECT_CREATE = "project.create"   # add a project to the tenant
+    RUN_START      = "run.start"
+    RUN_CONTROL    = "run.control"      # answer, approve, retry, skip, cancel
+    STEP_AUTHOR    = "step.author"      # Phase 8 - write an instruction and a tool grant
+    SKILL_AUTHOR   = "skill.author"
+    TENANT_ADMIN   = "tenant.admin"     # manage users, tenant settings
+
+
+@dataclass(frozen=True)
+class Principal:
+    user_id: UUID
+    tenant_id: UUID
+    tenant_role: str          # "owner" | "member"
+    email: str
+
+
+class Policy(Protocol):
+    def allows(self, principal: Principal, permission: Permission,
+               project: ProjectRef | None) -> bool: ...
+
+
+def authorize(principal, permission, *, project=None) -> None:
+    """Raise Forbidden unless the active policy allows it. Called by every route."""
+```
+
+**The permission verbs are named now, in full, even though the policy ignores most of the
+distinction.** Naming them later would mean revisiting every call site to decide which verb
+it meant — and that is exactly the audit this seam exists to avoid. `run.control` is separate
+from `run.start` because "may trigger a run" and "may answer its questions" are obviously
+different powers, even if today the same people hold both.
+
+`TenantWidePolicy` — the whole of today's rule:
+
+```python
+class TenantWidePolicy:
+    """Every member of a tenant may act on every project in that tenant.
+
+    The tenant check is NOT a formality: `project.tenant_id != principal.tenant_id`
+    is the only thing standing between two customers, and it is asserted here
+    rather than in each route so it cannot be forgotten in one of them.
+    """
+
+    def allows(self, principal, permission, project):
+        if project is not None and project.tenant_id != principal.tenant_id:
+            return False
+        if permission is Permission.TENANT_ADMIN:
+            return principal.tenant_role == "owner"
+        return True
+```
+
+### How granularity arrives later, with no call-site change
+
+`project_grants` exists from the start and is **empty**. The rule that makes it a no-op today
+and a switch tomorrow:
+
+> A project with **no** grant rows is visible and writable by every member of its tenant.
+> A project with **at least one** grant row is restricted to its grantees.
+
+So enabling per-project restriction on one project is inserting a row. Every other project
+keeps behaving exactly as before. No migration, no backfill, no flag day.
+
+```python
+class ProjectGrantPolicy(TenantWidePolicy):
+    """Future. Open by default; restricted once explicitly granted."""
+
+    def allows(self, principal, permission, project):
+        if not super().allows(principal, permission, project):
+            return False
+        if project is None or not project.has_grants:
+            return True                        # unrestricted, as today
+        return project.grant_for(principal.user_id) >= _required_role(permission)
+```
+
+**The honest caveat.** "No grants means open" is a **fail-open** default. That is acceptable
+*inside* a tenant, where the alternative is every new project being invisible until someone
+grants it. It must never be used for anything that crosses a tenant — which is why the tenant
+check in `TenantWidePolicy` runs *before* the grant check and is not part of the same
+mechanism.
+
+### Enforcement is layered, because a route check alone is not enough
+
+| Layer | Mechanism | Catches |
+|---|---|---|
+| Route | `authorize(principal, verb, project=p)` | ordinary policy decisions |
+| Repository | every query takes a tenant-scoped connection | a route that forgot to check |
+| Database | **Postgres row-level security** | a query that forgot its `WHERE` |
+
+RLS is the backstop that makes multi-tenancy defensible rather than merely intended. Each
+transaction opens with the tenant pinned:
+
+```sql
+SET LOCAL app.tenant_id = '…';
+
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON projects
+    USING (tenant_id = current_setting('app.tenant_id')::uuid);
+
+-- Catalogue tables also hold shared builtins, which every tenant may read.
+CREATE POLICY tenant_isolation ON skills
+    USING (tenant_id IS NULL OR tenant_id = current_setting('app.tenant_id')::uuid);
+```
+
+With RLS on, a missing `WHERE tenant_id = …` returns **zero rows instead of another
+customer's data**. That converts the worst class of bug in a multi-tenant system from a
+breach into an empty list.
+
+The API connects as a role **without** `BYPASSRLS`. Migrations run as a separate role that
+has it. Getting that backwards silently disables everything above.
+
+### Known cross-tenant leak vectors, and what closes each
+
+Enumerated because each one is a place where the generic advice "scope by tenant" is not
+obviously sufficient:
+
+| Vector | Why it leaks | Closed by |
+|---|---|---|
+| `events.seq` is one global sequence | a cursor is just an integer; a client could ask for another tenant's range | the WS handler resolves `run → project → tenant` and filters; the cursor is a *position*, never an authorization |
+| Materialised skills | writing the global catalogue into a run container hands one tenant another's custom prompts | materialise only `tenant_id IS NULL` builtins plus **this project's** rows |
+| Project slugs | a global unique index leaks the existence of other tenants' projects through collisions | `UNIQUE (tenant_id, slug)` |
+| Blob paths | a flat container makes one tenant's uploads guessable | `tenant/{tenant_id}/project/{project_id}/…` plus per-tenant SAS scoping |
+| Worker callback | a compromised worker could post events onto another run | the run token is scoped to one `run_id`, and the endpoint verifies the run's tenant matches the token's |
+| Error messages | "project X not found" versus "forbidden" reveals existence | **404, never 403, for a project outside your tenant** |
+
+That last one is worth stating as a rule: a resource the principal may not see does not
+exist, as far as the API is concerned.
 
 ---
 
@@ -162,6 +387,12 @@ defence.
 (pipeline, materialised skills, git ref, run id) and reports back over an authenticated
 callback endpoint scoped to that single run id. It cannot read another run's state.
 
+**The run token names one run, and the callback verifies the tenant.** A token scoped only to
+a run id would let a compromised worker post events onto a run it was not given, and in a
+multi-tenant deployment that is a cross-tenant write. The callback resolves the run, compares
+its `tenant_id` to the token's, and rejects a mismatch — so the token is a capability for one
+run belonging to one tenant, not a general-purpose event writer.
+
 **Egress allowlist matters more than ingress.** An agent that can reach the open internet can
 exfiltrate the repository it was just given. Container Apps with a VNet and a NAT gateway
 plus an Azure Firewall FQDN rule is the mechanism.
@@ -188,52 +419,91 @@ authorisation boundary. Hosted mode adds two more:
 Postgres. SQLAlchemy Core (not the ORM — the existing `store.py` is already hand-written SQL
 and the query surface is small).
 
+Every tenant-owned table carries `tenant_id` **directly**, not by join. Reaching the tenant
+through `run → pipeline → project` would make the RLS policy a subquery on every row, and
+policies must be cheap enough that nobody is tempted to switch them off.
+
 ```sql
--- identity ------------------------------------------------------------------
-users        (id, entra_oid unique, email, display_name, created_at)
-projects     (id, slug unique, name, git_remote, default_branch, created_at)
-memberships  (user_id, project_id, role)          -- role: owner|designer|operator|viewer
-                                                  -- PK (user_id, project_id)
+-- tenancy -------------------------------------------------------------------
+tenants        (id uuid pk, entra_tid text unique, name, status, created_at)
+users          (id uuid pk, tenant_id fk, entra_oid text, email, display_name,
+                last_seen_at, created_at,
+                UNIQUE (tenant_id, entra_oid))
+tenant_members (tenant_id fk, user_id fk, role,           -- 'owner' | 'member'
+                PK (tenant_id, user_id))
+
+projects       (id uuid pk, tenant_id fk, slug, name, git_remote, default_branch,
+                created_by fk users, created_at, archived_at,
+                UNIQUE (tenant_id, slug))                 -- per tenant, never global
+
+-- future-proofing: EMPTY today ---------------------------------------------
+project_grants (project_id fk, user_id fk, role,          -- 'reader'|'designer'|'operator'
+                granted_by fk users, granted_at,
+                PK (project_id, user_id))
+-- A project with NO rows here is open to every member of its tenant. One row
+-- makes it restricted. That is how granular access arrives without a migration.
 
 -- catalogue ----------------------------------------------------------------
-skills       (id, project_id null, name, version, body, source, content_hash,
-              enabled, created_at, updated_at)
-             -- project_id NULL = builtin/global. source: 'builtin'|'custom'
-             -- UNIQUE (coalesce(project_id,'00000000-...'), name)
-agents       (id, project_id null, name, description, prompt, tools jsonb,
-              default_tier, source, content_hash, enabled, ...)
-steps        (id, project_id null, step_id, kind, label, phase, skill_name,
-              instruction, args_allowed jsonb, args_default jsonb,
-              agents jsonb, consumes jsonb, produces jsonb,
-              produces_artefact, description, source, enabled, ...)
-             -- replaces step-registry.json AND steps.yaml
+skills         (id uuid pk, tenant_id fk null, project_id fk null,
+                name, version, body, source, content_hash, enabled,
+                created_by, created_at, updated_at)
+               -- tenant_id NULL = builtin, shared, read-only, synced from plugin/
+               -- source: 'builtin' | 'custom'
+               -- UNIQUE NULLS NOT DISTINCT (tenant_id, project_id, name)
+agents         (id uuid pk, tenant_id fk null, project_id fk null,
+                name, description, prompt, tools jsonb, default_tier,
+                source, content_hash, enabled, ...)
+steps          (id uuid pk, tenant_id fk null, project_id fk null,
+                step_id, kind, label, phase, skill_name, instruction,
+                args_allowed jsonb, args_default jsonb, agents jsonb,
+                consumes jsonb, produces jsonb, produces_artefact,
+                description, source, enabled, ...)
+               -- replaces step-registry.json AND steps.yaml
 
 -- design -------------------------------------------------------------------
-pipelines    (id, project_id, name, graph jsonb, version, updated_by, updated_at)
-             -- graph jsonb is exactly today's pipeline.yaml shape
+pipelines      (id uuid pk, tenant_id fk, project_id fk, name, graph jsonb,
+                version, updated_by, updated_at)
+               -- graph jsonb is exactly today's pipeline.yaml shape
 
 -- execution ----------------------------------------------------------------
-runs         (id, project_id, pipeline_id, git_ref, git_sha, status,
-              started_by, created_at, updated_at, finished_at)
-node_runs    (run_id, node_id, status, summary, error, manual_approved,
-              started_at, finished_at)                     -- PK (run_id, node_id)
-events       (seq bigserial, run_id, node_id, kind, payload jsonb, created_at)
-questions    (id, run_id, node_id, prompt_md, options jsonb, answer,
-              answered_by, answered_at, created_at)
+runs           (id uuid pk, tenant_id fk, project_id fk, pipeline_id fk,
+                git_ref, git_sha, status, started_by fk users,
+                created_at, updated_at, finished_at)
+node_runs      (tenant_id fk, run_id fk, node_id, status, summary, error,
+                manual_approved, started_at, finished_at,
+                PK (run_id, node_id))
+events         (seq bigserial pk, tenant_id fk, run_id fk, node_id,
+                kind, payload jsonb, created_at)
+questions      (id uuid pk, tenant_id fk, run_id fk, node_id, prompt_md,
+                options jsonb, answer, answered_by fk users, answered_at,
+                created_at)
 ```
 
-Three notes on the shape:
+`UNIQUE NULLS NOT DISTINCT` on the catalogue tables (Postgres 15+) is deliberate: without it
+two builtin rows with `tenant_id IS NULL` and the same `name` would both be permitted,
+because SQL treats NULLs as distinct. That would silently allow duplicate builtins.
 
-- **`events.seq` stays a single monotonic sequence** because the WebSocket cursor-replay
-  contract depends on it. `bigserial` global rather than per-run: gaps are fine, ordering is
-  not.
+Five notes on the shape:
+
+- **`pipelines.graph` is versioned by row, not by history table.** A saved pipeline is
+  small, and the audit trail that matters is git — the pipeline is written back to
+  `docs/implr/config/pipeline.yaml` in the project's repo on save, exactly as in local mode.
+  The table is the working copy; git is the history.
 - **`pipelines.graph` is jsonb, not normalised into node/edge tables.** It is read and written
   whole, validated as a unit, and never queried by node. Normalising it would buy nothing and
   cost every save a transaction over dozens of rows.
 - **`steps` replaces both `step-registry.json` and `steps.yaml`.** In hosted mode the
-  registry *is* a table. `project_id IS NULL` rows are the builtins synced from
+  registry *is* a table. `tenant_id IS NULL` rows are the builtins synced from
   `plugin/steps/`; project rows are what Phase 8 authors. The merge rule stays the same — a
   project row may not shadow a builtin `step_id`.
+- **`node_runs`, `events` and `questions` carry a redundant `tenant_id`.** It is derivable
+  from `run_id`, and denormalising it is the right call: RLS on `events` is consulted for
+  every log line, and a policy that joins to `runs` to find the tenant would be the hottest
+  query in the system. Denormalised, the policy is an integer comparison. The redundancy is
+  enforced by a foreign key on `(tenant_id, run_id)` so it cannot drift.
+- **`events.seq` stays one global sequence**, not per-tenant. Gaps are fine; ordering and the
+  cursor contract are not. The cursor is a position, never an authorization — see the leak
+  table above.
 
 ### Local mode keeps SQLite
 
@@ -417,11 +687,10 @@ specified separately rather than smeared through the sequence.
 
 ## Open questions I cannot settle alone
 
-1. **Single-tenant or multi-tenant?** One deployment per customer is dramatically simpler:
-   project isolation becomes deployment isolation, and the whole `memberships`/tool-ceiling
-   apparatus can wait. Multi-tenant needs row-level security in Postgres and a much harder
-   review of the worker boundary. **My recommendation: single-tenant first.** Ship one
-   deployment per customer, add tenancy when someone is paying for it.
+1. ~~Single-tenant or multi-tenant?~~ **Settled: multi-tenant.** See *Tenancy* and
+   *Authorization*. The consequences carried through this document are row-level security as
+   the isolation backstop, project-scoped routes, and a tenant check that runs before any
+   other policy decision.
 2. **Who supplies the Anthropic credential?** Platform key (you pay, you meter) or
    bring-your-own (they pay, you never see spend). BYO is safer and simpler; a platform key
    needs quotas before it needs anything else.
@@ -447,3 +716,20 @@ specified separately rather than smeared through the sequence.
 8. `implr-studio --workspace .` on a laptop still binds loopback, needs no auth, and reads
    the catalogue from files — the local mode is not regressed.
 9. `pip install implr-validate` works, and no test contains `sys.path.insert`.
+
+Tenancy and authorization:
+
+10. Two users signing in from the same Entra tenant see the **same** project list, with no
+    grants configured — the rule asked for.
+11. A user from a different Entra tenant sees an empty project list, and a direct `GET` on
+    another tenant's project id returns **404, not 403**.
+12. Inserting one row into `project_grants` restricts that project to its grantees and leaves
+    every other project in the tenant untouched — asserted without a migration and without a
+    code change outside `authz.py`.
+13. Every route calls `authorize(...)`. Asserted by a test that walks the FastAPI route table
+    and fails on any handler that does not.
+14. With RLS enabled, a deliberately tenant-unscoped query returns **zero rows** rather than
+    another tenant's data. The API's database role does not have `BYPASSRLS`.
+15. A run container is materialised with builtin skills plus exactly one project's custom
+    skills — proven by asserting a second project's custom skill is absent from the tree.
+16. Two projects in different tenants may share a slug.

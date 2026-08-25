@@ -8,6 +8,12 @@
 
 **Depends on:** Phase 0.
 
+> Routes become **project-scoped** in this phase: `/api/projects/{pid}/registry`, not
+> `/api/registry`. Local mode has exactly one project, pinned to the `--workspace`
+> directory, so the UI never renders a picker — but the shape is the hosted shape, and
+> there is only ever one. This phase also introduces `authz.authorize()`, which every
+> route calls from now on.
+
 ---
 
 ## Demo
@@ -44,7 +50,7 @@ apart from search and tooltips. `args_allowed`, `agents`, `consumes`, `produces`
 **Why the registry ships whole rather than growing.** `step-registry.json` is a data file.
 Shipping it complete in one go and letting the UI render an increasing share of it is far
 cleaner than editing the same JSON in five phases. So the loader parses every field now, and
-`GET /api/registry` serves every field now. What grows is the UI.
+`GET /api/projects/{pid}/registry` serves every field now. What grows is the UI.
 
 ---
 
@@ -55,7 +61,7 @@ Python 3.11+, FastAPI. React + TypeScript, Vitest. No new dependencies.
 ## Global Constraints
 
 - Nothing in the frontend hardcodes a step, phase, flag, agent or artefact type. It all
-  arrives from `GET /api/registry`.
+  arrives from `GET /api/projects/{pid}/registry`.
 - `scripts/implr_validate` stays **standard library only** — the registry check
   re-implements the loader's rules rather than importing `implr_studio`, because
   `implr-validate` must keep working in a project that never installed the studio backend.
@@ -73,7 +79,7 @@ Python 3.11+, FastAPI. React + TypeScript, Vitest. No new dependencies.
 | `studio/backend/implr_studio/registry.py` | Loads and validates the registry; determines availability. |
 | `studio/backend/implr_studio/serialize.py` | Pure dict conversions for API responses. No FastAPI import. |
 | `studio/backend/implr_studio/context.py` | `AppContext` — the wired dependency bundle. Workspace + registry only, for now. |
-| `studio/backend/implr_studio/api.py` | **Modified** — takes a context; adds `GET /api/registry`. |
+| `studio/backend/implr_studio/api.py` | **Modified** — takes a context; adds `GET /api/projects` and `GET /api/projects/{pid}/registry`. |
 | `studio/backend/implr_studio/server.py` | **Modified** — builds the context. |
 | `scripts/implr_validate/checks.py` | **Modified** — gains `check_step_registry`. Stdlib only. |
 | `scripts/implr_validate/cli.py` | **Modified** — calls it; exit code becomes level-aware. |
@@ -851,12 +857,20 @@ git commit -m "feat(studio): step registry file and loader"
 **Interfaces:**
 - Produces:
   - `serialize.step_to_dict(step) -> dict`, `serialize.registry_to_dict(reg) -> dict` → `{"steps": [...], "phases": [...], "tiers": [...]}`
-  - `context.AppContext` — dataclass: `workspace: Path`, `registry`.
+  - `authz.Principal`, `authz.Permission`, `authz.authorize(principal, permission, project=None)`,
+    `authz.Forbidden`. `LocalPolicy` allows everything; Phase 16 swaps in `TenantWidePolicy`.
+  - `context.ProjectRef` — frozen: `id: str`, `tenant_id: str`, `slug: str`, `workspace: Path`.
+  - `context.AppContext` — dataclass: `mode: str`, `projects: dict[str, ProjectRef]`, `registry`.
   - `context.build_context(workspace) -> AppContext` — loads the registry from the
     workspace's installed schemas, resolving availability against
     `<workspace>/.claude/skills/`.
   - `api.create_app(context)` — **signature change** from Phase 0's `workspace_name`.
-  - `GET /api/registry`
+  - `GET /api/me` → the principal, its tenant, and its granted permissions.
+  - `GET /api/projects` → the projects this principal may read. One entry in local mode.
+  - `GET /api/projects/{pid}/registry`
+  - `api.resolve_project(pid, principal) -> ProjectRef` — the **only** way a route obtains
+    a project. Raises 404 for a project the principal may not read: a resource you cannot
+    see does not exist, and a 403 would confirm it does.
 
 `create_app` now takes the context rather than a name; `/api/health` reads
 `context.workspace.name`. Phase 0's health tests need updating — that is the churn vertical
@@ -953,6 +967,11 @@ from implr_studio import context as ctx_mod
 from implr_studio.api import create_app
 
 
+# The single project in local mode. Routes are project-scoped from Phase 1 so
+# there is one API shape; a hosted tenant simply has more than one project id.
+PID = "local"
+
+
 @pytest.fixture
 def workspace(tmp_path: Path) -> Path:
     """A target project with the real schemas AND skills installed."""
@@ -984,7 +1003,7 @@ def client(workspace: Path):
 
 
 def test_registry_lists_every_step_with_availability(client):
-    body = client.get("/api/registry").json()
+    body = client.get(f"/api/projects/{PID}/registry").json()
 
     steps = {s["id"]: s for s in body["steps"]}
     assert len(steps) == 9
@@ -993,7 +1012,7 @@ def test_registry_lists_every_step_with_availability(client):
 
 
 def test_registry_exposes_phase_and_tier_vocabularies(client):
-    body = client.get("/api/registry").json()
+    body = client.get(f"/api/projects/{PID}/registry").json()
 
     assert body["phases"] == ["discovery", "design", "requirements", "planning", "build", "verify"]
     assert body["tiers"] == ["haiku", "sonnet", "opus"]
@@ -1001,7 +1020,7 @@ def test_registry_exposes_phase_and_tier_vocabularies(client):
 
 def test_registry_serves_value_taking_flags(client):
     """The configurator needs this in Phase 4; serving it now costs nothing."""
-    steps = {s["id"]: s for s in client.get("/api/registry").json()["steps"]}
+    steps = {s["id"]: s for s in client.get(f"/api/projects/{PID}/registry").json()["steps"]}
 
     task = next(a for a in steps["dev-executor"]["args_allowed"] if a["flag"] == "--task")
     assert task["takes_value"] is True
@@ -1009,14 +1028,14 @@ def test_registry_serves_value_taking_flags(client):
 
 
 def test_registry_serves_the_agent_dispatch_map(client):
-    steps = {s["id"]: s for s in client.get("/api/registry").json()["steps"]}
+    steps = {s["id"]: s for s in client.get(f"/api/projects/{PID}/registry").json()["steps"]}
 
     assert [a["name"] for a in steps["dev-executor"]["agents"]] == [
         "arch-excerpter", "plan-runner", "task-executor"]
 
 
 def test_registry_serves_the_step_kind(client):
-    steps = {s["id"]: s for s in client.get("/api/registry").json()["steps"]}
+    steps = {s["id"]: s for s in client.get(f"/api/projects/{PID}/registry").json()["steps"]}
 
     assert steps["doc-ingest"]["kind"] == "skill"
 
@@ -1041,7 +1060,7 @@ def test_availability_is_resolved_against_the_workspace_skills(tmp_path):
     (tmp_path / ".claude" / "skills").mkdir(parents=True)
 
     with TestClient(create_app(ctx_mod.build_context(tmp_path))) as c:
-        steps = {s["id"]: s for s in c.get("/api/registry").json()["steps"]}
+        steps = {s["id"]: s for s in c.get(f"/api/projects/{PID}/registry").json()["steps"]}
     assert all(s["available"] is False for s in steps.values())
 
     # Install one, and only that one becomes available.
@@ -1050,7 +1069,7 @@ def test_availability_is_resolved_against_the_workspace_skills(tmp_path):
     (d / "SKILL.md").write_text("---\nname: doc-ingest\n---\n", encoding="utf-8")
 
     with TestClient(create_app(ctx_mod.build_context(tmp_path))) as c:
-        steps = {s["id"]: s for s in c.get("/api/registry").json()["steps"]}
+        steps = {s["id"]: s for s in c.get(f"/api/projects/{PID}/registry").json()["steps"]}
     assert steps["doc-ingest"]["available"] is True
     assert steps["arch-gen"]["available"] is False
 
@@ -1171,8 +1190,22 @@ def create_app(context) -> FastAPI:
             "version": VERSION,
         }
 
-    @app.get("/api/registry")
-    def get_registry() -> dict:
+    @app.get("/api/projects")
+    def list_projects(principal=Depends(current_principal)) -> dict:
+        # One entry in local mode; the UI hides the picker when there is one.
+        # Filtered by the policy, so a hosted tenant sees only what it may read.
+        return {"projects": [
+            serialize.project_to_dict(p)
+            for p in context.projects.values()
+            if policy.allows(principal, Permission.PROJECT_READ, p)
+        ]}
+
+    @app.get("/api/projects/{pid}/registry")
+    def get_registry(pid: str, principal=Depends(current_principal)) -> dict:
+        # resolve_project raises 404 - never 403 - for a project this principal
+        # may not read. A resource you cannot see does not exist.
+        project = resolve_project(pid, principal)
+        authorize(principal, Permission.PROJECT_READ, project=project)
         return serialize.registry_to_dict(context.registry)
 
     # ... the root page, unchanged ...
@@ -1205,7 +1238,7 @@ Run: `cd studio/backend && python -m pytest -v`
 
 ```bash
 git add studio/backend
-git commit -m "feat(studio): app context, registry serializer, and GET /api/registry"
+git commit -m "feat(studio): app context, registry serializer, and the project-scoped registry route"
 ```
 
 ---
@@ -1622,10 +1655,10 @@ describe('api client', () => {
     (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
       okJson({ steps: [], phases: [], tiers: [] }));
 
-    await api.getRegistry();
+    await api.getRegistry('local');
 
     const url = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(url).toBe('/api/registry');
+    expect(url).toBe('/api/projects/local/registry');
     expect(url).not.toContain('http');
   });
 
@@ -1635,7 +1668,7 @@ describe('api client', () => {
         ok: false, status: 500, json: () => Promise.resolve({ detail: 'registry unreadable' }),
       } as Response));
 
-    await expect(api.getRegistry()).rejects.toThrowError(/registry unreadable/);
+    await expect(api.getRegistry('local')).rejects.toThrowError(/registry unreadable/);
   });
 });
 ```
@@ -1822,7 +1855,14 @@ export interface RegistryResponse {
   tiers: Tier[];
 }
 
-export const getRegistry = () => request<RegistryResponse>('/registry');
+// Every project resource is addressed under its project. `projectId` comes from
+// GET /api/projects, which returns exactly one entry in local mode.
+export const getRegistry = (projectId: string) =>
+  request<RegistryResponse>(`/projects/${projectId}/registry`);
+
+export interface ProjectDTO { id: string; slug: string; name: string }
+
+export const getProjects = () => request<{ projects: ProjectDTO[] }>('/projects');
 ```
 
 - [ ] **Step 5: Write `Palette.tsx`**
@@ -1912,7 +1952,11 @@ Add registry loading alongside the existing health poll, and swap the left place
   useEffect(() => {
     void (async () => {
       try {
-        const registry = await api.getRegistry();
+        // One project in local mode. A hosted tenant picks one first.
+        const { projects } = await api.getProjects();
+        const project = projects[0];
+        setProjectId(project.id);
+        const registry = await api.getRegistry(project.id);
         setSteps(registry.steps);
         setPhases(registry.phases);
       } catch (e) {
@@ -2006,7 +2050,7 @@ Type `knowledge` → only **Document Ingestion**. Clear it → all nine return. 
 - [ ] **Step 4: Confirm it is real data**
 
 ```bash
-curl -s http://127.0.0.1:8765/api/registry | python -c "
+curl -s http://127.0.0.1:8765/api/projects/local/registry | python -c "
 import json, sys
 d = json.load(sys.stdin)
 print('steps :', len(d['steps']))
@@ -2058,5 +2102,5 @@ not a traceback, and not a server that starts with an empty palette.
 ## What the next phase gets
 
 A real catalogue, served whole, rendered in part. Phase 2 adds `pipeline.py`,
-`GET`/`PUT /api/pipeline`, the React Flow canvas and drag-and-drop — so its demo is
+`GET`/`PUT /api/projects/{pid}/pipeline`, the canvas and drag-and-drop — so its demo is
 *"drag two steps, connect them, Save, and `pipeline.yaml` appears on disk"*.

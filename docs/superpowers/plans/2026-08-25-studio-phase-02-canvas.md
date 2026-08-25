@@ -8,6 +8,10 @@
 
 **Depends on:** Phases 0–1.
 
+> Routes are project-scoped: `GET`/`PUT /api/projects/{pid}/pipeline`. Every route calls
+> `authorize()` — `PROJECT_READ` to fetch, `PROJECT_WRITE` to save. In local mode the
+> policy always allows; the calls are there so Phase 16 changes one file, not forty.
+
 ---
 
 ## Demo
@@ -88,7 +92,7 @@ All already installed by Phase 0.
 |---|---|
 | `studio/backend/implr_studio/pipeline.py` | Dataclasses, dict conversion, YAML load/save. **No validation.** |
 | `studio/backend/implr_studio/context.py` | **Modified** — gains `pipeline_path`. |
-| `studio/backend/implr_studio/api.py` | **Modified** — `GET`/`PUT /api/pipeline`. |
+| `studio/backend/implr_studio/api.py` | **Modified** — `GET`/`PUT /api/projects/{pid}/pipeline`. |
 | `studio/frontend/src/graph.ts` | **Pure** mapping between the DTO and React Flow. Carries the round-trip guarantee. |
 | `studio/frontend/src/flowTypes.ts` | Module-scope `nodeTypes` / `edgeTypes`. |
 | `studio/frontend/src/nodes/StepNode.tsx` | The node card. |
@@ -475,12 +479,15 @@ git commit -m "feat(studio): pipeline.yaml load, save, and round-trip"
 
 **Interfaces:**
 - Produces:
-  - `AppContext.pipeline_path: Path` — `<workspace>/docs/implr/config/pipeline.yaml`.
-  - `GET /api/pipeline` → `{"pipeline": {...}, "exists": bool}`. A missing file returns
-    `exists: false` with an **empty pipeline**, not a 404 — a fresh project has no pipeline
-    and the builder must still open.
-  - `PUT /api/pipeline` — body is a pipeline dict. `200` on success, `422` with
-    `{"findings": [...]}` when the document cannot be parsed.
+  - `ProjectRef.pipeline_path: Path` — `<project.workspace>/docs/implr/config/pipeline.yaml`.
+    On the project, not the context: a hosted tenant has many, and a single
+    `context.pipeline_path` would be the bug that lets one project's save land in another.
+  - `GET /api/projects/{pid}/pipeline` → `{"pipeline": {...}, "exists": bool}`. A missing
+    file returns `exists: false` with an **empty pipeline**, not a 404 — a fresh project has
+    no pipeline and the builder must still open. Authorized with `PROJECT_READ`.
+  - `PUT /api/projects/{pid}/pipeline` — body is a pipeline dict. `200` on success, `422`
+    with `{"findings": [...]}` when the document cannot be parsed. Authorized with
+    `PROJECT_WRITE`.
 
 The 422 shape is introduced here, with a single `parse-error` finding, so Phase 3 can add
 graph findings to the same envelope rather than changing it.
@@ -518,6 +525,10 @@ def client(workspace: Path):
         yield c
 
 
+# The single project in local mode. Routes are project-scoped from Phase 1 so
+# there is one API shape; a hosted tenant simply has more than one project id.
+PID = "local"
+
 VALID = {
     "version": 1,
     "nodes": [
@@ -530,7 +541,7 @@ VALID = {
 
 def test_get_on_a_fresh_project_returns_empty_not_404(client):
     """A new project has no pipeline.yaml. The builder must still open."""
-    r = client.get("/api/pipeline")
+    r = client.get(f"/api/projects/{PID}/pipeline")
 
     assert r.status_code == 200
     assert r.json()["exists"] is False
@@ -540,9 +551,9 @@ def test_get_on_a_fresh_project_returns_empty_not_404(client):
 
 
 def test_put_then_get_round_trips(client):
-    assert client.put("/api/pipeline", json=VALID).status_code == 200
+    assert client.put(f"/api/projects/{PID}/pipeline", json=VALID).status_code == 200
 
-    body = client.get("/api/pipeline").json()
+    body = client.get(f"/api/projects/{PID}/pipeline").json()
 
     assert body["exists"] is True
     assert [n["id"] for n in body["pipeline"]["nodes"]] == ["ingest", "arch"]
@@ -550,7 +561,7 @@ def test_put_then_get_round_trips(client):
 
 
 def test_put_writes_the_file_to_the_expected_path(client, workspace):
-    client.put("/api/pipeline", json=VALID)
+    client.put(f"/api/projects/{PID}/pipeline", json=VALID)
 
     written = workspace / "docs" / "implr" / "config" / "pipeline.yaml"
     assert written.is_file()
@@ -564,14 +575,14 @@ def test_put_preserves_positions(client):
         {"id": "a", "step": "doc-ingest", "args": [], "position": {"x": 142.5, "y": 88.0}}],
         edges=[])
 
-    client.put("/api/pipeline", json=positioned)
+    client.put(f"/api/projects/{PID}/pipeline", json=positioned)
 
-    got = client.get("/api/pipeline").json()["pipeline"]["nodes"][0]["position"]
+    got = client.get(f"/api/projects/{PID}/pipeline").json()["pipeline"]["nodes"][0]["position"]
     assert got == {"x": 142.5, "y": 88.0}
 
 
 def test_put_rejects_an_unsupported_version_with_findings(client):
-    r = client.put("/api/pipeline", json={"version": 99, "nodes": [], "edges": []})
+    r = client.put(f"/api/projects/{PID}/pipeline", json={"version": 99, "nodes": [], "edges": []})
 
     assert r.status_code == 422
     assert [f["code"] for f in r.json()["findings"]] == ["parse-error"]
@@ -581,14 +592,14 @@ def test_put_rejects_an_unsupported_version_with_findings(client):
 def test_put_rejects_an_unknown_gate_type(client):
     bad = dict(VALID, edges=[{"from": "ingest", "to": "arch", "gate": {"type": "wibble"}}])
 
-    r = client.put("/api/pipeline", json=bad)
+    r = client.put(f"/api/projects/{PID}/pipeline", json=bad)
 
     assert r.status_code == 422
     assert r.json()["findings"][0]["code"] == "parse-error"
 
 
 def test_rejected_put_does_not_write_the_file(client, workspace):
-    client.put("/api/pipeline", json={"version": 99, "nodes": [], "edges": []})
+    client.put(f"/api/projects/{PID}/pipeline", json={"version": 99, "nodes": [], "edges": []})
 
     assert not (workspace / "docs" / "implr" / "config" / "pipeline.yaml").exists()
 
@@ -598,11 +609,11 @@ def test_put_accepts_a_cycle_in_this_phase(client):
     cyclic = dict(VALID, edges=[
         {"from": "ingest", "to": "arch"}, {"from": "arch", "to": "ingest"}])
 
-    assert client.put("/api/pipeline", json=cyclic).status_code == 200
+    assert client.put(f"/api/projects/{PID}/pipeline", json=cyclic).status_code == 200
 
 
 def test_put_accepts_an_empty_canvas(client):
-    assert client.put("/api/pipeline", json={"version": 1, "nodes": [], "edges": []}).status_code == 200
+    assert client.put(f"/api/projects/{PID}/pipeline", json={"version": 1, "nodes": [], "edges": []}).status_code == 200
 
 
 def test_get_surfaces_a_corrupt_file_as_findings_not_a_500(client, workspace):
@@ -611,7 +622,7 @@ def test_get_surfaces_a_corrupt_file_as_findings_not_a_500(client, workspace):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("version: 1\nnodes: [unclosed\n", encoding="utf-8")
 
-    r = client.get("/api/pipeline")
+    r = client.get(f"/api/projects/{PID}/pipeline")
 
     assert r.status_code == 422
     assert r.json()["findings"][0]["code"] == "parse-error"
@@ -675,27 +686,32 @@ Inside `create_app`, before the root page:
     def _findings(code: str, message: str) -> dict:
         return {"findings": [{"code": code, "message": message, "node_id": None}]}
 
-    @app.get("/api/pipeline")
-    def get_pipeline() -> dict:
-        if not context.pipeline_path.is_file():
+    @app.get("/api/projects/{pid}/pipeline")
+    def get_pipeline(pid: str, principal=Depends(current_principal)) -> dict:
+        project = resolve_project(pid, principal)
+        authorize(principal, Permission.PROJECT_READ, project=project)
+        if not project.pipeline_path.is_file():
             # Not a 404: a fresh project has no pipeline and the builder must open.
             return {"pipeline": EMPTY_PIPELINE, "exists": False}
         try:
-            p = load_pipeline(context.pipeline_path)
+            p = load_pipeline(project.pipeline_path)
         except PipelineError as e:
             # A hand-edited broken file is the operator's problem to see, not a 500.
             raise HTTPException(422, detail=_findings("parse-error", str(e)))
         return {"pipeline": pipeline_to_dict(p), "exists": True}
 
-    @app.put("/api/pipeline")
-    def put_pipeline(body: dict = Body(...)) -> dict:
+    @app.put("/api/projects/{pid}/pipeline")
+    def put_pipeline(pid: str, body: dict = Body(...),
+                     principal=Depends(current_principal)) -> dict:
+        project = resolve_project(pid, principal)
+        authorize(principal, Permission.PROJECT_WRITE, project=project)
         try:
             p = pipeline_from_dict(body)
         except PipelineError as e:
             raise HTTPException(422, detail=_findings("parse-error", str(e)))
 
         # Phase 3 inserts graph validation here, before the write.
-        save_pipeline(context.pipeline_path, p)
+        save_pipeline(project.pipeline_path, p)
         return {"pipeline": pipeline_to_dict(p), "exists": True}
 ```
 
@@ -1491,7 +1507,7 @@ Add to `src/App.test.tsx`:
   it('loads the saved pipeline onto the canvas', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
       if (url === '/api/health') return Promise.resolve({ ok: true, json: () => Promise.resolve(ok) });
-      if (url === '/api/registry') return Promise.resolve({
+      if (url.endsWith('/registry')) return Promise.resolve({
         ok: true, json: () => Promise.resolve({ steps: [STEP], phases: ['discovery'], tiers: [] }),
       });
       return Promise.resolve({
@@ -1532,12 +1548,14 @@ Add to `src/App.test.tsx`:
 ```ts
 import type { PipelineDTO } from './types';
 
-export const getPipeline = () =>
-  request<{ pipeline: PipelineDTO; exists: boolean }>('/pipeline');
+// Every project resource is addressed under its project. `projectId` comes from
+// GET /api/projects, which returns exactly one entry in local mode.
+export const getPipeline = (projectId: string) =>
+  request<{ pipeline: PipelineDTO; exists: boolean }>(`/projects/${projectId}/pipeline`);
 
-export const putPipeline = (dto: PipelineDTO) =>
+export const putPipeline = (projectId: string, dto: PipelineDTO) =>
   request<{ pipeline: PipelineDTO; exists: boolean }>(
-    '/pipeline', { method: 'PUT', body: JSON.stringify(dto) });
+    `/projects/${projectId}/pipeline`, { method: 'PUT', body: JSON.stringify(dto) });
 ```
 
 - [ ] **Step 3: Make the palette draggable**
@@ -1579,7 +1597,7 @@ function Studio() {
         const registry = await api.getRegistry();
         usePipelineStore.getState().setCatalogue(registry.steps, registry.phases);
         const byId = Object.fromEntries(registry.steps.map((s) => [s.id, s]));
-        const { pipeline } = await api.getPipeline();
+        const { pipeline } = await api.getPipeline(project.id);
         usePipelineStore.getState().loadFrom(pipeline, byId);
       } catch (e) {
         setMessage(String(e));
@@ -1605,7 +1623,7 @@ function Studio() {
     setSaving(true);
     setMessage(null);
     try {
-      await api.putPipeline(usePipelineStore.getState().toDTO());
+      await api.putPipeline(projectId, usePipelineStore.getState().toDTO());
       setMessage('Saved.');
     } catch (e) {
       setMessage(String(e));

@@ -4,7 +4,19 @@
 
 **Goal:** `implr-studio` starts, binds loopback, and serves a dark application shell in the browser with a live health indicator. Nothing else works yet — and that is the point.
 
-**Roadmap:** `2026-08-25-studio-phases.md` · **Spec:** `../specs/2026-08-25-implr-studio-design.md` · **Runtime:** `../../RUNTIME.md`
+**Roadmap:** `2026-08-25-studio-phases.md` · **Spec:** `../specs/2026-08-25-implr-studio-design.md` · **Hosted:** `../specs/2026-08-25-implr-studio-hosted-design.md` · **Runtime:** `../../RUNTIME.md`
+
+> **Two rules that hold from here to Phase 17.** Routes are **project-scoped** —
+> `/api/projects/{pid}/…`, with local mode as the degenerate one-tenant, one-user,
+> one-project case. And **every route calls `authorize()`**, even where the policy always
+> says yes. Both exist from the start because retrofitting either means auditing every
+> handler. See *Two things that cut across every phase* in the roadmap.
+
+---
+
+**Depends on:** Phase −1 (the restructure). Paths below assume `packages/implr_studio`
+and `web/`; if you are running Phase 0 before the restructure, they are
+`studio/backend/implr_studio` and `studio/frontend`.
 
 ---
 
@@ -475,6 +487,10 @@ def create_app(workspace_name: str) -> FastAPI:
     def health() -> dict:
         # The workspace NAME, never its path: the frontend shows it in the app
         # bar, and a path here would be the first step toward accepting one.
+        #
+        # This is the ONE route that is never authenticated - it is the container
+        # liveness probe, and a probe that needs a token cannot report that the
+        # token service is down. It therefore returns nothing tenant-specific.
         return {"status": "ok", "workspace": workspace_name, "version": VERSION}
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
@@ -1357,5 +1373,5 @@ the catch-all mount must not shadow `/api`.
 ## What the next phase gets
 
 A running shell with a proven `/api` path and a design system nothing can drift from.
-Phase 1 adds `step-registry.json`, its loader, `GET /api/registry`, and turns the left rail
+Phase 1 adds `step-registry.json`, its loader, `GET /api/projects/{pid}/registry`, and turns the left rail
 into a real palette — so its demo is *"nine steps appear, two of them dashed"*.
