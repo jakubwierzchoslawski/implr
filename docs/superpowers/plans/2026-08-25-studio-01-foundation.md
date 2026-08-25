@@ -1,5 +1,15 @@
 # implr Studio — Plan 1: Foundation (Registry, Pipeline Config, Gates)
 
+> ## ⚠ SUPERSEDED — source material only
+>
+> This layer plan has been **replaced** by the phase breakdown in
+> [`2026-08-25-studio-phases.md`](2026-08-25-studio-phases.md), which slices the same work
+> vertically so every phase ends in something you can open in a browser.
+>
+> **Do not execute this document.** It is retained only as the source its content is being
+> redistributed from. See *Where the old plans' content went* in the roadmap for the mapping.
+> It will be deleted once phases 4-13 are written.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the pure-data foundation of implr Studio — the step registry, the `pipeline.yaml` config format, DAG validation, and gate validation/evaluation — with no runtime, no HTTP, and no LLM involvement.

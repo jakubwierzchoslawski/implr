@@ -1,5 +1,15 @@
 # implr Studio — Plan 6: Claude Code Adapter
 
+> ## ⚠ SUPERSEDED — source material only
+>
+> This layer plan has been **replaced** by the phase breakdown in
+> [`2026-08-25-studio-phases.md`](2026-08-25-studio-phases.md), which slices the same work
+> vertically so every phase ends in something you can open in a browser.
+>
+> **Do not execute this document.** It is retained only as the source its content is being
+> redistributed from. See *Where the old plans' content went* in the roadmap for the mapping.
+> It will be deleted once phases 4-13 are written.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** The one Phase 1 implementation of `StepExecutor` — drive Claude Code via the `claude-agent-sdk` Python package, translate its message stream into `StepEvent`s, and intercept `AskUserQuestion` so operator input flows back into the same session.

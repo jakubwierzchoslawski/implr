@@ -1,5 +1,20 @@
 # implr Studio — Runtime Verification
 
+> ## ⚠ Being restructured
+>
+> The work has been re-cut from six horizontal layer plans into **fourteen vertical phases**
+> — see [`superpowers/plans/2026-08-25-studio-phases.md`](superpowers/plans/2026-08-25-studio-phases.md).
+> Each phase now carries its own **Demo** and **Definition of Done** sections, which are the
+> primary verification gate.
+>
+> This document is still organised by the old layer plans. Its **Prerequisites**,
+> **Gate 0**, **regression sweep** and **Troubleshooting** sections apply unchanged and are
+> the reason to keep reading it. Its per-plan probes are being folded into the phase
+> documents as those are written; phases 0–3 already have theirs inline.
+>
+> Until the fold is complete: use the phase document's Demo section as the gate, and this
+> document for the shared setup and the failure-mode table.
+
 How to prove each of the six implr Studio plans actually works, plan by plan, at the
 layer it lives in: pure data, contract, backend, API, UI, adapter.
 
