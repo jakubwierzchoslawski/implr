@@ -304,6 +304,126 @@ exist, as far as the API is concerned.
 
 ---
 
+## Onboarding: subscription to first run
+
+**Target: under five minutes from first sign-in to a pipeline running.** Everything below is
+in service of that number, and the two decisions that matter most are both about *not* doing
+something: not asking the customer to run a shell script, and not starting them on a blank
+canvas.
+
+### The journey
+
+| | Screen | What the customer does | What we do |
+|---|---|---|---|
+| 1 | **Sign in** | Entra SSO | Create the tenant on first sign-in from a new `tid`; create the user; make them tenant owner |
+| 2 | **Connect a repository** | Authorise the GitHub App, pick a repo and a branch | Create the project |
+| 3 | **Prepare the repository** | Review a pull request, merge it | Detect whether implr is installed; if not, open a PR adding `docs/implr/**` and `.claude/` |
+| 4 | **Pick a starting pipeline** | Choose a template | Materialise it as a real pipeline, **every step supervised** |
+| 5 | **Review the plan** | Read what it will do; adjust the model mix | Show the canvas prefilled, with a plain-language summary and a cost estimate |
+| 6 | **First run — supervised, dry** | Click through each step | Run with `--dry-run` on every writing step |
+
+Steps 1 and 3 are near-automatic. The customer makes **three real decisions**: which repo,
+which template, and whether to approve each step.
+
+### Step 3 is the one that decides whether this succeeds
+
+implr installs itself by shell script — `install.sh` creating `docs/implr/**`,
+`.claude/skills/`, `.claude/agents/`, and a `CLAUDE.md`. **A hosted customer must never be
+asked to run that.** Telling someone who just paid you to clone a repo, run a bash script and
+push is where onboarding dies.
+
+So the service does it, as a **pull request**:
+
+- Detect: does `docs/implr/` exist on the default branch?
+- If not, open a PR titled *"Add implr workspace"* containing exactly what `install.sh`
+  writes, with a body explaining each directory.
+- The customer reads a diff and clicks merge. That is a workflow they already have, and it
+  leaves an audit trail of what we added to their repository.
+- If the repo already has `docs/implr/`, detect the version and skip.
+
+**A PR rather than a direct push, always.** Writing to someone's default branch as an
+onboarding side effect is the kind of thing that gets a tool banned. The PR also gives them a
+natural place to say no.
+
+### Step 4: templates, not a blank canvas
+
+A blank canvas is the wrong first experience. It asks the customer to know implr's step
+ordering before they have seen it work — which is the exact problem Studio exists to solve.
+
+| Template | Chain | Good for |
+|---|---|---|
+| **Full SDLC** | ingest → architecture → requirements → planning → implementation → review | a greenfield project |
+| **Requirements only** | ingest → architecture → requirements | you have documents and want a backlog |
+| **Build approved plans** | implementation → review | you already have plans and want code |
+| **Change request** | change request → planning → implementation → review | an existing codebase absorbing a change |
+| **Blank** | — | you have read the others |
+
+Every template ships with **`approval: before` on every node**. The first run is therefore a
+step-by-step wizard: one click per step, nothing happens unattended. A customer who wants to
+turn that off can, per node, once they trust it — but the default is supervised, because the
+first thing a new user needs is to watch it work.
+
+### Step 6: the first run is dry
+
+Writing steps default to `--dry-run` for the first run of a project. The customer sees the
+whole pipeline execute, reads what it *would* have written, and approves each step — without
+a single commit landing in their repository.
+
+The console says so plainly, and offers to re-run for real once it finishes. An agent that
+writes to someone's repo on the first button press they ever click is a bad first impression
+even when it does the right thing.
+
+### Where the customer lives afterwards: the inbox
+
+With approval on by default, **a paused run is the normal state**. A console whose front page
+is the canvas is therefore wrong for daily use — the canvas is where you *design*, occasionally.
+
+The daily surface is an **inbox**: everything across every project in the tenant that is
+waiting for a human, newest first.
+
+```
+NEEDS YOU  (4)
+  ● acme-platform · Architecture Brief        awaiting review      2m
+  ● acme-platform · Requirements Generation   question             8m
+  ● billing-svc   · Implementation            failed               1h
+  ● billing-svc   · Planning                  awaiting approval    3h
+
+RUNNING  (1)
+  ◐ acme-platform · Document Ingestion        3 of 6 · 34 docs
+
+RECENT
+  ✓ billing-svc   · Code Review               accepted            yesterday
+```
+
+Each row opens straight into the thing that needs doing — the question card, the review diff,
+the failure and its error — not into the canvas with the node pre-selected. **One click from
+inbox to decision.**
+
+This is also where notifications hang, when they exist: a run that has been waiting eight
+hours for an approval is a stalled run, and nobody is watching a browser tab. Email or Teams
+on `awaiting-*` older than a threshold. Out of scope here; named because the inbox is what
+makes it implementable.
+
+### Creating a custom step during onboarding: deliberately not offered
+
+Phase 8's authoring surface is powerful and is the wrong thing to show someone in their first
+five minutes. It is reachable from the palette (**New step**) whenever they want it, and the
+onboarding flow never mentions it. Learn the nine shipped steps first; author the tenth when
+one of them is missing.
+
+### What onboarding must not do
+
+- **Not** ask for a shell command.
+- **Not** ask for a git token — the GitHub App handles it, scoped and revocable.
+- **Not** start with a blank canvas.
+- **Not** write to a repository before the customer has merged a PR.
+- **Not** run unsupervised on the first run.
+- **Not** default to the expensive model mix. implr's own defaults put two Opus agents in
+  `dev-executor`; onboarding starts everything on Sonnet and shows the meter, so the first
+  bill is not the first surprise.
+
+---
+
 ## Skills and agents: database as source, disk as projection
 
 **The constraint:** the Claude Code CLI resolves skills from

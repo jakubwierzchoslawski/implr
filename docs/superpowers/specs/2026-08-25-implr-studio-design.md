@@ -712,6 +712,119 @@ Agents the node does not override are omitted, so they resolve to the project de
 
 ---
 
+## Component: Human-in-the-loop
+
+### Is the orchestrator ready for every step to be HITL?
+
+**Partly.** The machinery exists but it hangs off the wrong object, and the most valuable
+interaction is missing. Four concrete gaps:
+
+| Gap | Why it matters |
+|---|---|
+| **A root node cannot be gated.** `node_readiness` returns `READY` immediately when a node has no inbound edge. | The first step of every pipeline always runs unsupervised. For *"each step can be HITL"* that alone is disqualifying. |
+| **A terminal node's output cannot be reviewed.** Approval releases a *downstream edge*; a node with no outbound edge has nothing to release. | The last step — usually Code Review — is exactly the one you most want to read before the run reports success. |
+| **There is no review-and-send-back.** Approve means "proceed". Retry re-runs blind. | *"This is wrong, here is why, try again"* is the single most valuable HITL interaction in an SDLC tool, because the whole point is that a human catches what the agent got wrong. Its absence means the only correction available is to re-roll the dice. |
+| **`manual_approved` is per node and never cleared.** | A retry silently inherits the previous approval, so a re-run of an approved step is unsupervised. |
+
+The root cause of the first two is that HITL was modelled on **edges**. That was a reasonable
+first cut — a gate is naturally about a connection — but *"should a human look at this
+step?"* is a property of the **step**, not of a connection into it. Configuring it on the
+edge also means that to supervise one step you must find and edit its inbound edge, which
+reads backwards in the UI.
+
+### Node-level approval
+
+A node gains an `approval` policy. Edge gates keep doing what they are genuinely good at —
+**artefact conditions**, which really are facts about data flowing along a connection.
+
+```yaml
+nodes:
+  - id: arch
+    step: arch-gen
+    approval: after          # none | before | after | both
+```
+
+| Value | Behaviour |
+|---|---|
+| `none` | Runs when its inbound gates open. Today's behaviour, and still the default. |
+| `before` | Enters `awaiting-approval` **even with no inbound edge**, so a root node is supervisable. |
+| `after` | On success, enters `awaiting-review` before its outbound edges are evaluated — and **before the run can report success**, so a terminal node is reviewable. |
+| `both` | Both. |
+
+The `manual` and `artifact+manual` **gate types remain** for pipelines that already use them,
+and remain the right tool when approval is genuinely conditional on a specific path through a
+branch. The configurator steers you to node approval, because that is the common case.
+
+### The new state, and the action that makes HITL worth having
+
+`awaiting-review` joins the node state machine: the step **succeeded**, its output exists, and
+a human must look at it before the run continues.
+
+```
+pending ─> blocked ─> awaiting-approval ─> running ─> awaiting-input ─> running
+                        (approval: before)     │
+                                               ├─> awaiting-review ─┬─> succeeded
+                                               │   (approval: after)│
+                                               │                    └─> running
+                                               │       (request changes, with feedback)
+                                               └─> failed ─> running (retry) / skipped
+```
+
+Three operator actions on `awaiting-review`:
+
+- **Accept** → `succeeded`. Outbound edges evaluate.
+- **Request changes**, with text → the node re-runs, and the feedback is carried into the
+  step. This is the interaction the current design lacks.
+- **Accept with a note** → `succeeded`, with the note recorded. Sometimes the output is good
+  enough and the reservation is worth keeping.
+
+**Request-changes requires a contract change.** `StepRequest` gains
+`feedback: tuple[str, ...]` — the accumulated rejection notes for this node, oldest first.
+The adapter appends them to the prompt it builds. It is a tuple rather than a single string
+because the second rejection should not erase the first: an agent that already failed twice
+benefits from knowing both objections, and an operator reading the run history needs to see
+that this was the third attempt.
+
+This stays provider-neutral. `feedback` is prose the adapter renders however its runtime
+prefers, exactly as `skill` and `args` are data rather than a formatted command line.
+
+### Approval bookkeeping
+
+`node_runs.manual_approved` is replaced by:
+
+```
+approved_before_at, approved_before_by
+approved_after_at,  approved_after_by
+review_feedback jsonb        -- the accumulated notes
+attempt             int      -- incremented per run, including a request-changes re-run
+```
+
+**Both approval stamps are cleared on retry and on request-changes.** A re-run of a
+supervised step is supervised again. The current design's failure to do this is the kind of
+bug that only shows up when someone re-runs a step they had already approved and it proceeds
+without asking — which is precisely when they were paying least attention.
+
+### What this does to the run, and to the UI
+
+With `approval: before` on every node, a pipeline becomes a **step-by-step wizard**: the run
+advances one step per click. That is not a degenerate case to tolerate — it is the right
+default for a first run, and the onboarding flow uses it deliberately.
+
+The consequence for the UI is that **a paused run becomes the normal state, not the
+exception.** A console whose primary surface is the canvas is then wrong for daily use: what
+the operator needs first is *"what is waiting for me?"* across every run and project. That
+surface is specified in the hosted design's onboarding section.
+
+### Known limitation, kept
+
+**Request-changes re-runs the whole step, not part of it.** There is no way to say "keep
+requirements 1–6, redo 7". implr steps are file-based and idempotent, so a re-run is safe,
+but it is not cheap — a rejected `dev-executor` node redoes every task in the plan. Narrowing
+that needs per-artefact rejection, which needs the step to report which artefacts it produced
+and to accept a subset on re-entry. Deferred, and worth doing.
+
+---
+
 ## Component: Orchestrator & Run Lifecycle
 
 ### Node run states

@@ -40,7 +40,7 @@ full from the start — `project.read`, `project.write`, `run.start`, `run.contr
 `step.author`, `skill.author`, `tenant.admin`.
 
 **Naming them later would mean revisiting every call site to decide which verb it meant**,
-which is exactly the audit the seam exists to prevent. Phase 16 swaps `LocalPolicy` for
+which is exactly the audit the seam exists to prevent. Phase 17 swaps `LocalPolicy` for
 `TenantWidePolicy` and no route changes.
 
 A test walks the FastAPI route table and fails on any handler that does not call
@@ -69,12 +69,12 @@ whatever the UI just grew.
 1. **Every phase ends in a demo.** Not a green suite — a green suite is table stakes. A
    thing you can click, and hand to someone else to click.
 2. **A phase contains only the backend its UI increment needs.** Gate evaluation is not in
-   the foundation; it arrives in Phase 10, with gates. Restart recovery arrives in Phase 12,
+   the foundation; it arrives in Phase 10, with gates. Restart recovery arrives in Phase 14,
    with failure handling. Resist building ahead — a layer built before its consumer exists
    is a layer with no feedback.
 
 **The cost, stated plainly.** Vertical slicing means touching the same file repeatedly:
-`registry.py` grows in phases 1, 5, 6 and 7; `store.py` in 9, 10 and 13; `api.py` in almost
+`registry.py` grows in phases 1, 5, 6 and 7; `store.py` in 9, 10, 13 and 14; `api.py` in almost
 all of them. That is more total churn than building each file once, and occasionally a later
 phase will outgrow an earlier phase's shape and force a small refactor. You are buying
 continuous verifiability with that churn.
@@ -83,9 +83,9 @@ continuous verifiability with that churn.
 
 ## The phases
 
-Token spend is called out because it is the one cost that is not reversible. **Phases 0–13
+Token spend is called out because it is the one cost that is not reversible. **Phases 0–14
 invoke no model at all** — `FakeExecutor` arrives in Phase 9 precisely so that every run
-phase is free. Only Phase 14 costs anything.
+phase is free. Phases 15, 18 and 19 are the only ones that cost anything.
 
 | # | Phase | Demo at the end | Tokens |
 |---|---|---|---|
@@ -103,16 +103,22 @@ phase is free. Only Phase 14 costs anything.
 | 10 | Live logs | Log lines appear *while* the step is running; a refresh loses nothing | none |
 | 11 | Many nodes, real gates | A gate holds; you edit a file on disk; it opens with no operator action | none |
 | 12 | Questions | Answer a question in the browser; the step continues in the same session | none |
-| 13 | Failure & recovery | Kill the server mid-run, reopen, resume rather than restart | none |
-| 14 | Real model | A real `doc-ingest --dry-run` streams into the browser | **yes** |
-| 15 | **Containers** | `docker compose up` serves the console; the API image has no `git` and no Claude CLI | none |
-| 16 | **Tenancy & auth** | Two users in one Entra tenant see the same projects; a third tenant's user sees none | none |
-| 17 | **Deploy to Azure** | A run executes in a Container Apps Job and streams to the browser | **yes** |
+| 13 | **Review & send back** | Reject a step's output with a note; it re-runs knowing why | none |
+| 14 | Failure & recovery | Kill the server mid-run, reopen, resume rather than restart | none |
+| 15 | Real model | A real `doc-ingest --dry-run` streams into the browser | **yes** |
+| 16 | **Containers** | `docker compose up` serves the console; the API image has no `git` and no Claude CLI | none |
+| 17 | **Tenancy & auth** | Two users in one Entra tenant see the same projects; a third tenant's user sees none | none |
+| 18 | **Onboarding** | A new tenant goes from sign-in to a supervised dry run in under five minutes | **yes** |
+| 19 | **Deploy to Azure** | A run executes in a Container Apps Job and streams to the browser | **yes** |
 
-Nineteen phases, `−1` through `17`. The count grew from fifteen when hosting entered scope;
-**0–14 are unchanged in content** — only their route shape and the `authorize()` call gained
-a prefix. Phases 15–17 are the hosting work, and none of them is reachable until 14 is done,
-because deploying a console that cannot run a pipeline proves nothing.
+Twenty-one phases, `−1` through `19`. Phases 16–19 are the hosting work, and none is
+reachable until 15 is done: deploying a console that cannot run a pipeline proves nothing.
+
+**Phase 13 is new and is not optional.** Answering the question *"can every step be
+human-in-the-loop?"* honestly turned up four gaps — a root node cannot be gated, a terminal
+node's output cannot be reviewed, there is no review-and-send-back, and an approval survives
+a retry. See *Component: Human-in-the-loop* in the design spec. Without 13, "HITL" means
+"approve, or re-roll the dice".
 
 ---
 
@@ -120,7 +126,35 @@ because deploying a console that cannot run a pipeline proves nothing.
 
 Phases 0–3 have their own documents. The rest are specified here until theirs are written.
 
+### Phase −1 — Restructure
+
+
+**Must precede Phase 0**, which currently writes `studio/backend/pyproject.toml` at a path
+this phase deletes.
+
+The tree today is a clean plugin source with **no packaging story**: no root manifest,
+`implr_validate` vendored into target projects by `cp -f` in `install.sh`, every test doing
+its own `sys.path.insert`, and a Python library living in a directory called `scripts/`. A
+Dockerfile has nothing to install.
+
+**Ships:** a root `pyproject.toml` + lock declaring three packages; `scripts/implr_validate`
+→ `packages/implr_validate`; `studio/backend/implr_studio` → `packages/implr_studio`;
+`scaffold/schemas/*.json` → `packages/implr_contracts`; `skills/`, `.claude/agents/` and the
+rest of `scaffold/` → `plugin/`; `studio/frontend` → `web/`. The three installers become one
+directory copy plus a `pip install`.
+
+**Demo:** `pip install -e packages/implr_validate && python -m implr_validate --repo --root .`
+with **no** `PYTHONPATH`. `grep -r sys.path.insert tests/` returns nothing.
+
+**Minimal alternative** if the full move is too much churn: root manifest, move
+`implr_validate` only, add `docker/`. Leave `skills/` and `.claude/agents/` where they are and
+let the Dockerfile `COPY` three directories instead of one. Everything downstream still works.
+
+
+---
+
 ### Phase 4 — Configure arguments
+
 
 **UI increment.** Clicking a node opens the configurator modal with **one tab, Run**. It
 shows the step's description as a lead paragraph, then its `args_allowed` as checkboxes,
@@ -144,9 +178,11 @@ and Save → 422 naming the flag.
 an argument — `--file`, `--task`, `--domain`. A flat flag whitelist makes them selectable
 and inert, which is worse than not offering them.
 
+
 ---
 
 ### Phase 5 — Pick models
+
 
 **UI increment.** The configurator gains its **Agents** tab: one card per agent the step
 dispatches, showing its name, fan-out, role, a model-tier selector defaulting to the
@@ -180,9 +216,11 @@ and the tier as a control, with a line saying which is which. Phase 8's `kind: "
 steps make the whole card editable; a UI that looked editable here and silently discarded
 the edit would be worse than one that admits the boundary.
 
+
 ---
 
 ### Phase 6 — Conditions
+
 
 **UI increment.** Clicking an edge opens the gate editor — the same modal shell, one pane.
 Four dropdowns (condition, artefact, how many, required status), populated from the schema
@@ -202,9 +240,11 @@ merges gate findings into the same list.
 the five plan states — `approved` is not among them. Hand-edit the YAML to
 `status: complete`, reload, Save → 422 naming the five legal states.
 
+
 ---
 
 ### Phase 7 — Input / Output tabs
+
 
 **UI increment.** The configurator's last two tabs. **Input** lists what the step reads and
 its inbound conditions, with a jump into the gate editor, and carries an explicit banner
@@ -221,9 +261,11 @@ statuses, and `docs/implr/plans/functional/*.md`. Implementation → Output show
 `tests/**` and says there is no frontmatter contract. Implementation → Input shows the
 plans glob and the inbound condition with an Edit button that opens Phase 6's editor.
 
+
 ---
 
 ### Phase 8 — Author a step
+
 
 The phase that turns the catalogue from closed to open. Until now the palette is exactly the
 nine steps implr ships, and adding one means hand-writing a `SKILL.md` in the plugin source
@@ -281,9 +323,11 @@ all of it — excellent for `lint-and-format` or `generate-diagram`, wrong for *
 implementation"*. Anything that turns out to be load-bearing should graduate into a real
 `SKILL.md`.
 
+
 ---
 
 ### Phase 9 — Run one node
+
 
 The first phase with an executor. Deliberately minimal: **one node, no gates, no logs, no
 questions.**
@@ -303,9 +347,11 @@ without a model being called. `GET /api/runs` lists it.
 immediately; the UI polls. That constraint exists from this phase onward and Phase 9 depends
 on it.
 
+
 ---
 
 ### Phase 10 — Live logs
+
 
 **Backend slice.** `store` gains the `events` table with its monotonic `seq`;
 `WS /api/runs/{id}/stream` with cursor replay; the orchestrator persists every event before
@@ -320,9 +366,11 @@ complete and nothing is duplicated.
 **This is the phase that proves Phase 9's 202 was right.** If logs arrive all at once, a
 route is waiting for the run to settle.
 
+
 ---
 
 ### Phase 11 — Many nodes, real gates
+
 
 **Backend slice.** `gates.evaluate_gate` and `artefact_condition_holds` (runtime, reading
 the filesystem), `node_readiness`, the driver loop, `blocked` and `awaiting-approval`
@@ -337,9 +385,11 @@ succeeds, node 2 shows `blocked` with an explanation. Write an approved requirem
 into the workspace by hand. Node 2 advances **with no click**. Then the empty-match-set
 rule: delete the requirement, re-run, confirm the gate does *not* open.
 
+
 ---
 
 ### Phase 12 — Questions
+
 
 **Backend slice.** `question` events, the `questions` table, `awaiting-input`,
 `POST /api/runs/{id}/answer`, and the executor **question arming rule** — a pending question
@@ -354,9 +404,65 @@ buttons. Click one; the step continues and completes. Then the assertion that ma
 `ex.started` must list `arch-gen` **once**. Twice means answering restarted the step from
 the top instead of resuming its stream, and a real agent would have lost its context.
 
+
 ---
 
-### Phase 13 — Failure & recovery
+### Phase 13 — Review & send back
+
+
+The phase that makes "human-in-the-loop" mean more than *approve, or re-roll the dice*.
+
+**Why it exists.** Asking whether every step could be HITL turned up four gaps in the
+orchestrator: a root node cannot be gated (`node_readiness` returns `READY` when there is no
+inbound edge), a terminal node's output cannot be reviewed (approval releases a *downstream*
+edge, and a terminal node has none), there is no way to reject with feedback, and an approval
+survives a retry. See *Component: Human-in-the-loop* in the design spec.
+
+**Backend slice.**
+
+- `Node` gains `approval: none | before | after | both`. HITL moves from the **edge** to the
+  **node**, because *"should a human look at this step"* is a property of the step. Edge gates
+  keep artefact conditions, which genuinely are facts about a connection.
+- `node_readiness` consults `approval == before` **even for a node with no inbound edge** —
+  the one-line fix that makes a root node supervisable.
+- New node state `awaiting-review`: succeeded, output present, waiting on a human. The run
+  cannot report success while any node sits in it, which is what makes a terminal node
+  reviewable.
+- `StepRequest` gains `feedback: tuple[str, ...]` — accumulated rejection notes, oldest
+  first. A tuple, not a string: the second rejection must not erase the first, and an agent
+  that already failed twice benefits from knowing both objections.
+- `approved_before_at/by`, `approved_after_at/by`, `review_feedback`, `attempt` replace
+  `manual_approved`. **Both stamps clear on retry and on request-changes** — a re-run of a
+  supervised step is supervised again. The current design's failure to do this only shows up
+  when someone re-runs a step they had already approved and it proceeds without asking,
+  which is precisely when they were paying least attention.
+- Routes: `POST .../nodes/{node}/accept`, `POST .../nodes/{node}/request-changes`.
+
+**Ships:** the review card in `RunPanel` — the step's summary, the paths it wrote, its log,
+and three actions: **Accept**, **Request changes** (with a text box), **Accept with a note**.
+Plus an `approval` control in the configurator's Run tab.
+
+**Demo:** set `approval: after` on Architecture Brief. Run. The node reaches
+`awaiting-review` rather than `succeeded`, and the run stays paused with downstream nodes
+`pending`. Read the output, click **Request changes**, type *the persistence decision is
+unjustified*. The node re-runs, `ex.started` shows two attempts, and the second `StepRequest`
+carries the note. Accept the second attempt; the run proceeds.
+
+Then the two fixes that are easiest to forget. Set `approval: before` on the **root** node
+and confirm it waits — the pre-Phase-13 code runs it immediately. And retry an
+already-approved node, confirming it asks again.
+
+**Known limitation, kept.** Request-changes re-runs the **whole** step. There is no way to
+say "keep requirements 1-6, redo 7". implr steps are file-based and idempotent so a re-run is
+safe, but it is not cheap: a rejected `dev-executor` node redoes every task in the plan.
+Narrowing it needs per-artefact rejection, which needs a step to report what it produced and
+accept a subset on re-entry. Deferred, and worth doing.
+
+
+---
+
+### Phase 14 — Failure & recovery
+
 
 **Backend slice.** `failed` / `skipped` / `cancelled`, retry / skip / cancel routes,
 `Orchestrator.recover()`, the exception-safe driver loop, and the `Store` lock.
@@ -369,9 +475,11 @@ Then restart recovery: start a run, `kill` the server mid-step, restart it, reop
 browser — completed nodes stay completed and the interrupted node reports `failed` with an
 error naming the restart. It is not silently retried.
 
+
 ---
 
-### Phase 14 — Real model
+### Phase 15 — Real model
+
 
 **Backend slice.** `executors/_sdk.py` (import seam, prompt, permissions, tier mapping),
 `executors/translate.py` (pure message → event mapping), `executors/claude_code.py`, and the
@@ -394,34 +502,11 @@ suite:
 3. The agent must read a `PermissionResultDeny` message as an *answer* rather than a
    refusal. That is the return path for every operator reply.
 
----
-
-### Phase −1 — Restructure
-
-**Must precede Phase 0**, which currently writes `studio/backend/pyproject.toml` at a path
-this phase deletes.
-
-The tree today is a clean plugin source with **no packaging story**: no root manifest,
-`implr_validate` vendored into target projects by `cp -f` in `install.sh`, every test doing
-its own `sys.path.insert`, and a Python library living in a directory called `scripts/`. A
-Dockerfile has nothing to install.
-
-**Ships:** a root `pyproject.toml` + lock declaring three packages; `scripts/implr_validate`
-→ `packages/implr_validate`; `studio/backend/implr_studio` → `packages/implr_studio`;
-`scaffold/schemas/*.json` → `packages/implr_contracts`; `skills/`, `.claude/agents/` and the
-rest of `scaffold/` → `plugin/`; `studio/frontend` → `web/`. The three installers become one
-directory copy plus a `pip install`.
-
-**Demo:** `pip install -e packages/implr_validate && python -m implr_validate --repo --root .`
-with **no** `PYTHONPATH`. `grep -r sys.path.insert tests/` returns nothing.
-
-**Minimal alternative** if the full move is too much churn: root manifest, move
-`implr_validate` only, add `docker/`. Leave `skills/` and `.claude/agents/` where they are and
-let the Dockerfile `COPY` three directories instead of one. Everything downstream still works.
 
 ---
 
-### Phase 15 — Containers
+### Phase 16 — Containers
+
 
 **Ships:** `docker/api.Dockerfile`, `docker/worker.Dockerfile`, `docker/compose.yaml` — all
 three already written and committed; this phase makes them build and pass tests. Plus the
@@ -441,9 +526,11 @@ has no `DATABASE_URL`.
 Azure starts a Container Apps Job. Three implementations of one interface, chosen by mode —
 the same discipline the `StepExecutor` Protocol applies to providers.
 
+
 ---
 
-### Phase 16 — Tenancy & auth
+### Phase 17 — Tenancy & auth
+
 
 The phase where the authorization seam built in Phase 1 gets a real policy.
 
@@ -471,9 +558,53 @@ lacks `BYPASSRLS` — so assert that too.
 is empty; `ProjectGrantPolicy` is written but not wired. The rule shipping here is the one
 asked for: any member of a tenant may act on any project in it.
 
+
 ---
 
-### Phase 17 — Deploy to Azure
+### Phase 18 — Onboarding
+
+
+**Target: under five minutes from first sign-in to a running pipeline.** The two decisions
+that matter most are both about *not* doing something: not asking the customer to run a shell
+script, and not starting them on a blank canvas.
+
+**Ships:**
+
+- A GitHub App integration: authorise, list repositories, pick one and a branch.
+- **Repository preparation as a pull request.** If `docs/implr/` is absent, open a PR adding
+  exactly what `install.sh` writes, with a body explaining each directory. A hosted customer
+  must never be told to clone a repo and run bash — that is where onboarding dies. A PR, never
+  a push to the default branch: writing to someone's default branch as an onboarding side
+  effect is how a tool gets banned, and the PR gives them a natural place to say no.
+- Five pipeline **templates** — Full SDLC, Requirements only, Build approved plans, Change
+  request, Blank — each materialised with `approval: before` on **every** node, so the first
+  run is a step-by-step wizard. A blank canvas asks the customer to know implr's step ordering
+  before they have seen it work, which is the exact problem Studio exists to solve.
+- The first run defaults to `--dry-run` on every writing step, with the console saying so and
+  offering to re-run for real once it finishes.
+- The model mix defaults to Sonnet throughout rather than implr's own two-Opus default, so
+  the first bill is not the first surprise.
+- **The inbox** — the daily surface. Everything across the tenant waiting on a human, newest
+  first, one click from row to decision. With approval on by default a paused run is the
+  *normal* state, which makes a canvas-first console wrong for daily use: the canvas is where
+  you design, occasionally.
+
+**Demo:** sign in as a brand-new Entra tenant. Connect a repository with no implr workspace,
+merge the PR it opens, choose *Full SDLC*, and click through six supervised dry-run steps.
+Nothing was committed to the repository, and the whole thing took under five minutes.
+
+**Deliberately not offered during onboarding:** authoring a custom step. Phase 8's surface is
+powerful and is the wrong thing to show someone in their first five minutes. It stays
+reachable from the palette; the flow never mentions it. Learn the nine shipped steps, and
+author the tenth when one of them is missing.
+
+**This phase spends tokens** — the dry run is real.
+
+
+---
+
+### Phase 19 — Deploy to Azure
+
 
 **Ships:** `deploy/azure/main.bicep` and modules; `deploy/azure/README.md` as the setup
 runbook; a GitHub Actions workflow building both images to ACR.
@@ -490,7 +621,6 @@ worker job has no managed identity and no database credentials.
 **This phase spends tokens** and writes to a real repository. Run it with `--dry-run` on the
 pipeline first.
 
----
 
 ## Dependency graph
 
@@ -500,9 +630,9 @@ parallelised. Phases 9–14 are strictly sequential.
 ```
 -1 ─> 0 ─> 1 ─> 2 ─> 3 ─┬─> 4 ─> 5 ─┐
                         ├─> 6 ─> 7 ─┴─> 8
-                        └────────────────> 9 ─> 10 ─> 11 ─> 12 ─> 13 ─> 14
-                                                                        │
-                                                          15 ─> 16 ─> 17┘
+                        └────────────────> 9 ─> 10 ─> 11 ─> 12 ─> 13 ─> 14 ─> 15
+                                                                               │
+                                                            16 ─> 17 ─> 18 ─> 19
 ```
 
 - **4 before 5** — the Agents tab reuses the modal shell the Run tab introduces.
@@ -516,14 +646,18 @@ parallelised. Phases 9–14 are strictly sequential.
 - **8 is not on the run path.** Nothing in 9–14 depends on it, so it can be deferred or
   skipped if the shipped nine steps are enough for now.
 - **−1 before 0** — Phase 0 writes a manifest at a path the restructure deletes.
-- **14 before 15** — deploying a console that cannot run a pipeline proves nothing.
-- **15 before 16** — tenancy needs Postgres, and Postgres arrives with the containers.
-- **16 before 17** — do not put an unauthenticated agent runner on the public internet. Of
+- **12 before 13** — review-and-send-back reuses the question round trip's plumbing: a node
+  that pauses, an operator action, and a step that resumes.
+- **15 before 16** — deploying a console that cannot run a pipeline proves nothing.
+- **16 before 17** — tenancy needs Postgres, and Postgres arrives with the containers.
+- **17 before 18** — onboarding creates tenants, projects and users; it cannot exist before
+  they do.
+- **17 before 19** — do not put an unauthenticated agent runner on the public internet. Of
   every edge in this graph, this is the one not to reorder.
 
 Three useful stopping points. **Phase 7** is a complete pipeline *designer* for the steps
-implr ships. **Phase 8** makes that designer open-ended. **Phase 14** is the whole local
-product, working, with no hosting. Each is shippable; execution starts at 9 and hosting at 15.
+implr ships. **Phase 8** makes that designer open-ended. **Phase 15** is the whole local
+product, working, with no hosting. Each is shippable; execution starts at 9 and hosting at 16.
 
 ---
 
