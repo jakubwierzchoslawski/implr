@@ -99,10 +99,10 @@ phase is free. Phases 15, 18 and 19 are the only ones that cost anything.
 | 6 | [Conditions](2026-08-25-studio-phase-06-conditions.md) | Build an artefact gate; an illegal status is not offered, and is refused if hand-edited in | none |
 | 7 | [Input / Output tabs](2026-08-25-studio-phase-07-io-tabs.md) | The Output tab shows the ten real `plan` fields and five legal statuses | none |
 | 8 | **Author a step** | Create your own step in the UI — point it at any installed skill, or write its instruction and agents outright — and drag it onto the canvas | none |
-| 9 | Run one node | Press Run; one node goes green | none |
-| 10 | Live logs | Log lines appear *while* the step is running; a refresh loses nothing | none |
-| 11 | Many nodes, real gates | A gate holds; you edit a file on disk; it opens with no operator action | none |
-| 12 | Questions | Answer a question in the browser; the step continues in the same session | none |
+| 9 | [Run one node](2026-08-25-studio-phase-09-run-one-node.md) | Press Run; one node goes green | none |
+| 10 | [Live logs](2026-08-25-studio-phase-10-live-logs.md) | Log lines appear *while* the step is running; a refresh loses nothing | none |
+| 11 | [Many nodes, real gates](2026-08-25-studio-phase-11-gates.md) | A gate holds; you edit a file on disk; it opens with no operator action | none |
+| 12 | [Questions](2026-08-25-studio-phase-12-questions.md) | Answer a question in the browser; the step continues in the same session | none |
 | 13 | **[Review & send back](2026-08-25-studio-phase-13-review.md)** | Reject a step's output with a note; it re-runs knowing why | none |
 | 14 | Failure & recovery | Kill the server mid-run, reopen, resume rather than restart | none |
 | 15 | Real model | A real `doc-ingest --dry-run` streams into the browser | **yes** |
@@ -124,7 +124,7 @@ a retry. See *Component: Human-in-the-loop* in the design spec. Without 13, "HIT
 
 ## Phase specifications
 
-Phases −1, 0–7, 13 and 18 have their own documents. The rest are specified here until theirs are written.
+Phases −1, 0–7, 9–13 and 18 have their own documents. Phases 8, 14–17 and 19 are specified here until theirs are written.
 
 ### Phase −1 — Restructure
 
