@@ -532,6 +532,12 @@ export interface Finding {
   node_id: string | null;
 }
 
+/** Served by GET /api/registry, derived from status-vocabulary.json. Never hardcode a copy. */
+export interface ArtefactContract {
+  states: string[];
+  fields: string[];
+}
+
 export type NodeStatus =
   | 'pending' | 'blocked' | 'running' | 'awaiting-input' | 'awaiting-approval'
   | 'succeeded' | 'failed' | 'skipped' | 'cancelled';
@@ -924,7 +930,7 @@ Expected: FAIL — cannot resolve `./api` and `./store`
  * Typed fetch wrappers. Paths are relative so the dev proxy (and the built
  * bundle served by the backend) resolve them - never hardcode a host or port.
  */
-import type { Finding, PipelineDTO, RunDetail, RunEvent, StepDef } from './types';
+import type { ArtefactContract, Finding, PipelineDTO, RunDetail, RunEvent, StepDef } from './types';
 
 export class ValidationError extends Error {
   findings: Finding[];
@@ -955,7 +961,11 @@ const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
 
 export const getRegistry = () =>
-  request<{ steps: StepDef[]; phases: string[] }>('/registry');
+  request<{
+    steps: StepDef[];
+    phases: string[];
+    contracts: Record<string, ArtefactContract>;
+  }>('/registry');
 
 export const getPipeline = () =>
   request<{ pipeline: PipelineDTO; exists: boolean }>('/pipeline');
@@ -1569,8 +1579,8 @@ const edgeSelection = {
 };
 
 const CONTRACTS = {
-  requirement: { states: ['draft', 'under-review', 'approved'] },
-  plan: { states: ['ready', 'in-progress', 'done'] },
+  requirement: { states: ['draft', 'under-review', 'approved'], fields: ['status', 'type'] },
+  plan: { states: ['ready', 'in-progress', 'done'], fields: ['status', 'type'] },
 };
 
 describe('Inspector - edge gate', () => {
@@ -1705,7 +1715,7 @@ Expected: FAIL — cannot resolve `./Inspector` and `./RunPanel`
 
 ```tsx
 import type { FlowEdge, FlowNode } from '../graph';
-import type { Gate, GateType, StepDef } from '../types';
+import type { ArtefactContract, Gate, GateType, StepDef } from '../types';
 
 const GATE_TYPES: GateType[] = ['none', 'manual', 'artifact', 'artifact+manual'];
 
@@ -1717,7 +1727,7 @@ export type Selection =
 interface Props {
   selection: Selection;
   steps: Record<string, StepDef>;
-  contracts: Record<string, { states: string[] }>;
+  contracts: Record<string, ArtefactContract>;
   onArgsChange: (nodeId: string, args: string[]) => void;
   onGateChange: (edgeId: string, gate: Gate) => void;
 }
@@ -1960,20 +1970,16 @@ import type { Selection } from './panels/Inspector';
 import Palette from './panels/Palette';
 import RunPanel from './panels/RunPanel';
 import { usePipelineStore } from './store';
-import type { Finding, StepDef } from './types';
-
-const CONTRACTS: Record<string, { states: string[] }> = {
-  requirement: { states: ['draft', 'under-review', 'approved', 'rejected', 'superseded'] },
-  plan: { states: ['ready', 'in-progress', 'done', 'blocked', 'needs-rework'] },
-  cr: { states: ['draft', 'approved', 'rejected', 'applied'] },
-  review: { states: ['approved', 'approved-with-warnings', 'changes-required', 'rejected'] },
-};
+import type { ArtefactContract, Finding, StepDef } from './types';
 
 function Studio() {
   const store = usePipelineStore();
   const { screenToFlowPosition } = useReactFlow();
   const [steps, setSteps] = useState<StepDef[]>([]);
   const [phases, setPhases] = useState<string[]>([]);
+  // Fetched, never hardcoded: implr's status vocabulary lives in
+  // status-vocabulary.json and must have exactly one source of truth.
+  const [contracts, setContracts] = useState<Record<string, ArtefactContract>>({});
   const [mode, setMode] = useState<'design' | 'run'>('design');
   const [selection, setSelection] = useState<Selection>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
@@ -1985,6 +1991,7 @@ function Studio() {
       const registry = await api.getRegistry();
       setSteps(registry.steps);
       setPhases(registry.phases);
+      setContracts(registry.contracts);
       const byId = Object.fromEntries(registry.steps.map((s) => [s.id, s]));
       const { pipeline } = await api.getPipeline();
       usePipelineStore.getState().loadFrom(pipeline, byId);
@@ -2095,7 +2102,7 @@ function Studio() {
         <Inspector
           selection={selection}
           steps={Object.fromEntries(steps.map((s) => [s.id, s]))}
-          contracts={CONTRACTS}
+          contracts={contracts}
           onArgsChange={store.setNodeArgs}
           onGateChange={store.setEdgeGate}
         />

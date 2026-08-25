@@ -400,24 +400,50 @@ orchestrator.
 
 The one Phase 1 implementation, in `studio/backend/executors/claude_code.py`.
 
-It runs Claude Code in headless mode with the bidirectional `stream-json` protocol
-(structured JSON messages on both stdin and stdout), in the target workspace directory,
-and translates between that protocol and `StepEvent`:
+It drives Claude Code through the **`claude-agent-sdk` Python package** (`ClaudeSDKClient`),
+not a raw subprocess, and translates between the SDK's message stream and `StepEvent`:
 
-| Claude Code stream event | Mapped to |
+| SDK message | Mapped to |
 |---|---|
-| Assistant text content | `log` |
+| Assistant text content block | `log` |
 | Tool-use / tool-result activity | `log` (condensed to one line per tool call) |
-| Turn ends **without** a terminal result | `question` — prompt is the trailing assistant text |
-| Terminal result message | `done` |
-| Non-zero process exit | `done` with `outcome: "failure"` |
+| `AskUserQuestion` intercepted in `can_use_tool` | `question` — carries the agent's own options |
+| `ResultMessage` | `done` |
+| SDK error / non-zero termination | `done` with `outcome: "failure"` |
 
-**Why turn-end is a reliable question signal.** In `stream-json` mode the turn boundary is
-explicit in the protocol. When the agent has asked something and is waiting, its turn ends
-and the process blocks for the next input message rather than emitting a terminal result.
-"Turn ended, no terminal result" therefore means "input wanted" as a matter of protocol,
-not of heuristics. `answer()` writes the operator's reply as the next user message on
-stdin and the step continues in the same session, preserving its context.
+**How a question is detected.** This is the part of the design that had to change once the
+protocol was checked against the documentation rather than assumed.
+
+An earlier draft of this spec claimed that a turn ending without a terminal result was a
+protocol-level signal meaning "input wanted." **That is not documented and must not be
+relied on.** The docs do not state whether a `result` message ends every turn or only the
+session, and they define no signal distinguishing "the agent is asking" from "the agent
+finished." Bidirectional `stream-json` on stdin is likewise an SDK capability, not a
+documented CLI flag.
+
+The mechanism used instead is structural. The adapter appends a short instruction to the
+prompt it sends — *when you need a decision from the operator, ask via the
+`AskUserQuestion` tool* — and registers a `can_use_tool` callback. When the agent calls
+that tool, the callback intercepts it, emits a `question` event carrying the agent's own
+options, and blocks until `answer()` supplies a reply, which is returned as the tool
+result. The agent then continues **in the same session** with its context intact.
+
+Two consequences worth noting. First, detection is a tool-call interception rather than
+text parsing, so it does not depend on how any individual skill phrases itself. Second,
+because the agent supplies real options, the UI can render actual choices rather than a
+free-text box — the `options` field on the `question` event stops being unused. Neither
+requires editing a single existing skill file.
+
+If the agent answers in prose without calling the tool, the step simply runs to completion
+without asking; the adapter does not guess. That is a deliberate failure mode: a missed
+question surfaces as a step that finished with an unexpected result, which the operator can
+see, rather than as a run that hangs on a heuristic that misfired.
+
+**Permissions.** The adapter runs with `acceptEdits` plus an explicit `--allowedTools`
+allowlist covering what implr skills need. Anything outside the allowlist is denied and the
+denial appears in the node's log. `bypassPermissions` is deliberately not used: this agent
+is driven by a web page, and unrestricted shell access on that path is not a default anyone
+should inherit without choosing it.
 
 ---
 
@@ -572,12 +598,18 @@ repository. Accordingly:
 
 ## Known Limitations
 
-**Questions render as free text, not structured choices.** implr's interactive skills ask
-in plain prose — `arch-gen` Phase 3 presents each decision as formatted text, and
-`dev-planner` Phase 3 batches open questions as a prose block. The proxy therefore forwards
-markdown and collects a free-text answer. The `question` event already carries an `options`
-field, unused in Phase 1, so migrating those skills to a structured question format later
-upgrades the UI without changing the interface.
+**Question detection depends on the agent honouring an instruction.** implr's interactive
+skills ask in plain prose — `arch-gen` Phase 3 presents each decision as formatted text,
+`dev-planner` Phase 3 batches open questions as a prose block. The adapter instructs the
+agent to route such moments through the `AskUserQuestion` tool instead, which is reliable
+in practice but is an instruction, not a guarantee. A step that asks in prose anyway will
+run to completion without pausing rather than hang. Editing those two skills to call the
+tool directly removes the dependency entirely and is the obvious Phase 2 follow-up.
+
+**A missed question is visible, not silent.** The adapter deliberately does not guess from
+free text. The cost is that an unhonoured instruction shows up as a step that finished with
+an odd result rather than as an explicit prompt — inspectable in the node log, but not
+signposted.
 
 **Existing skills remain Claude-Code-flavoured.** Phase 1 deliberately runs them unmodified
 through the Claude adapter. The `StepExecutor` interface is provider-neutral, but the
