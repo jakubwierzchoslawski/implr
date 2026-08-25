@@ -37,7 +37,7 @@ whatever the UI just grew.
    is a layer with no feedback.
 
 **The cost, stated plainly.** Vertical slicing means touching the same file repeatedly:
-`registry.py` grows in phases 1, 5, 6 and 7; `store.py` in 8, 9 and 12; `api.py` in almost
+`registry.py` grows in phases 1, 5, 6 and 7; `store.py` in 9, 10 and 13; `api.py` in almost
 all of them. That is more total churn than building each file once, and occasionally a later
 phase will outgrow an earlier phase's shape and force a small refactor. You are buying
 continuous verifiability with that churn.
@@ -46,9 +46,9 @@ continuous verifiability with that churn.
 
 ## The phases
 
-Token spend is called out because it is the one cost that is not reversible. **Phases 0–12
-invoke no model at all** — `FakeExecutor` arrives in Phase 8 precisely so that every run
-phase is free. Only Phase 13 costs anything.
+Token spend is called out because it is the one cost that is not reversible. **Phases 0–13
+invoke no model at all** — `FakeExecutor` arrives in Phase 9 precisely so that every run
+phase is free. Only Phase 14 costs anything.
 
 | # | Phase | Demo at the end | Tokens |
 |---|---|---|---|
@@ -60,12 +60,13 @@ phase is free. Only Phase 13 costs anything.
 | 5 | Pick models | Drop `task-executor` to Sonnet; the node's dots, the mix meter and the YAML all change | none |
 | 6 | Conditions | Build an artefact gate; an illegal status is not offered, and is refused if hand-edited in | none |
 | 7 | Input / Output tabs | The Output tab shows the ten real `plan` fields and five legal statuses | none |
-| 8 | Run one node | Press Run; one node goes green | none |
-| 9 | Live logs | Log lines appear *while* the step is running; a refresh loses nothing | none |
-| 10 | Many nodes, real gates | A gate holds; you edit a file on disk; it opens with no operator action | none |
-| 11 | Questions | Answer a question in the browser; the step continues in the same session | none |
-| 12 | Failure & recovery | Kill the server mid-run, reopen, resume rather than restart | none |
-| 13 | Real model | A real `doc-ingest --dry-run` streams into the browser | **yes** |
+| 8 | **Author a step** | Create your own step in the UI — point it at any installed skill, or write its instruction and agents outright — and drag it onto the canvas | none |
+| 9 | Run one node | Press Run; one node goes green | none |
+| 10 | Live logs | Log lines appear *while* the step is running; a refresh loses nothing | none |
+| 11 | Many nodes, real gates | A gate holds; you edit a file on disk; it opens with no operator action | none |
+| 12 | Questions | Answer a question in the browser; the step continues in the same session | none |
+| 13 | Failure & recovery | Kill the server mid-run, reopen, resume rather than restart | none |
+| 14 | Real model | A real `doc-ingest --dry-run` streams into the browser | **yes** |
 
 ---
 
@@ -125,6 +126,14 @@ right rail grows the **model-mix meter** and names the most expensive step.
 `implr.config.yaml` already owns that mapping. The configurator edits *that* block. A
 per-step `model` field would be a second source of truth for the same decision.
 
+**Read-only apart from the tier, and say so.** For a `kind: "skill"` step the Agents tab is
+*describing* what the skill's own prose dispatches — the studio sends `/doc-ingest` and the
+SKILL.md decides the rest. Only the tier is genuinely configurable, because that maps onto
+`ClaudeAgentOptions`. The pane therefore renders the name, fan-out and tool grant as facts
+and the tier as a control, with a line saying which is which. Phase 8's `kind: "agent"`
+steps make the whole card editable; a UI that looked editable here and silently discarded
+the edit would be worse than one that admits the boundary.
+
 ---
 
 ### Phase 6 — Conditions
@@ -168,7 +177,67 @@ plans glob and the inbound condition with an Edit button that opens Phase 6's ed
 
 ---
 
-### Phase 8 — Run one node
+### Phase 8 — Author a step
+
+The phase that turns the catalogue from closed to open. Until now the palette is exactly the
+nine steps implr ships, and adding one means hand-writing a `SKILL.md` in the plugin source
+and reinstalling. After this phase you can create a step from the UI.
+
+**Two kinds, one surface.** A `kind: "skill"` step points at any **installed** skill —
+discovered from `<workspace>/.claude/skills/` — and you author its arg specs. A
+`kind: "agent"` step has no skill: you write its `instruction`, and its agents' prompts,
+tool grants, tiers and turn caps, all of which map onto real `ClaudeAgentOptions` fields.
+
+**Backend slice.**
+
+- `registry.load_registry` gains a second source: `docs/implr/config/steps.yaml`, merged
+  over the plugin registry **by `id`, with a collision reported as an error**. Overriding a
+  shipped step would be occasionally useful and permanently confusing.
+- `registry.discover_skills(workspace) -> dict[str, SkillInfo]` — reads
+  `<workspace>/.claude/skills/*/SKILL.md` frontmatter for `name` and `description`.
+- `Step` gains `kind`, `instruction`, and per-agent `prompt` / `tools` / `max_turns`.
+- Authored-step validation: `kind` in the two legal values; `kind: skill` requires `skill`;
+  `kind: agent` requires a non-empty `instruction` and each agent a `name` and `prompt`;
+  `model` in `TIERS`; `max_turns` a positive int; **`tools` a subset of the adapter's
+  permitted set**, so authoring cannot route around the permission posture.
+- `GET /api/skills` — the discovered skills, for the picker.
+- `GET`/`PUT /api/steps` — read and write `steps.yaml`, validated, 422 with findings.
+
+**Ships:** `modal/StepAuthor.tsx` — the authoring surface, reusing `Modal.tsx`. A **New
+step** button at the top of the palette. Authored steps appear in the palette in their chosen
+phase, visually marked as project-owned. An agent-backed node carries a distinct marker on
+the canvas.
+
+**Demo:** press **New step**. Choose *agent-backed*, name it `Lint & Format`, phase
+`verify`, write an instruction, add one agent on `haiku` with `[Read, Edit, Bash]`. Save →
+`docs/implr/config/steps.yaml` appears. It shows up in the palette under verify, marked as
+yours. Drag it onto the canvas, connect it after Code Review, Save the pipeline. Then try to
+grant it `WebFetch` → refused, naming the permitted set. Then author a *skill-backed* step
+pointing at an installed skill the plugin registry does not declare, and confirm it appears
+available while a made-up skill name appears dashed.
+
+**Why `steps.yaml` and not the plugin registry.** `install.sh` copies `schemas/*.json` under
+a comment reading *"Always overwrite: schemas and templates (plugin-owned)"*, so a project
+that hand-edited its installed `step-registry.json` silently loses the change on the next
+install. Before this phase there is **no way for a project to have a step implr does not
+ship**. `steps.yaml` is project-owned, committed, and never touched by the installer.
+
+**Deliberately not in this phase.** An agent-backed step takes **no arguments** —
+interpolating an operator value into a prompt is prompt injection by construction, and
+appending flags as literal text would offer a control the agent may silently ignore. If you
+need a variant, author two steps. Editing a *shipped* step is also out: that is plugin
+territory.
+
+**The honest caveat, which the UI states too.** A surface that authors agent prompts has no
+TDD enforcement, no review gate, and no iteration history. implr's value is that
+`task-executor`'s prose has been refined to enforce TDD and SOLID. A hand-typed step bypasses
+all of it — excellent for `lint-and-format` or `generate-diagram`, wrong for *"write the
+implementation"*. Anything that turns out to be load-bearing should graduate into a real
+`SKILL.md`.
+
+---
+
+### Phase 9 — Run one node
 
 The first phase with an executor. Deliberately minimal: **one node, no gates, no logs, no
 questions.**
@@ -190,7 +259,7 @@ on it.
 
 ---
 
-### Phase 9 — Live logs
+### Phase 10 — Live logs
 
 **Backend slice.** `store` gains the `events` table with its monotonic `seq`;
 `WS /api/runs/{id}/stream` with cursor replay; the orchestrator persists every event before
@@ -202,12 +271,12 @@ it is observable.
 **progressively**, not in one burst at the end. Refresh the browser mid-run: the log is
 complete and nothing is duplicated.
 
-**This is the phase that proves Phase 8's 202 was right.** If logs arrive all at once, a
+**This is the phase that proves Phase 9's 202 was right.** If logs arrive all at once, a
 route is waiting for the run to settle.
 
 ---
 
-### Phase 10 — Many nodes, real gates
+### Phase 11 — Many nodes, real gates
 
 **Backend slice.** `gates.evaluate_gate` and `artefact_condition_holds` (runtime, reading
 the filesystem), `node_readiness`, the driver loop, `blocked` and `awaiting-approval`
@@ -224,7 +293,7 @@ rule: delete the requirement, re-run, confirm the gate does *not* open.
 
 ---
 
-### Phase 11 — Questions
+### Phase 12 — Questions
 
 **Backend slice.** `question` events, the `questions` table, `awaiting-input`,
 `POST /api/runs/{id}/answer`, and the executor **question arming rule** — a pending question
@@ -241,7 +310,7 @@ the top instead of resuming its stream, and a real agent would have lost its con
 
 ---
 
-### Phase 12 — Failure & recovery
+### Phase 13 — Failure & recovery
 
 **Backend slice.** `failed` / `skipped` / `cancelled`, retry / skip / cancel routes,
 `Orchestrator.recover()`, the exception-safe driver loop, and the `Store` lock.
@@ -256,7 +325,7 @@ error naming the restart. It is not silently retried.
 
 ---
 
-### Phase 13 — Real model
+### Phase 14 — Real model
 
 **Backend slice.** `executors/_sdk.py` (import seam, prompt, permissions, tier mapping),
 `executors/translate.py` (pure message → event mapping), `executors/claude_code.py`, and the
@@ -283,24 +352,29 @@ suite:
 
 ## Dependency graph
 
-Not a straight line. Phases 4–7 all depend only on 1–3, so they can be reordered or
-parallelised. Phases 8–12 are strictly sequential.
+Not a straight line. Phases 4–7 depend only on 1–3, so they can be reordered or
+parallelised. Phases 9–14 are strictly sequential.
 
 ```
-0 ─> 1 ─> 2 ─> 3 ─┬─> 4 ─> 5
-                  ├─> 6 ─> 7
-                  └─> 8 ─> 9 ─> 10 ─> 11 ─> 12 ─> 13
+0 ─> 1 ─> 2 ─> 3 ─┬─> 4 ─> 5 ─┐
+                  ├─> 6 ─> 7 ─┴─> 8
+                  └──────────────────> 9 ─> 10 ─> 11 ─> 12 ─> 13 ─> 14
 ```
 
 - **4 before 5** — the Agents tab reuses the modal shell the Run tab introduces.
 - **6 before 7** — the Output tab renders the `contracts` payload Phase 6 adds.
-- **6 before 10** — save-time gate validation before runtime gate evaluation, so an
+- **4, 5 and 7 before 8** — the authoring surface writes arg specs, agent definitions and
+  I/O paths, so it needs every field the configurator already renders. Authoring a shape the
+  UI cannot display would be building blind.
+- **6 before 11** — save-time gate validation before runtime gate evaluation, so an
   unrunnable condition cannot be saved in the first place.
-- **8 before 9** — the 202 contract must exist before streaming can prove it.
+- **9 before 10** — the 202 contract must exist before streaming can prove it.
+- **8 is not on the run path.** Nothing in 9–14 depends on it, so it can be deferred or
+  skipped if the shipped nine steps are enough for now.
 
-The first genuinely useful stopping point is **Phase 7**: a complete pipeline *designer*
-with no execution. That is a shippable product on its own, and worth treating as a
-milestone rather than a waypoint.
+Two useful stopping points. **Phase 7** is a complete pipeline *designer* for the steps implr
+ships — shippable on its own. **Phase 8** makes that designer open-ended. Neither can execute
+anything; execution starts at 9.
 
 ---
 
@@ -311,12 +385,16 @@ in them is discarded, only redistributed.
 
 | Old plan | Redistributed into |
 |---|---|
-| **1** Foundation | 0 (bridge, hygiene) · 1 (registry) · 2 (pipeline config) · 3 (DAG validation) · 4 (arg values) · 5 (models) · 6 (gate validation) |
-| **2** Executor contract | 8 (base + fake) · 11 (question arming rule) |
-| **3** Orchestrator | 8 (store, runstate, single-node driver) · 9 (events) · 10 (gates, scheduling) · 11 (questions) · 12 (recovery, lock, operator actions) |
-| **4** API | 0 (server, static mount) · 1 (registry route) · 2 (pipeline routes) · 3 (422 findings) · 5 (agent payloads) · 6 (contracts) · 8 (run routes) · 9 (WebSocket) · 12 (operator routes) |
-| **5** Frontend | 0 (scaffolding, tokens) · 1 (palette) · 2 (canvas) · 3 (findings) · 4 (modal + Run tab) · 5 (Agents tab, meter) · 6 (gate editor) · 7 (Input/Output tabs) · 8–12 (run mode, incrementally) |
-| **6** Claude adapter | 13, whole |
+| **1** Foundation | 0 (bridge, hygiene) · 1 (registry) · 2 (pipeline config) · 3 (DAG validation) · 4 (arg values) · 5 (models) · 6 (gate validation) · 8 (`steps.yaml` merge, discovery) |
+| **2** Executor contract | 9 (base + fake) · 12 (question arming rule) |
+| **3** Orchestrator | 9 (store, runstate, single-node driver) · 10 (events) · 11 (gates, scheduling) · 12 (questions) · 13 (recovery, lock, operator actions) |
+| **4** API | 0 (server, static mount) · 1 (registry route) · 2 (pipeline routes) · 3 (422 findings) · 5 (agent payloads) · 6 (contracts) · 8 (`/api/skills`, `/api/steps`) · 9 (run routes) · 10 (WebSocket) · 13 (operator routes) |
+| **5** Frontend | 0 (scaffolding, tokens) · 1 (palette) · 2 (canvas) · 3 (findings) · 4 (modal + Run tab) · 5 (Agents tab, meter) · 6 (gate editor) · 7 (Input/Output tabs) · 8 (authoring surface) · 9–13 (run mode, incrementally) |
+| **6** Claude adapter | 14, whole — plus `agent_definitions` gaining authored prompts and tool grants |
+
+Phase 8 is the one phase with no ancestor in the six layer plans. It exists because the old
+breakdown assumed a closed catalogue, and never asked whether a project could add a step of
+its own. It could not.
 
 ---
 

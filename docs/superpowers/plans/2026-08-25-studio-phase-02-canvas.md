@@ -1040,7 +1040,7 @@ git commit -m "feat(studio): pure DTO mapping between pipeline.yaml and React Fl
   - `flowTypes.nodeTypes` / `edgeTypes` — module-scope constants.
   - `store.usePipelineStore` — `nodes`, `edges`, `steps`, `phases`; actions `onNodesChange`, `onEdgesChange`, `onConnect`, `addStepNode`, `loadFrom`, `toDTO`, `setCatalogue`.
 
-Zustand rather than `useNodesState` because the save action — and, from Phase 9, the
+Zustand rather than `useNodesState` because the save action — and, from Phase 10, the
 WebSocket — must reach graph state from outside the React tree.
 
 - [ ] **Step 1: Write the failing tests**
@@ -1244,7 +1244,7 @@ export default function StepNode({ id, data, selected }: NodeProps<FlowNode>) {
     >
       <Handle type="target" position={Position.Left} className="port" />
 
-      {/* The stripe is inert in this phase; Phase 8 tints it by run state. */}
+      {/* The stripe is inert in this phase; Phase 9 tints it by run state. */}
       <div className="step-node__stripe" />
 
       <div className="step-node__body">
@@ -1303,7 +1303,7 @@ export const edgeTypes = { gate: GateEdge };
 /**
  * Zustand store for graph state.
  *
- * Zustand rather than useNodesState because the save action - and, from Phase 9,
+ * Zustand rather than useNodesState because the save action - and, from Phase 10,
  * the WebSocket - must reach graph state from outside the React tree. Every
  * update returns new objects: React Flow's change detection is reference-based.
  */

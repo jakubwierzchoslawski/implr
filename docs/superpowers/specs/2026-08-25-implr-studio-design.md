@@ -227,6 +227,159 @@ builder, backend, or frontend.
 | `produces_artefact` | The `frontmatter-rules.json` artefact type this step produces, or `null`. When set, the configurator's Output tab renders that type's required fields and legal statuses — the same vocabulary a downstream gate reads. |
 | `description` | Plain-language summary. Shown as the configurator's lead paragraph and the palette tooltip. |
 
+### Registry, pipeline, config: three files, three owners
+
+The single most important thing to hold about the registry is what it is *not*. It is a
+**vocabulary**, not a process. Three files divide the work:
+
+| File | Answers | Owner | Changes when |
+|---|---|---|---|
+| `scaffold/schemas/step-registry.json` | *What steps exist, and what can I configure on each?* | implr (plugin) | a new skill ships |
+| `docs/implr/config/steps.yaml` | *What steps has this project added?* | the project | you author one |
+| `docs/implr/config/pipeline.yaml` | *Which steps did I pick, how are they connected, what did I set?* | the project | you design |
+| `docs/implr/config/implr.config.yaml` → `agents:` | *Which model tier does each subagent run on?* | the project | you tune cost |
+
+A node says `step: doc-ingest` — a *reference* into the catalogue, never a copy of it. So a
+step gaining a new flag reaches every existing pipeline's configurator without touching a
+single `pipeline.yaml`.
+
+The registry also deliberately does **not** own three things it easily could have, each of
+which lives somewhere that is already authoritative:
+
+- **statuses** → `status-vocabulary.json`. A gate's legal values come from there.
+- **artefact shape** → `frontmatter-rules.json`. `produces_artefact: "plan"` is a pointer into it.
+- **model tiers** → `implr.config.yaml`. The registry names *which* agents a step dispatches; that file says what tier each runs at.
+
+Copying any of those into the registry would have been easier and would have created a
+second source of truth.
+
+### Authoritative fields versus descriptive ones
+
+Read as JSON, every field looks equally binding. It is not, and conflating the two groups is
+the likeliest way to misread the format:
+
+| Field | Status | What depends on it |
+|---|---|---|
+| `id`, `kind`, `skill` | **authoritative** | node references resolve through it; the adapter builds `/doc-ingest` from `skill` |
+| `args_allowed` | **authoritative** | gates the configurator's controls *and* rejects a save |
+| `agents[].name` | **authoritative** | validated against `.claude/agents/`; drives the tier selector |
+| `produces_artefact` | **authoritative** | validated against `frontmatter-rules.json`; renders the Output contract |
+| `phase` | display only | palette grouping. **No execution meaning whatsoever** |
+| `interactive` | display only | a badge. The question channel is always live regardless |
+| `consumes`, `produces` | **descriptive only** | rendered in Input/Output. Nothing validates them |
+| `agents[].fan_out` | descriptive only | free prose (`"1 per plan, cap 5"`). Nothing computes concurrency from it |
+
+Two of these are active confusion risks and are worth stating in the UI as well as here.
+**`phase` looks like a sequence and is not** — the palette reads discovery → design → … →
+verify, which invites the assumption that reordering it reorders a run. Execution order comes
+only from edges. And **`consumes` / `produces` look enforced and are not** — a per-skill input
+contract does not exist, so those fields are documentation that happens to live in a schema.
+
+### Two kinds of step
+
+`kind` is the field that decides who owns a step's behaviour, and the two answers have very
+different configurability:
+
+| | `kind: "skill"` | `kind: "agent"` |
+|---|---|---|
+| What runs | `/doc-ingest --dry-run` as a slash command | a prompt the studio composes from `instruction` |
+| Who owns the behaviour | the `SKILL.md` | the operator, in the UI |
+| Configure arguments | ✅ from `args_allowed` | ✗ — see below |
+| Configure *which* agents | ✗ **the skill decides** | ✅ |
+| Configure an agent's prompt / tool grant | ✗ | ✅ |
+| Configure model tier | ✅ | ✅ |
+| Declared in | the plugin registry, or `steps.yaml` | `steps.yaml` only |
+| Availability | needs `.claude/skills/<skill>/SKILL.md` | always available |
+
+The asymmetry in the middle rows is a hard architectural boundary, not an unfinished
+feature. `doc-ingest` dispatches `doc-ingest-digester` and `doc-ingest-synthesizer` because
+that is written in its SKILL.md prose; the studio sends a slash command and the skill decides
+the rest. The registry's `agents[]` array for a skill-backed step is therefore **describing**
+what the skill does, so the tier selector has something real to attach to — it is not
+configuring it. The Agents tab renders read-only for `kind: "skill"` apart from the tier.
+
+For `kind: "agent"` the studio owns the whole invocation, so everything is configurable.
+Each entry maps onto a real `ClaudeAgentOptions` field — `instruction` becomes the prompt,
+`agents[]` becomes the `agents` dict of `AgentDefinition`, and each one's `prompt`, `tools`,
+`model` and `max_turns` are that dataclass's own fields. Nothing is shimmed.
+
+**An agent-backed step takes no arguments.** Interpolating an operator-supplied value into a
+prompt is prompt injection by construction, and appending flags as literal text would offer
+a control the agent may silently ignore. If you need a variant, author two steps.
+
+### Project-owned steps
+
+`docs/implr/config/steps.yaml` is a **project-scoped registry** — the same schema as the
+plugin file, plus `kind` and the agent-backed fields. It exists for two reasons.
+
+The first is the one you would expect: authoring a step from the UI has to write somewhere.
+
+The second is a bug it fixes. `install.sh` copies `schemas/*.json` under a comment reading
+*"Always overwrite: schemas and templates (plugin-owned)"*. So a project that hand-edited its
+installed `step-registry.json` silently loses the change on the next install — meaning
+**there was no way for a project to have a step implr does not ship**. `steps.yaml` is never
+touched by the installer.
+
+Entries are merged over the plugin registry **by `id`, and a collision is an error**, with a
+message telling you to pick a different id. Overriding a shipped step would be occasionally
+useful and permanently confusing; retuning `dev-executor`'s arguments is plugin territory.
+
+An authored step:
+
+```yaml
+# docs/implr/config/steps.yaml - project-owned, never overwritten by the installer
+version: 1
+steps:
+  - id: lint-and-format
+    kind: agent
+    label: Lint & Format
+    phase: verify
+    instruction: |
+      Run the project's linter and formatter. Fix what is auto-fixable.
+      Report anything needing a human decision. Do not change program logic.
+    agents:
+      - name: linter
+        model: haiku
+        tools: [Read, Edit, Bash]
+        max_turns: 12
+        prompt: |
+          You run linters and formatters. You never change program logic.
+    consumes: [{ path: "src/**" }]
+    produces: [{ path: "src/**", note: "formatting only" }]
+    produces_artefact: null
+
+  # kind: skill also works here - this is how a node points at an installed
+  # skill the plugin registry does not declare. You author its arg specs too.
+  - id: custom-migrations
+    kind: skill
+    label: Run Migrations
+    phase: build
+    skill: db-migrate
+    args_allowed:
+      - { flag: "--dry-run", takes_value: false, note: "plan only" }
+    args_default: []
+    agents: []
+    consumes: []
+    produces: []
+    produces_artefact: null
+```
+
+**An authored step may not grant itself tools the adapter would deny.** Every `tools` entry
+must be a member of the adapter's permitted set, checked at save time. Otherwise the
+authoring surface becomes a way around the permission posture.
+
+### Agent-backed steps are deliberately second-class
+
+A UI that authors agent prompts is a UI that authors prompts — with no TDD enforcement, no
+review gate, and no iteration history. implr's actual value is that `task-executor`'s prose
+has been refined to enforce TDD and SOLID, and `dev-code-review`'s to audit against
+acceptance criteria. A hand-typed step bypasses every bit of that.
+
+So agent-backed steps are excellent for glue — `lint-and-format`, `generate-diagram`,
+`post-summary`, `run-migrations` — and the wrong tool for *"write the implementation"*. The
+canvas marks them distinctly so nobody mistakes a five-minute prompt for a hardened skill,
+and a custom step that turns out to be load-bearing should graduate into a real `SKILL.md`.
+
 ### Why model tier is per agent, not per step
 
 `docs/implr/config/implr.config.yaml` already ships an `agents:` block mapping each implr
@@ -243,10 +396,21 @@ one branch and expensive in another.
 
 ### Availability
 
-A registry entry whose `skills/<skill>/SKILL.md` does not exist is **not an error**. It is
-rendered in the palette as unavailable (greyed, non-draggable) with a tooltip explaining
-the skill is not implemented yet. This is how planned steps — a dedicated testing step, a
-dedicated security-check step — appear in the process diagram before they exist.
+A `kind: "skill"` entry whose skill is not installed is **not an error**. It renders in the
+palette as unavailable — dashed, non-draggable — with a tooltip explaining the skill is not
+implemented yet. This is how planned steps (a dedicated testing step, a dedicated
+security-check step) appear in the process diagram before they exist. A `kind: "agent"` step
+is always available; there is no skill for it to be missing.
+
+**Availability is resolved against `<workspace>/.claude/skills/<skill>/SKILL.md`** — the
+target project's installed skills, not the implr repo's `skills/` source tree. This matters:
+the adapter runs with `cwd=<workspace>`, so that is where the CLI resolves a slash command
+from. Judging availability against the plugin source instead would let the palette report a
+step as usable while the agent cannot find it — which is exactly what happens when the studio
+backend runs from a different implr checkout than the one the project was installed from.
+
+The same directory is what step **discovery** reads, so the authoring UI can offer every
+installed skill rather than only the ones the plugin registry declares.
 
 A pipeline that *references* an unavailable step fails validation at run start, not at
 save time. Designing ahead of implementation is permitted; executing a non-existent skill

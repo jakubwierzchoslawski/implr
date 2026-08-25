@@ -103,6 +103,7 @@ Two conventions in this file, both load-bearing:
   "steps": [
     {
       "id": "doc-ingest",
+      "kind": "skill",
       "label": "Document Ingestion",
       "phase": "discovery",
       "skill": "doc-ingest",
@@ -132,6 +133,7 @@ Two conventions in this file, both load-bearing:
     },
     {
       "id": "arch-gen",
+      "kind": "skill",
       "label": "Architecture Brief",
       "phase": "design",
       "skill": "arch-gen",
@@ -152,6 +154,7 @@ Two conventions in this file, both load-bearing:
     },
     {
       "id": "ba-requirements-gen",
+      "kind": "skill",
       "label": "Requirements Generation",
       "phase": "requirements",
       "skill": "ba-requirements-gen",
@@ -173,6 +176,7 @@ Two conventions in this file, both load-bearing:
     },
     {
       "id": "ba-cr",
+      "kind": "skill",
       "label": "Change Request",
       "phase": "requirements",
       "skill": "ba-cr",
@@ -198,6 +202,7 @@ Two conventions in this file, both load-bearing:
     },
     {
       "id": "dev-planner",
+      "kind": "skill",
       "label": "Specification / Planning",
       "phase": "planning",
       "skill": "dev-planner",
@@ -222,6 +227,7 @@ Two conventions in this file, both load-bearing:
     },
     {
       "id": "dev-executor",
+      "kind": "skill",
       "label": "Implementation",
       "phase": "build",
       "skill": "dev-executor",
@@ -254,6 +260,7 @@ Two conventions in this file, both load-bearing:
     },
     {
       "id": "dev-code-review",
+      "kind": "skill",
       "label": "Code Review",
       "phase": "verify",
       "skill": "dev-code-review",
@@ -274,6 +281,7 @@ Two conventions in this file, both load-bearing:
     },
     {
       "id": "qa-testing",
+      "kind": "skill",
       "label": "Testing",
       "phase": "verify",
       "skill": "qa-testing",
@@ -288,6 +296,7 @@ Two conventions in this file, both load-bearing:
     },
     {
       "id": "sec-review",
+      "kind": "skill",
       "label": "Security Checks",
       "phase": "verify",
       "skill": "sec-review",
@@ -326,7 +335,10 @@ Expected: present. `install.sh` copies `schemas/*.json`, so no installer change 
   - `registry.ArgSpec` — frozen: `flag`, `takes_value`, `value_pattern: str | None`, `note`.
   - `registry.AgentRef` — frozen: `name`, `fan_out`.
   - `registry.IOPath` — frozen: `path`, `note`.
-  - `registry.Step` — frozen: `id`, `label`, `phase`, `skill`, `args_allowed: tuple[ArgSpec, ...]`, `args_default: tuple[str, ...]`, `interactive`, `agents: tuple[AgentRef, ...]`, `consumes`, `produces`, `produces_artefact: str | None`, `description`, `available`.
+  - `registry.Step` — frozen: `id`, `kind`, `label`, `phase`, `skill`, `args_allowed: tuple[ArgSpec, ...]`, `args_default: tuple[str, ...]`, `interactive`, `agents: tuple[AgentRef, ...]`, `consumes`, `produces`, `produces_artefact: str | None`, `description`, `available`.
+  - `registry.KINDS = ("skill", "agent")` — every shipped entry is `"skill"`. The field is
+    validated now and carried through so Phase 8 can add `"agent"` without reshaping `Step`
+    or every fixture that constructs one.
   - `Step.flags -> tuple[str, ...]`, `Step.arg(flag) -> ArgSpec | None`, `Step.agent_names() -> tuple[str, ...]` — so callers never re-scan `args_allowed`.
   - `registry.Registry` — `.steps: dict[str, Step]`, `.get(id) -> Step | None`.
   - `registry.load_registry(schema_dir, skills_dir) -> Registry`
@@ -365,6 +377,7 @@ def _skill(skills_dir: Path, name: str) -> None:
 
 BASE = {
     "id": "doc-ingest",
+    "kind": "skill",
     "label": "Document Ingestion",
     "phase": "discovery",
     "skill": "doc-ingest",
@@ -520,6 +533,37 @@ def test_unknown_phase_rejected(tmp_path: Path):
         registry.load_registry(schema_dir, skills_dir)
 
 
+def test_kind_is_loaded(tmp_path: Path):
+    schema_dir, skills_dir = tmp_path / "schemas", tmp_path / "skills"
+    _write(schema_dir, [BASE])
+    _skill(skills_dir, "doc-ingest")
+
+    step = registry.load_registry(schema_dir, skills_dir).get("doc-ingest")
+
+    assert step.kind == "skill"
+
+
+def test_unknown_kind_rejected(tmp_path: Path):
+    """Phase 8 adds 'agent'. Anything else is a typo, now and then."""
+    schema_dir, skills_dir = tmp_path / "schemas", tmp_path / "skills"
+    _write(schema_dir, [dict(BASE, kind="wizard")])
+    _skill(skills_dir, "doc-ingest")
+
+    with pytest.raises(registry.RegistryError, match="unknown kind 'wizard'"):
+        registry.load_registry(schema_dir, skills_dir)
+
+
+def test_every_shipped_step_is_kind_skill():
+    """The plugin registry declares only skill-backed steps. Agent-backed ones
+    are project-owned and live in steps.yaml from Phase 8."""
+    from implr_studio import implr_bridge
+
+    root = implr_bridge.repo_root()
+    reg = registry.load_registry(root / "scaffold" / "schemas", root / "skills")
+
+    assert {s.kind for s in reg.steps.values()} == {"skill"}
+
+
 def test_missing_required_field_rejected(tmp_path: Path):
     schema_dir, skills_dir = tmp_path / "schemas", tmp_path / "skills"
     _write(schema_dir, [{k: v for k, v in BASE.items() if k != "skill"}])
@@ -608,8 +652,13 @@ from pathlib import Path
 PHASES = ("discovery", "design", "requirements", "planning", "build", "verify")
 TIERS = ("haiku", "sonnet", "opus")
 
+# "skill" runs a slash command and the SKILL.md owns the behaviour. "agent" is
+# authored in the UI and the studio owns it - Phase 8. Declared here so the field
+# is validated from the start rather than retrofitted.
+KINDS = ("skill", "agent")
+
 _REQUIRED_FIELDS = (
-    "id", "label", "phase", "skill",
+    "id", "kind", "label", "phase", "skill",
     "args_allowed", "args_default", "interactive",
     "agents", "consumes", "produces", "produces_artefact", "description",
 )
@@ -642,6 +691,7 @@ class IOPath:
 @dataclass(frozen=True)
 class Step:
     id: str
+    kind: str
     label: str
     phase: str
     skill: str
@@ -729,6 +779,11 @@ def load_registry(schema_dir: Path, skills_dir: Path) -> Registry:
         step_id = entry["id"]
         if step_id in steps:
             raise RegistryError("duplicate step id: %s" % step_id)
+        if entry["kind"] not in KINDS:
+            raise RegistryError(
+                "step %s: unknown kind %r (legal: %s)"
+                % (step_id, entry["kind"], list(KINDS))
+            )
         if entry["phase"] not in PHASES:
             raise RegistryError(
                 "step %s: unknown phase %r (legal: %s)"
@@ -754,6 +809,7 @@ def load_registry(schema_dir: Path, skills_dir: Path) -> Registry:
         skill_md = Path(skills_dir) / entry["skill"] / "SKILL.md"
         steps[step_id] = Step(
             id=step_id,
+            kind=entry["kind"],
             label=entry["label"],
             phase=entry["phase"],
             skill=entry["skill"],
@@ -796,7 +852,9 @@ git commit -m "feat(studio): step registry file and loader"
 - Produces:
   - `serialize.step_to_dict(step) -> dict`, `serialize.registry_to_dict(reg) -> dict` → `{"steps": [...], "phases": [...], "tiers": [...]}`
   - `context.AppContext` — dataclass: `workspace: Path`, `registry`.
-  - `context.build_context(workspace) -> AppContext`
+  - `context.build_context(workspace) -> AppContext` — loads the registry from the
+    workspace's installed schemas, resolving availability against
+    `<workspace>/.claude/skills/`.
   - `api.create_app(context)` — **signature change** from Phase 0's `workspace_name`.
   - `GET /api/registry`
 
@@ -822,7 +880,7 @@ def reg(tmp_path: Path) -> registry.Registry:
     schema_dir, skills_dir = tmp_path / "schemas", tmp_path / "skills"
     schema_dir.mkdir(parents=True)
     steps = [
-        {"id": "doc-ingest", "label": "Document Ingestion", "phase": "discovery",
+        {"id": "doc-ingest", "kind": "skill", "label": "Document Ingestion", "phase": "discovery",
          "skill": "doc-ingest",
          "args_allowed": [{"flag": "--dry-run", "takes_value": False, "note": "n"}],
          "args_default": [], "interactive": False,
@@ -830,7 +888,7 @@ def reg(tmp_path: Path) -> registry.Registry:
          "consumes": [{"path": "docs/kb/**", "note": ""}],
          "produces": [{"path": "docs/implr/kb-index/master-synthesis.md", "note": ""}],
          "produces_artefact": None, "description": "d"},
-        {"id": "sec-review", "label": "Security Checks", "phase": "verify",
+        {"id": "sec-review", "kind": "skill", "label": "Security Checks", "phase": "verify",
          "skill": "sec-review", "args_allowed": [], "args_default": [],
          "interactive": False, "agents": [], "consumes": [], "produces": [],
          "produces_artefact": None, "description": "planned"},
@@ -897,7 +955,7 @@ from implr_studio.api import create_app
 
 @pytest.fixture
 def workspace(tmp_path: Path) -> Path:
-    """A target project with the real schema files copied in."""
+    """A target project with the real schemas AND skills installed."""
     from implr_studio import implr_bridge
 
     src = implr_bridge.repo_root() / "scaffold" / "schemas"
@@ -905,6 +963,17 @@ def workspace(tmp_path: Path) -> Path:
     dst.mkdir(parents=True)
     for f in src.glob("*.json"):
         (dst / f.name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+
+    # Availability resolves against the WORKSPACE's installed skills, so a
+    # realistic fixture installs them the way install.sh does.
+    for skill_dir in (implr_bridge.repo_root() / "skills").iterdir():
+        if not (skill_dir / "SKILL.md").is_file():
+            continue
+        target = tmp_path / ".claude" / "skills" / skill_dir.name
+        target.mkdir(parents=True)
+        (target / "SKILL.md").write_text(
+            (skill_dir / "SKILL.md").read_text(encoding="utf-8"), encoding="utf-8")
+
     return tmp_path
 
 
@@ -946,6 +1015,46 @@ def test_registry_serves_the_agent_dispatch_map(client):
         "arch-excerpter", "plan-runner", "task-executor"]
 
 
+def test_registry_serves_the_step_kind(client):
+    steps = {s["id"]: s for s in client.get("/api/registry").json()["steps"]}
+
+    assert steps["doc-ingest"]["kind"] == "skill"
+
+
+def test_availability_is_resolved_against_the_workspace_skills(tmp_path):
+    """Not the implr repo's skills/ tree.
+
+    The adapter runs with cwd=<workspace>, so that is where the CLI resolves a
+    slash command from. A palette that consulted the plugin source instead could
+    call a step usable while the agent cannot find it.
+    """
+    from implr_studio import implr_bridge
+
+    src = implr_bridge.repo_root() / "scaffold" / "schemas"
+    dst = tmp_path / "docs" / "implr" / "schemas"
+    dst.mkdir(parents=True)
+    for f in src.glob("*.json"):
+        (dst / f.name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+
+    # An empty workspace skills tree: every step reads unavailable, even though
+    # the implr repo itself has all eight installed.
+    (tmp_path / ".claude" / "skills").mkdir(parents=True)
+
+    with TestClient(create_app(ctx_mod.build_context(tmp_path))) as c:
+        steps = {s["id"]: s for s in c.get("/api/registry").json()["steps"]}
+    assert all(s["available"] is False for s in steps.values())
+
+    # Install one, and only that one becomes available.
+    d = tmp_path / ".claude" / "skills" / "doc-ingest"
+    d.mkdir(parents=True)
+    (d / "SKILL.md").write_text("---\nname: doc-ingest\n---\n", encoding="utf-8")
+
+    with TestClient(create_app(ctx_mod.build_context(tmp_path))) as c:
+        steps = {s["id"]: s for s in c.get("/api/registry").json()["steps"]}
+    assert steps["doc-ingest"]["available"] is True
+    assert steps["arch-gen"]["available"] is False
+
+
 def test_health_still_reports_the_workspace_name(client, workspace):
     assert client.get("/api/health").json()["workspace"] == workspace.name
 
@@ -972,6 +1081,7 @@ from .registry import PHASES, TIERS, Registry, Step
 def step_to_dict(step: Step) -> dict:
     return {
         "id": step.id,
+        "kind": step.kind,
         "label": step.label,
         "phase": step.phase,
         "skill": step.skill,
@@ -1013,7 +1123,7 @@ def registry_to_dict(reg: Registry) -> dict:
 
 Nothing in the API layer reaches for a global. Tests build a context pointed at a
 temp workspace and get a fully functional app. It grows one field per phase: the
-pipeline path in Phase 2, the store and orchestrator in Phase 8.
+pipeline path in Phase 2, the store and orchestrator in Phase 9.
 """
 from dataclasses import dataclass
 from pathlib import Path
@@ -1030,10 +1140,17 @@ class AppContext:
 
 def build_context(workspace: Path) -> AppContext:
     workspace = Path(workspace).resolve()
-    # Step definitions come from the workspace's installed schemas; skills come
-    # from the implr repo, because availability is a property of the plugin
-    # source rather than of the project being operated on.
-    reg = load_registry(resolve_schema_dir(workspace), repo_root() / "skills")
+    # Both from the WORKSPACE. Availability must be resolved against the target
+    # project's installed skills, because the adapter runs with cwd=<workspace>
+    # and that is where the CLI resolves a slash command from. Judging it against
+    # the implr repo's skills/ tree instead would let the palette call a step
+    # usable while the agent cannot find it - which is what happens when the
+    # backend runs from a different implr checkout than the project was
+    # installed from.
+    reg = load_registry(
+        resolve_schema_dir(workspace),
+        workspace / ".claude" / "skills",
+    )
     return AppContext(workspace=workspace, registry=reg)
 ```
 
@@ -1152,7 +1269,7 @@ def _agent(root, name):
 
 
 BASE = {
-    "id": "doc-ingest", "label": "Document Ingestion", "phase": "discovery",
+    "id": "doc-ingest", "kind": "skill", "label": "Document Ingestion", "phase": "discovery",
     "skill": "doc-ingest",
     "args_allowed": [{"flag": "--dry-run", "takes_value": False, "note": ""}],
     "args_default": [], "interactive": False,
@@ -1295,8 +1412,9 @@ Expected: FAIL — `ImportError: cannot import name 'check_step_registry'`
 # --- step registry (implr Studio) ---
 
 _REGISTRY_PHASES = ("discovery", "design", "requirements", "planning", "build", "verify")
+_REGISTRY_KINDS = ("skill", "agent")
 _REGISTRY_FIELDS = (
-    "id", "label", "phase", "skill",
+    "id", "kind", "label", "phase", "skill",
     "args_allowed", "args_default", "interactive",
     "agents", "consumes", "produces", "produces_artefact", "description",
 )
@@ -1342,6 +1460,12 @@ def check_step_registry(root, contracts):
             findings.append(Finding("error", rel, "duplicate step id: %s" % step_id))
             continue
         seen.add(step_id)
+
+        if entry["kind"] not in _REGISTRY_KINDS:
+            findings.append(Finding(
+                "error", rel,
+                "step %s has unknown kind %r (legal: %s)"
+                % (step_id, entry["kind"], list(_REGISTRY_KINDS))))
 
         if entry["phase"] not in _REGISTRY_PHASES:
             findings.append(Finding(
@@ -1631,8 +1755,11 @@ export interface ArgSpec {
 export interface AgentRef { name: string; fan_out: string }
 export interface IOPath { path: string; note: string }
 
+export type StepKind = 'skill' | 'agent';
+
 export interface StepDef {
   id: string;
+  kind: StepKind;
   label: string;
   phase: string;
   skill: string;

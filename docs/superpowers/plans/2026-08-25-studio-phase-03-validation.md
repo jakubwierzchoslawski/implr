@@ -55,7 +55,7 @@ Python 3.11+. React + TypeScript, Zustand, Vitest. No new dependencies.
   compute them.
 - Step **availability is deliberately not checked**. A pipeline may reference a
   registered-but-unimplemented step at design time — that is the whole point of the dashed
-  palette items. Run-start enforcement arrives in Phase 8.
+  palette items. Run-start enforcement arrives in Phase 9.
 - A rejected save writes nothing. Validate, then write, never the reverse.
 - Findings carry a machine-readable `code` as well as a message, so the UI can outline the
   right node without parsing prose.
@@ -114,7 +114,8 @@ def reg(tmp_path: Path) -> registry.Registry:
     schema_dir, skills_dir = tmp_path / "schemas", tmp_path / "skills"
     schema_dir.mkdir(parents=True)
     steps = [
-        {"id": step_id, "label": step_id, "phase": "discovery", "skill": step_id,
+        {"id": step_id, "kind": "skill", "label": step_id, "phase": "discovery",
+         "skill": step_id,
          "args_allowed": [
              {"flag": "--dry-run", "takes_value": False, "note": ""},
              {"flag": "--all", "takes_value": False, "note": ""},

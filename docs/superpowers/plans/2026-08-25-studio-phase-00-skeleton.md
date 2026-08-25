@@ -225,7 +225,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 ```
 
-`asyncio_mode` and `pytest-asyncio` are set now even though nothing is async until Phase 8 —
+`asyncio_mode` and `pytest-asyncio` are set now even though nothing is async until Phase 9 —
 configuring them once avoids a confusing "async test skipped silently" failure later.
 
 Create `studio/backend/implr_studio/__init__.py` (empty).
