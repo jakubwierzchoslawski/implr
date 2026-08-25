@@ -108,7 +108,7 @@ phase is free. Phases 15, 18 and 19 are the only ones that cost anything.
 | 15 | Real model | A real `doc-ingest --dry-run` streams into the browser | **yes** |
 | 16 | **Containers** | `docker compose up` serves the console; the API image has no `git` and no Claude CLI | none |
 | 17 | **Tenancy & auth** | Two users in one Entra tenant see the same projects; a third tenant's user sees none | none |
-| 18 | **Onboarding** | A new tenant goes from sign-in to a supervised dry run in under five minutes | **yes** |
+| 18 | **[Onboarding](2026-08-25-studio-phase-18-onboarding.md)** | A new tenant goes from sign-in to a supervised dry run in under five minutes | **yes** |
 | 19 | **Deploy to Azure** | A run executes in a Container Apps Job and streams to the browser | **yes** |
 
 Twenty-one phases, `−1` through `19`. Phases 16–19 are the hosting work, and none is
@@ -124,7 +124,7 @@ a retry. See *Component: Human-in-the-loop* in the design spec. Without 13, "HIT
 
 ## Phase specifications
 
-Phases 0–3 have their own documents. The rest are specified here until theirs are written.
+Phases 0–3 and 18 have their own documents. The rest are specified here until theirs are written.
 
 ### Phase −1 — Restructure
 
