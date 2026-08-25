@@ -10,10 +10,18 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-25-implr-studio-design.md`
 
+**Runtime verification:** `docs/RUNTIME.md` — how to prove this plan actually runs, not just that its suite passes.
+
 ## Global Constraints
 
 - Nothing in `executors/base.py` or `executors/fake.py` may mention Claude, Anthropic, subprocesses, or any provider. If a provider name appears in either file, the abstraction has failed.
 - `StepEvent.kind` is exactly one of `"log"`, `"question"`, `"artifact"`, `"done"`. No other kinds.
+- **Question arming rule.** An executor MUST record the pending question *before* it emits
+  the `question` event, and MUST accept `answer()` while its event iterator is suspended or
+  abandoned. The orchestrator stops consuming events the moment a question arrives and
+  resumes only after the operator replies, so an executor that arms the question *after*
+  the yield can never be answered. This is a contract on every implementation, not an
+  implementation detail of any one of them.
 - `artifact` events are **advisory only**. The orchestrator must never use them to decide whether a gate is open — gates read the filesystem. This is enforced by review, not by code.
 - All executor methods are `async`. The orchestrator is an asyncio application.
 - Python target: 3.11+.
@@ -42,7 +50,12 @@
 **Interfaces:**
 - Consumes: nothing from earlier plans.
 - Produces:
-  - `StepRequest` — frozen dataclass: `node_id: str`, `skill: str`, `args: tuple[str, ...]`, `workspace: Path`, `timeout_seconds: int | None = None`.
+  - `StepRequest` — frozen dataclass: `node_id: str`, `skill: str`, `args: tuple[str, ...]`, `workspace: Path`, `timeout_seconds: int | None = None`, `models: dict[str, str]`.
+
+`models` maps an agent name to a **tier** (`haiku` / `sonnet` / `opus`), never a provider
+model ID. Tiers are a concept every provider has; `claude-opus-5` is not. The adapter
+translates tier to whatever its own runtime calls that model, which is the same reason
+`skill` and `args` cross this boundary as data rather than as a formatted command.
   - `StepHandle` — dataclass: `id: str`, `request: StepRequest`.
   - `StepEvent` — frozen dataclass: `kind: str`, `payload: dict`. Constructors: `StepEvent.log(text)`, `StepEvent.question(question_id, prompt_md, options=None)`, `StepEvent.artifact(path)`, `StepEvent.done(outcome, summary, error=None)`.
   - `StepEvent` accessors: `.text`, `.question_id`, `.prompt_md`, `.options`, `.outcome`, `.summary`, `.error`, and `.is_terminal` (True only for `kind == "done"`).
@@ -189,6 +202,10 @@ class StepRequest:
     args: tuple[str, ...] = ()
     workspace: Path = Path(".")
     timeout_seconds: int | None = None
+    # Agent name -> model tier ("haiku" | "sonnet" | "opus"). Sparse: an absent
+    # agent inherits the project default. Deliberately generic - "tier" is a
+    # concept every provider has, and no provider's model IDs appear here.
+    models: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -448,6 +465,49 @@ async def test_question_blocks_until_answered():
     assert ex.answers == [("q1", "Postgres")]
 
 
+async def test_question_can_be_answered_after_the_iterator_is_abandoned():
+    """THE contract test. This is exactly how the orchestrator behaves.
+
+    It consumes events until a question arrives, then stops iterating entirely -
+    the driver task returns and the async generator is left suspended at the
+    yield. The answer arrives later, from an HTTP request, and only then does a
+    new driver pass resume the same iterator.
+
+    An executor that arms the pending question after the yield fails here even
+    though it passes test_question_blocks_until_answered, because that test keeps
+    consuming. Every executor must pass this one.
+    """
+    ex = FakeExecutor({"arch-gen": [
+        base.StepEvent.log("thinking"),
+        base.StepEvent.question("q1", "Postgres or MySQL?"),
+        base.StepEvent.log("noted"),
+        base.StepEvent.done(base.OUTCOME_SUCCESS, "done"),
+    ]})
+    handle = await ex.start(_req("arch-gen"))
+
+    stream = ex.events(handle)
+    seen: list[base.StepEvent] = []
+
+    # Pass one: consume up to and including the question, then walk away.
+    async for event in stream:
+        seen.append(event)
+        if event.kind == "question":
+            break
+
+    assert [e.kind for e in seen] == ["log", "question"]
+
+    # The answer must be accepted with nothing iterating the stream.
+    await ex.answer(handle, "q1", "Postgres")
+    assert ex.answers == [("q1", "Postgres")]
+
+    # Pass two: resume the SAME iterator and it must run to completion.
+    async for event in stream:
+        seen.append(event)
+
+    assert [e.kind for e in seen] == ["log", "question", "log", "done"]
+    assert seen[-1].outcome == base.OUTCOME_SUCCESS
+
+
 async def test_answering_unknown_question_raises():
     ex = FakeExecutor({"doc-ingest": [base.StepEvent.done(base.OUTCOME_SUCCESS, "ok")]})
     handle = await ex.start(_req())
@@ -621,13 +681,22 @@ class FakeExecutor:
         for event in session.events:
             if session.cancelled.is_set():
                 break
+
+            # Arm the question BEFORE yielding it. The consumer abandons this
+            # iterator as soon as it sees a question event and only resumes after
+            # answer() lands, so arming afterwards would make the question
+            # unanswerable and clearing `answered` afterwards would discard a
+            # reply that had already arrived. See the question arming rule.
+            if event.kind == "question":
+                session.pending_question = event.question_id
+                session.answered.clear()
+
             yield event
+
             if event.is_terminal:
                 session.finished = True
                 return
             if event.kind == "question":
-                session.pending_question = event.question_id
-                session.answered.clear()
                 await self._wait_for_answer_or_cancel(session)
                 if session.cancelled.is_set():
                     break
@@ -694,3 +763,6 @@ git commit -m "feat(studio): scripted FakeExecutor for token-free orchestrator t
 - [ ] `FakeExecutor` satisfies `isinstance(..., StepExecutor)` at runtime.
 - [ ] A scripted question genuinely blocks playback until `answer()` is called, proven by the `not task.done()` assertion rather than by timing alone.
 - [ ] `events()` always terminates with a `done` event — including for scripts that omit one, and for cancelled sessions.
+- [ ] `test_question_can_be_answered_after_the_iterator_is_abandoned` passes — a question
+      is answerable while nothing is consuming the stream, and resuming the same iterator
+      runs the step to completion. This is the contract the orchestrator actually relies on.

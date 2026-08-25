@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-25-implr-studio-design.md`
 
+**Runtime verification:** `docs/RUNTIME.md` — how to prove this plan actually runs, not just that its suite passes.
+
 ## Global Constraints
 
 - `scripts/implr_validate` remains **standard library only**. Never add an import of `yaml` or any third-party package to it.
@@ -39,6 +41,69 @@
 | `scripts/implr_validate/checks.py` | **Modified** — gains `check_step_registry`. Stays stdlib-only. |
 | `scripts/implr_validate/cli.py` | **Modified** — calls the new check; exit code becomes level-aware. |
 | `tests/test_step_registry_check.py` | Registry validation inside the existing validator suite. |
+
+---
+
+### Task 0: Ignore the build artefacts these plans create
+
+**Files:**
+- Modify: `.gitignore`
+- Modify: `scaffold/schemas/frontmatter-rules.json` (`repo_prose_checks.exempt_paths`)
+
+The six plans introduce `pip install -e` (which writes `*.egg-info/`), `npm install` (which
+writes `studio/frontend/node_modules/`), `npm run build` (`dist/`), pytest caches, and a
+SQLite database under `docs/implr/.studio/`. The current `.gitignore` covers none of them,
+and the repo already carries untracked `tests/__pycache__/*.pyc` for exactly that reason.
+Plan 5 Task 1 runs `npm install` and then `git add studio/frontend` — without this task,
+that commits `node_modules`.
+
+Do this first. It costs a minute now and is a painful history rewrite later.
+
+- [ ] **Step 1: Extend `.gitignore`**
+
+Append:
+
+```gitignore
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+# node
+node_modules/
+studio/frontend/dist/
+# studio run state (per-workspace, never committed)
+docs/implr/.studio/
+```
+
+- [ ] **Step 2: Exempt node_modules from the prose checks**
+
+`check_repo_prose` walks **every** `.md`, `.yaml` and `.yml` file under the repo root
+looking for `kb_supported_formats` drift. After `npm install` that means crawling tens of
+thousands of files on every `implr-validate --repo`. Add to
+`repo_prose_checks.exempt_paths` in `scaffold/schemas/frontmatter-rules.json` — two new
+entries in the existing array, alongside `"docs/superpowers/"`:
+
+```text
+    "studio/frontend/node_modules/",
+    "studio/frontend/dist/",
+```
+
+- [ ] **Step 3: Verify**
+
+Run: `python -m implr_validate --repo --root .`
+Expected: exit `0`, and noticeably fast even with `node_modules` present.
+
+Run: `git status --porcelain`
+Expected: no `__pycache__`, `node_modules`, `dist` or `.egg-info` entries.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add .gitignore scaffold/schemas/frontmatter-rules.json
+git commit -m "chore: ignore build artefacts introduced by implr Studio"
+```
 
 ---
 
@@ -220,11 +285,22 @@ git commit -m "feat(studio): package scaffolding and implr_validate bridge"
 **Interfaces:**
 - Consumes: `implr_bridge.repo_root`, `implr_bridge.resolve_schema_dir` from Task 1.
 - Produces:
-  - `registry.Step` — frozen dataclass with fields `id: str`, `label: str`, `phase: str`, `skill: str`, `args_allowed: tuple[str, ...]`, `args_default: tuple[str, ...]`, `interactive: bool`, `produces: tuple[str, ...]`, `description: str`, `available: bool`.
+  - `registry.ArgSpec` — frozen dataclass: `flag: str`, `takes_value: bool`, `value_pattern: str | None`, `note: str`.
+  - `registry.AgentRef` — frozen dataclass: `name: str`, `fan_out: str`.
+  - `registry.IOPath` — frozen dataclass: `path: str`, `note: str`.
+  - `registry.Step` — frozen dataclass: `id`, `label`, `phase`, `skill`, `args_allowed: tuple[ArgSpec, ...]`, `args_default: tuple[str, ...]`, `interactive: bool`, `agents: tuple[AgentRef, ...]`, `consumes: tuple[IOPath, ...]`, `produces: tuple[IOPath, ...]`, `produces_artefact: str | None`, `description: str`, `available: bool`.
+  - `Step.arg(flag) -> ArgSpec | None` and `Step.flags -> tuple[str, ...]` — convenience for validation, so callers never re-scan `args_allowed`.
   - `registry.Registry` — has `.steps: dict[str, Step]` and `.get(step_id) -> Step | None`.
   - `registry.load_registry(schema_dir: Path, skills_dir: Path) -> Registry`
   - `registry.RegistryError` (exception).
   - `registry.PHASES: tuple[str, ...]` = `("discovery", "design", "requirements", "planning", "build", "verify")`.
+  - `registry.TIERS: tuple[str, ...]` = `("haiku", "sonnet", "opus")`.
+
+`args_allowed` entries are **objects, not strings** — several implr flags take a value
+(`--file`, `--task`, `--domain`), and a flat whitelist makes those flags selectable and
+inert. A `takes_value: true` spec must carry a `value_pattern`; the loader rejects one that
+does not, because an unvalidated value is the one place a path could reach an argv vector
+unchecked.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -256,10 +332,17 @@ BASE_STEP = {
     "label": "Document Ingestion",
     "phase": "discovery",
     "skill": "doc-ingest",
-    "args_allowed": ["--registry-only", "--file", "--rebuild", "--dry-run"],
+    "args_allowed": [
+        {"flag": "--registry-only", "takes_value": False, "note": "fast scan"},
+        {"flag": "--file", "takes_value": True,
+         "value_pattern": "^[A-Za-z0-9._/-]{1,200}$", "note": "one document"},
+    ],
     "args_default": [],
     "interactive": False,
-    "produces": ["digest", "synthesis"],
+    "agents": [{"name": "doc-ingest-digester", "fan_out": "1 per changed doc"}],
+    "consumes": [{"path": "docs/kb/**", "note": "18 formats"}],
+    "produces": [{"path": "docs/implr/kb-index/master-synthesis.md", "note": ""}],
+    "produces_artefact": None,
     "description": "Indexes and digests the knowledge base.",
 }
 
@@ -274,8 +357,82 @@ def test_loads_a_step(tmp_path: Path):
     step = reg.get("doc-ingest")
     assert step.label == "Document Ingestion"
     assert step.phase == "discovery"
-    assert step.args_allowed == ("--registry-only", "--file", "--rebuild", "--dry-run")
+    assert step.flags == ("--registry-only", "--file")
     assert step.interactive is False
+
+
+def test_arg_specs_carry_value_metadata(tmp_path: Path):
+    """A flat flag whitelist cannot express --file <path>. This is why args are objects."""
+    schema_dir, skills_dir = tmp_path / "schemas", tmp_path / "skills"
+    _write_registry(schema_dir, [BASE_STEP])
+    _make_skill(skills_dir, "doc-ingest")
+
+    step = registry.load_registry(schema_dir, skills_dir).get("doc-ingest")
+
+    assert step.arg("--registry-only").takes_value is False
+    assert step.arg("--file").takes_value is True
+    assert step.arg("--file").value_pattern == "^[A-Za-z0-9._/-]{1,200}$"
+    assert step.arg("--nope") is None
+
+
+def test_value_taking_arg_without_a_pattern_rejected(tmp_path: Path):
+    """An unvalidated value is the one way a path reaches an argv vector unchecked."""
+    schema_dir, skills_dir = tmp_path / "schemas", tmp_path / "skills"
+    bad = dict(BASE_STEP, args_allowed=[{"flag": "--file", "takes_value": True, "note": ""}])
+    _write_registry(schema_dir, [bad])
+    _make_skill(skills_dir, "doc-ingest")
+
+    with pytest.raises(registry.RegistryError, match="--file.*requires a value_pattern"):
+        registry.load_registry(schema_dir, skills_dir)
+
+
+def test_invalid_value_pattern_rejected(tmp_path: Path):
+    schema_dir, skills_dir = tmp_path / "schemas", tmp_path / "skills"
+    bad = dict(BASE_STEP, args_allowed=[
+        {"flag": "--file", "takes_value": True, "value_pattern": "([unclosed", "note": ""},
+    ])
+    _write_registry(schema_dir, [bad])
+    _make_skill(skills_dir, "doc-ingest")
+
+    with pytest.raises(registry.RegistryError, match="not a valid regex"):
+        registry.load_registry(schema_dir, skills_dir)
+
+
+def test_agents_are_loaded_in_dispatch_order(tmp_path: Path):
+    schema_dir, skills_dir = tmp_path / "schemas", tmp_path / "skills"
+    step = dict(BASE_STEP, agents=[
+        {"name": "arch-excerpter", "fan_out": "1 per plan"},
+        {"name": "plan-runner", "fan_out": "1 per plan, cap 5"},
+        {"name": "task-executor", "fan_out": "1 per task"},
+    ])
+    _write_registry(schema_dir, [step])
+    _make_skill(skills_dir, "doc-ingest")
+
+    loaded = registry.load_registry(schema_dir, skills_dir).get("doc-ingest")
+
+    assert [a.name for a in loaded.agents] == ["arch-excerpter", "plan-runner", "task-executor"]
+    assert loaded.agents[1].fan_out == "1 per plan, cap 5"
+
+
+def test_produces_artefact_must_be_null_or_a_string(tmp_path: Path):
+    schema_dir, skills_dir = tmp_path / "schemas", tmp_path / "skills"
+    _write_registry(schema_dir, [dict(BASE_STEP, produces_artefact="plan")])
+    _make_skill(skills_dir, "doc-ingest")
+
+    assert registry.load_registry(schema_dir, skills_dir).get("doc-ingest").produces_artefact == "plan"
+
+
+def test_duplicate_flag_in_args_allowed_rejected(tmp_path: Path):
+    schema_dir, skills_dir = tmp_path / "schemas", tmp_path / "skills"
+    bad = dict(BASE_STEP, args_allowed=[
+        {"flag": "--dry-run", "takes_value": False, "note": ""},
+        {"flag": "--dry-run", "takes_value": False, "note": ""},
+    ])
+    _write_registry(schema_dir, [bad])
+    _make_skill(skills_dir, "doc-ingest")
+
+    with pytest.raises(registry.RegistryError, match="duplicate flag"):
+        registry.load_registry(schema_dir, skills_dir)
 
 
 def test_step_is_available_when_skill_exists(tmp_path: Path):
@@ -335,6 +492,16 @@ def test_args_default_must_be_subset_of_args_allowed(tmp_path: Path):
         registry.load_registry(schema_dir, skills_dir)
 
 
+def test_args_default_cannot_name_a_value_taking_flag(tmp_path: Path):
+    """A default cannot supply a value, so it must not select a flag that needs one."""
+    schema_dir, skills_dir = tmp_path / "schemas", tmp_path / "skills"
+    _write_registry(schema_dir, [dict(BASE_STEP, args_default=["--file"])])
+    _make_skill(skills_dir, "doc-ingest")
+
+    with pytest.raises(registry.RegistryError, match="args_default entry '--file' takes a value"):
+        registry.load_registry(schema_dir, skills_dir)
+
+
 def test_shipped_registry_is_valid():
     """The real scaffold/schemas/step-registry.json must load against the real skills/."""
     from implr_studio import implr_bridge
@@ -345,6 +512,34 @@ def test_shipped_registry_is_valid():
     assert reg.get("doc-ingest").available is True
     assert reg.get("dev-executor").available is True
     assert reg.get("sec-review").available is False
+
+
+def test_shipped_registry_agents_match_the_real_agent_definitions():
+    """Every agent a step claims to dispatch must exist in .claude/agents/."""
+    from implr_studio import implr_bridge
+
+    root = implr_bridge.repo_root()
+    reg = registry.load_registry(root / "scaffold" / "schemas", root / "skills")
+
+    for step in reg.steps.values():
+        for agent in step.agents:
+            assert (root / ".claude" / "agents" / ("%s.md" % agent.name)).is_file(), (
+                "step %s claims agent %s, which has no definition" % (step.id, agent.name)
+            )
+
+
+def test_shipped_registry_artefacts_are_real_types():
+    """produces_artefact must name a frontmatter-rules.json artefact type."""
+    from implr_studio import implr_bridge
+
+    root = implr_bridge.repo_root()
+    schema_dir = implr_bridge.resolve_schema_dir(root)
+    contracts = implr_bridge.load_contracts(str(schema_dir))
+    reg = registry.load_registry(root / "scaffold" / "schemas", root / "skills")
+
+    for step in reg.steps.values():
+        if step.produces_artefact is not None:
+            assert step.produces_artefact in contracts.artefact_types
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -356,108 +551,217 @@ Expected: FAIL — `ImportError: cannot import name 'registry'`
 
 Create `scaffold/schemas/step-registry.json`:
 
+Two conventions in this file, both load-bearing:
+
+- `PATH` is the value pattern for anything filesystem-shaped:
+  `^[A-Za-z0-9._/-]{1,200}$`. It admits no whitespace, no quotes, no `$`, no backticks and
+  no `..` traversal beyond what the backend's own path resolution rejects.
+- Every `agents[].name` must match a file in `.claude/agents/` and a key in
+  `implr.config.yaml`'s `agents:` block. The tests above enforce the first; drift in the
+  second shows up as a step whose tier selector has no default.
+
 ```json
 {
-  "_comment": "Catalogue of pipeline steps for implr Studio. Adding a step here makes it appear in the visual builder palette; no code change is required. A step whose skills/<skill>/SKILL.md does not exist is rendered unavailable, not rejected.",
+  "_comment": "Catalogue of pipeline steps for implr Studio. Adding a step here makes it appear in the palette and its agents in the step configurator; no code change is required. A step whose skills/<skill>/SKILL.md does not exist is rendered unavailable, not rejected.",
   "steps": [
     {
       "id": "doc-ingest",
       "label": "Document Ingestion",
       "phase": "discovery",
       "skill": "doc-ingest",
-      "args_allowed": ["--registry-only", "--file", "--rebuild", "--dry-run"],
+      "args_allowed": [
+        { "flag": "--registry-only", "takes_value": false, "note": "fast scan, no digesting" },
+        { "flag": "--file", "takes_value": true, "value_pattern": "^[A-Za-z0-9._/-]{1,200}$", "note": "one document only" },
+        { "flag": "--rebuild", "takes_value": false, "note": "ignore the incremental cache" },
+        { "flag": "--dry-run", "takes_value": false, "note": "report, write nothing" }
+      ],
       "args_default": [],
       "interactive": false,
-      "produces": ["digests", "syntheses", "master synthesis"],
-      "description": "Indexes and digests the knowledge base under docs/kb/."
+      "agents": [
+        { "name": "doc-ingest-digester", "fan_out": "1 per changed doc" },
+        { "name": "doc-ingest-synthesizer", "fan_out": "1 per domain" }
+      ],
+      "consumes": [
+        { "path": "docs/kb/**", "note": "18 supported formats" },
+        { "path": "docs/implr/kb-index/registry.md", "note": "incremental state" }
+      ],
+      "produces": [
+        { "path": "docs/implr/kb-index/digests/per-doc/*.md", "note": "" },
+        { "path": "docs/implr/kb-index/domains/*.md", "note": "" },
+        { "path": "docs/implr/kb-index/master-synthesis.md", "note": "" }
+      ],
+      "produces_artefact": null,
+      "description": "Reads everything under docs/kb/, digests each document, then rebuilds the per-domain and master syntheses that every later step depends on."
     },
     {
       "id": "arch-gen",
       "label": "Architecture Brief",
       "phase": "design",
       "skill": "arch-gen",
-      "args_allowed": ["--update", "--dry-run"],
+      "args_allowed": [
+        { "flag": "--update", "takes_value": false, "note": "amend instead of replace" },
+        { "flag": "--dry-run", "takes_value": false, "note": "report, write nothing" }
+      ],
       "args_default": [],
       "interactive": true,
-      "produces": ["docs/ARCHITECTURE.md"],
-      "description": "Generates ARCHITECTURE.md; confirms each inferred decision with the operator."
+      "agents": [{ "name": "arch-drafter", "fan_out": "1" }],
+      "consumes": [
+        { "path": "docs/implr/kb-index/master-synthesis.md", "note": "required" },
+        { "path": "docs/implr/config/DEV-STANDARDS.md", "note": "optional" }
+      ],
+      "produces": [{ "path": "docs/ARCHITECTURE.md", "note": "" }],
+      "produces_artefact": null,
+      "description": "Infers architectural decisions from the master synthesis and confirms each one with the operator before writing ARCHITECTURE.md."
     },
     {
       "id": "ba-requirements-gen",
       "label": "Requirements Generation",
       "phase": "requirements",
       "skill": "ba-requirements-gen",
-      "args_allowed": ["--domain", "--reprocess", "--dry-run"],
+      "args_allowed": [
+        { "flag": "--domain", "takes_value": true, "value_pattern": "^[a-z0-9-]{1,60}$", "note": "restrict to one domain" },
+        { "flag": "--reprocess", "takes_value": false, "note": "regenerate existing" },
+        { "flag": "--dry-run", "takes_value": false, "note": "report, write nothing" }
+      ],
       "args_default": [],
       "interactive": false,
-      "produces": ["REQ-F-*", "REQ-N-*"],
-      "description": "Generates functional and non-functional requirements from the digested KB."
+      "agents": [{ "name": "requirements-domain-worker", "fan_out": "1 per domain" }],
+      "consumes": [
+        { "path": "docs/implr/kb-index/domains/*.md", "note": "per domain" },
+        { "path": "docs/implr/kb-index/master-synthesis.md", "note": "NFR signals" }
+      ],
+      "produces": [],
+      "produces_artefact": "requirement",
+      "description": "Turns the digested knowledge base into numbered functional and non-functional requirements, one worker per domain."
     },
     {
       "id": "ba-cr",
       "label": "Change Request",
       "phase": "requirements",
       "skill": "ba-cr",
-      "args_allowed": ["--file", "--ingest-file", "--impact-only", "--dry-run"],
+      "args_allowed": [
+        { "flag": "--file", "takes_value": true, "value_pattern": "^[A-Za-z0-9._/-]{1,200}$", "note": "the CR document" },
+        { "flag": "--ingest-file", "takes_value": true, "value_pattern": "^[A-Za-z0-9._/-]{1,200}$", "note": "ingest then analyse" },
+        { "flag": "--impact-only", "takes_value": false, "note": "analyse, do not apply" },
+        { "flag": "--dry-run", "takes_value": false, "note": "report, write nothing" }
+      ],
       "args_default": [],
       "interactive": true,
-      "produces": ["CR-*"],
-      "description": "Creates and applies Change Requests amending requirements and plans."
+      "agents": [
+        { "name": "cr-impact-analyzer", "fan_out": "1" },
+        { "name": "cr-applier", "fan_out": "1 per target" }
+      ],
+      "consumes": [
+        { "path": "docs/kb/change-requests/*.md", "note": "" },
+        { "path": "docs/implr/requirements/**", "note": "impact set" }
+      ],
+      "produces": [],
+      "produces_artefact": "cr",
+      "description": "Analyses what a Change Request would touch, shows the blast radius, then applies it across requirements and plans."
     },
     {
       "id": "dev-planner",
       "label": "Specification / Planning",
       "phase": "planning",
       "skill": "dev-planner",
-      "args_allowed": ["--all", "--replan", "--brainstorm", "--dry-run", "--coherence-check"],
+      "args_allowed": [
+        { "flag": "--all", "takes_value": false, "note": "every approved requirement" },
+        { "flag": "--replan", "takes_value": false, "note": "rewrite needs-rework plans" },
+        { "flag": "--brainstorm", "takes_value": false, "note": "ask before planning" },
+        { "flag": "--coherence-check", "takes_value": false, "note": "cross-plan consistency" },
+        { "flag": "--dry-run", "takes_value": false, "note": "report, write nothing" }
+      ],
       "args_default": ["--all"],
       "interactive": true,
-      "produces": ["PLAN-F-*", "PLAN-N-*"],
-      "description": "Creates implementation plans from approved requirements."
+      "agents": [{ "name": "plan-worker", "fan_out": "1 per requirement" }],
+      "consumes": [
+        { "path": "docs/implr/requirements/**", "note": "status: approved" },
+        { "path": "docs/ARCHITECTURE.md", "note": "" },
+        { "path": "docs/implr/config/DEV-STANDARDS.md", "note": "" }
+      ],
+      "produces": [],
+      "produces_artefact": "plan",
+      "description": "Writes an implementation plan per approved requirement, with per-task TDD flags and injected NFR constraints."
     },
     {
       "id": "dev-executor",
       "label": "Implementation",
       "phase": "build",
       "skill": "dev-executor",
-      "args_allowed": ["--all", "--task", "--dry-run", "--verbose", "--review", "--commit"],
+      "args_allowed": [
+        { "flag": "--all", "takes_value": false, "note": "every ready plan" },
+        { "flag": "--task", "takes_value": true, "value_pattern": "^[A-Za-z0-9._#/-]{1,80}$", "note": "one task id only" },
+        { "flag": "--review", "takes_value": false, "note": "review after each plan" },
+        { "flag": "--commit", "takes_value": false, "note": "commit per plan" },
+        { "flag": "--verbose", "takes_value": false, "note": "stream task detail" },
+        { "flag": "--dry-run", "takes_value": false, "note": "report, write nothing" }
+      ],
       "args_default": ["--all"],
       "interactive": false,
-      "produces": ["source code", "tests"],
-      "description": "Implements ready plans task-by-task with TDD enforcement."
+      "agents": [
+        { "name": "arch-excerpter", "fan_out": "1 per plan" },
+        { "name": "plan-runner", "fan_out": "1 per plan, cap 5" },
+        { "name": "task-executor", "fan_out": "1 per task" }
+      ],
+      "consumes": [
+        { "path": "docs/implr/plans/**", "note": "status: ready" },
+        { "path": "docs/ARCHITECTURE.md", "note": "excerpted per plan" },
+        { "path": "docs/implr/config/DEV-STANDARDS.md", "note": "" }
+      ],
+      "produces": [
+        { "path": "src/**", "note": "implementation" },
+        { "path": "tests/**", "note": "tests first when TDD is required" }
+      ],
+      "produces_artefact": null,
+      "description": "Implements ready plans task by task. Parses each plan into envelopes, then runs one task agent per task under TDD enforcement."
     },
     {
       "id": "dev-code-review",
       "label": "Code Review",
       "phase": "verify",
       "skill": "dev-code-review",
-      "args_allowed": ["--all", "--verbose"],
+      "args_allowed": [
+        { "flag": "--all", "takes_value": false, "note": "every implemented plan" },
+        { "flag": "--verbose", "takes_value": false, "note": "full finding detail" }
+      ],
       "args_default": ["--all"],
       "interactive": false,
-      "produces": ["REVIEW-*"],
-      "description": "Reviews produced code per plan against acceptance criteria."
+      "agents": [{ "name": "code-review-worker", "fan_out": "1 per plan" }],
+      "consumes": [
+        { "path": "docs/implr/plans/**", "note": "acceptance criteria" },
+        { "path": "src/**", "note": "the diff" }
+      ],
+      "produces": [],
+      "produces_artefact": "review",
+      "description": "Reviews what was built against each plan's acceptance criteria in a fresh context, then issues a verdict."
     },
     {
       "id": "qa-testing",
       "label": "Testing",
       "phase": "verify",
       "skill": "qa-testing",
-      "args_allowed": ["--all"],
+      "args_allowed": [{ "flag": "--all", "takes_value": false, "note": "" }],
       "args_default": ["--all"],
       "interactive": false,
-      "produces": ["test report"],
-      "description": "PLANNED - dedicated test execution step. Not yet implemented."
+      "agents": [],
+      "consumes": [],
+      "produces": [],
+      "produces_artefact": null,
+      "description": "PLANNED - a dedicated test-execution step. Declared so it appears in the process diagram; the skill does not exist yet."
     },
     {
       "id": "sec-review",
       "label": "Security Checks",
       "phase": "verify",
       "skill": "sec-review",
-      "args_allowed": ["--all"],
+      "args_allowed": [{ "flag": "--all", "takes_value": false, "note": "" }],
       "args_default": ["--all"],
       "interactive": false,
-      "produces": ["security report"],
-      "description": "PLANNED - dedicated security review step. Not yet implemented."
+      "agents": [],
+      "consumes": [],
+      "produces": [],
+      "produces_artefact": null,
+      "description": "PLANNED - a dedicated security review step. Declared so it appears in the process diagram; the skill does not exist yet."
     }
   ]
 }
@@ -468,16 +772,23 @@ Create `scaffold/schemas/step-registry.json`:
 Create `studio/backend/implr_studio/registry.py`:
 
 ```python
-"""Loads the declarative catalogue of pipeline steps."""
+"""Loads the declarative catalogue of pipeline steps.
+
+Adding a step is a registry edit. Nothing here knows the name of any particular
+step, agent, or artefact type - those are all data.
+"""
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 PHASES = ("discovery", "design", "requirements", "planning", "build", "verify")
+TIERS = ("haiku", "sonnet", "opus")
 
 _REQUIRED_FIELDS = (
     "id", "label", "phase", "skill",
-    "args_allowed", "args_default", "interactive", "produces", "description",
+    "args_allowed", "args_default", "interactive",
+    "agents", "consumes", "produces", "produces_artefact", "description",
 )
 
 
@@ -486,17 +797,53 @@ class RegistryError(Exception):
 
 
 @dataclass(frozen=True)
+class ArgSpec:
+    flag: str
+    takes_value: bool
+    value_pattern: str | None
+    note: str
+
+
+@dataclass(frozen=True)
+class AgentRef:
+    name: str
+    fan_out: str
+
+
+@dataclass(frozen=True)
+class IOPath:
+    path: str
+    note: str
+
+
+@dataclass(frozen=True)
 class Step:
     id: str
     label: str
     phase: str
     skill: str
-    args_allowed: tuple[str, ...]
+    args_allowed: tuple[ArgSpec, ...]
     args_default: tuple[str, ...]
     interactive: bool
-    produces: tuple[str, ...]
+    agents: tuple[AgentRef, ...]
+    consumes: tuple[IOPath, ...]
+    produces: tuple[IOPath, ...]
+    produces_artefact: str | None
     description: str
     available: bool
+
+    @property
+    def flags(self) -> tuple[str, ...]:
+        return tuple(a.flag for a in self.args_allowed)
+
+    def arg(self, flag: str) -> ArgSpec | None:
+        for spec in self.args_allowed:
+            if spec.flag == flag:
+                return spec
+        return None
+
+    def agent_names(self) -> tuple[str, ...]:
+        return tuple(a.name for a in self.agents)
 
 
 @dataclass(frozen=True)
@@ -505,6 +852,43 @@ class Registry:
 
     def get(self, step_id: str) -> Step | None:
         return self.steps.get(step_id)
+
+
+def _arg_specs(step_id: str, entries) -> tuple[ArgSpec, ...]:
+    specs: list[ArgSpec] = []
+    seen: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict) or "flag" not in entry:
+            raise RegistryError(
+                "step %s: args_allowed entries must be objects with a 'flag' "
+                "(bare strings were the pre-configurator format)" % step_id
+            )
+        flag = entry["flag"]
+        if flag in seen:
+            raise RegistryError("step %s: duplicate flag %r in args_allowed" % (step_id, flag))
+        seen.add(flag)
+
+        takes_value = bool(entry.get("takes_value", False))
+        pattern = entry.get("value_pattern")
+        if takes_value:
+            if not pattern:
+                raise RegistryError(
+                    "step %s: arg %r takes a value and therefore requires a value_pattern"
+                    % (step_id, flag)
+                )
+            try:
+                re.compile(pattern)
+            except re.error as e:
+                raise RegistryError(
+                    "step %s: arg %r value_pattern is not a valid regex: %s" % (step_id, flag, e)
+                )
+        specs.append(ArgSpec(
+            flag=flag,
+            takes_value=takes_value,
+            value_pattern=pattern if takes_value else None,
+            note=entry.get("note", ""),
+        ))
+    return tuple(specs)
 
 
 def load_registry(schema_dir: Path, skills_dir: Path) -> Registry:
@@ -526,22 +910,47 @@ def load_registry(schema_dir: Path, skills_dir: Path) -> Registry:
             raise RegistryError(
                 "step %s: unknown phase %r (legal: %s)" % (step_id, entry["phase"], list(PHASES))
             )
-        allowed = tuple(entry["args_allowed"])
+
+        specs = _arg_specs(step_id, entry["args_allowed"])
+        by_flag = {s.flag: s for s in specs}
         for arg in entry["args_default"]:
-            if arg not in allowed:
+            spec = by_flag.get(arg)
+            if spec is None:
                 raise RegistryError(
                     "step %s: args_default entry %r not in args_allowed" % (step_id, arg)
                 )
+            if spec.takes_value:
+                raise RegistryError(
+                    "step %s: args_default entry %r takes a value, so it cannot be a default"
+                    % (step_id, arg)
+                )
+
+        artefact = entry["produces_artefact"]
+        if artefact is not None and not isinstance(artefact, str):
+            raise RegistryError(
+                "step %s: produces_artefact must be a string or null" % step_id
+            )
+
         skill_md = Path(skills_dir) / entry["skill"] / "SKILL.md"
         steps[step_id] = Step(
             id=step_id,
             label=entry["label"],
             phase=entry["phase"],
             skill=entry["skill"],
-            args_allowed=allowed,
+            args_allowed=specs,
             args_default=tuple(entry["args_default"]),
             interactive=bool(entry["interactive"]),
-            produces=tuple(entry["produces"]),
+            agents=tuple(
+                AgentRef(name=a["name"], fan_out=a.get("fan_out", ""))
+                for a in entry["agents"]
+            ),
+            consumes=tuple(
+                IOPath(path=c["path"], note=c.get("note", "")) for c in entry["consumes"]
+            ),
+            produces=tuple(
+                IOPath(path=p["path"], note=p.get("note", "")) for p in entry["produces"]
+            ),
+            produces_artefact=artefact,
             description=entry["description"],
             available=skill_md.is_file(),
         )
@@ -572,7 +981,12 @@ git commit -m "feat(studio): step registry file and loader"
 - Consumes: `registry.Registry`, `registry.Step` from Task 2.
 - Produces:
   - `pipeline.Gate` — frozen dataclass: `type: str`, `artefact: str | None`, `quantifier: str | None`, `require: dict[str, str] | None`.
-  - `pipeline.Node` — frozen dataclass: `id: str`, `step: str`, `args: tuple[str, ...]`, `position: dict[str, float]`.
+  - `pipeline.Node` — frozen dataclass: `id: str`, `step: str`, `args: tuple[str, ...]`, `arg_values: dict[str, str]`, `models: dict[str, str]`, `position: dict[str, float]`.
+
+`arg_values` maps a selected flag to its value; `models` maps an agent name to a tier.
+Both are sparse and both default to empty, so a `pipeline.yaml` written before these fields
+existed loads unchanged — an absent `models` entry means "inherit the project default from
+`implr.config.yaml`", which is exactly the old behaviour.
   - `pipeline.Edge` — frozen dataclass: `source: str`, `target: str`, `gate: Gate`.
   - `pipeline.Pipeline` — frozen dataclass: `version: int`, `nodes: tuple[Node, ...]`, `edges: tuple[Edge, ...]`.
   - `pipeline.load_pipeline(path: Path) -> Pipeline`
@@ -726,6 +1140,8 @@ class Node:
     id: str
     step: str
     args: tuple[str, ...] = ()
+    arg_values: dict = field(default_factory=dict)
+    models: dict = field(default_factory=dict)
     position: dict = field(default_factory=dict)
 
 
@@ -789,6 +1205,8 @@ def pipeline_from_dict(data: dict) -> Pipeline:
             id=entry["id"],
             step=entry["step"],
             args=tuple(entry.get("args") or ()),
+            arg_values=dict(entry.get("arg_values") or {}),
+            models=dict(entry.get("models") or {}),
             position=dict(entry.get("position") or {}),
         ))
 
@@ -806,18 +1224,22 @@ def pipeline_from_dict(data: dict) -> Pipeline:
     return Pipeline(version=version, nodes=tuple(nodes), edges=tuple(edges))
 
 
+def _node_to_dict(n: Node) -> dict:
+    """Sparse on purpose: a node with no values or overrides serialises exactly as
+    it did before those fields existed, so diffs stay readable."""
+    out: dict = {"id": n.id, "step": n.step, "args": list(n.args)}
+    if n.arg_values:
+        out["arg_values"] = dict(n.arg_values)
+    if n.models:
+        out["models"] = dict(n.models)
+    out["position"] = dict(n.position)
+    return out
+
+
 def pipeline_to_dict(p: Pipeline) -> dict:
     return {
         "version": p.version,
-        "nodes": [
-            {
-                "id": n.id,
-                "step": n.step,
-                "args": list(n.args),
-                "position": dict(n.position),
-            }
-            for n in p.nodes
-        ],
+        "nodes": [_node_to_dict(n) for n in p.nodes],
         "edges": [
             {"from": e.source, "to": e.target, "gate": _gate_to_dict(e.gate)}
             for e in p.edges
@@ -867,7 +1289,13 @@ git commit -m "feat(studio): pipeline.yaml load, save, and round-trip"
   - `pipeline.Finding` — frozen dataclass: `code: str`, `message: str`, `node_id: str | None = None`.
   - `pipeline.validate_pipeline(p: Pipeline, reg) -> list[Finding]` — empty list means valid. The `reg` parameter is a `registry.Registry`, left unannotated so that `pipeline.py` needs no import of `registry.py` purely for a type hint. Duck-typed on `.get(step_id)`, which also makes the validator trivial to test with a stub.
 
-Finding codes used by later plans and the frontend: `unknown-step`, `disallowed-arg`, `duplicate-node-id`, `unknown-edge-node`, `cycle`, `unreachable-node`, `no-root`.
+Finding codes used by later plans and the frontend: `unknown-step`, `disallowed-arg`,
+`missing-arg-value`, `bad-arg-value`, `orphan-arg-value`, `unknown-agent`, `illegal-tier`,
+`duplicate-node-id`, `unknown-edge-node`, `cycle`, `unreachable-node`, `no-root`.
+
+The five arg/model codes are what make the configurator honest. Without them the UI can
+offer a value field whose contents nothing checks, and a tier selector that can name an
+agent the step never dispatches.
 
 Availability is deliberately **not** checked here — a pipeline may reference a registered-but-unimplemented step at design time. Run-start enforcement lives in Plan 3.
 
@@ -892,8 +1320,16 @@ def reg(tmp_path: Path) -> registry.Registry:
     for step_id, skill in (("doc-ingest", "doc-ingest"), ("arch-gen", "arch-gen"), ("sec-review", "sec-review")):
         steps.append({
             "id": step_id, "label": step_id, "phase": "discovery", "skill": skill,
-            "args_allowed": ["--dry-run"], "args_default": [],
-            "interactive": False, "produces": [], "description": "",
+            "args_allowed": [
+                {"flag": "--dry-run", "takes_value": False, "note": ""},
+                {"flag": "--file", "takes_value": True,
+                 "value_pattern": "^[A-Za-z0-9._/-]{1,200}$", "note": ""},
+            ],
+            "args_default": [],
+            "interactive": False,
+            "agents": [{"name": "plan-worker", "fan_out": "1"}],
+            "consumes": [], "produces": [], "produces_artefact": None,
+            "description": "",
         })
     (schema_dir / "step-registry.json").write_text(json.dumps({"steps": steps}), encoding="utf-8")
     for skill in ("doc-ingest", "arch-gen"):          # sec-review intentionally missing
@@ -941,6 +1377,94 @@ def test_disallowed_arg_rejected(reg):
     findings = pipeline.validate_pipeline(p, reg)
     assert _codes(findings) == ["disallowed-arg"]
     assert "--wat" in findings[0].message
+
+
+# --- arg values (the configurator's value fields) ---------------------------
+
+def test_value_taking_arg_without_a_value_rejected(reg):
+    """Selecting --file and supplying nothing is the G1 gap; it must not save."""
+    p = _p([{"id": "a", "step": "doc-ingest", "args": ["--file"]}], [])
+
+    findings = pipeline.validate_pipeline(p, reg)
+
+    assert _codes(findings) == ["missing-arg-value"]
+    assert "--file" in findings[0].message
+
+
+def test_value_taking_arg_with_a_valid_value_accepted(reg):
+    p = _p([{
+        "id": "a", "step": "doc-ingest", "args": ["--file"],
+        "arg_values": {"--file": "docs/kb/billing/rules.md"},
+    }], [])
+
+    assert pipeline.validate_pipeline(p, reg) == []
+
+
+@pytest.mark.parametrize("value", [
+    "docs/kb/a.md; rm -rf /",
+    "$(whoami)",
+    "`id`",
+    "docs/kb/has space.md",
+    'docs/kb/"quoted".md',
+])
+def test_value_failing_the_pattern_rejected(reg, value):
+    """Shell metacharacters never reach an argv vector - rejected on the way in."""
+    p = _p([{
+        "id": "a", "step": "doc-ingest", "args": ["--file"],
+        "arg_values": {"--file": value},
+    }], [])
+
+    assert _codes(pipeline.validate_pipeline(p, reg)) == ["bad-arg-value"]
+
+
+def test_arg_value_for_an_unselected_flag_rejected(reg):
+    """A stale value left behind after unchecking the flag is a bug, not a nicety."""
+    p = _p([{
+        "id": "a", "step": "doc-ingest", "args": [],
+        "arg_values": {"--file": "docs/kb/a.md"},
+    }], [])
+
+    assert _codes(pipeline.validate_pipeline(p, reg)) == ["orphan-arg-value"]
+
+
+def test_non_value_arg_ignores_arg_values(reg):
+    p = _p([{"id": "a", "step": "doc-ingest", "args": ["--dry-run"]}], [])
+
+    assert pipeline.validate_pipeline(p, reg) == []
+
+
+# --- model overrides -------------------------------------------------------
+
+def test_model_override_for_a_dispatched_agent_accepted(reg):
+    p = _p([{"id": "a", "step": "doc-ingest", "models": {"plan-worker": "haiku"}}], [])
+
+    assert pipeline.validate_pipeline(p, reg) == []
+
+
+def test_model_override_for_an_undispatched_agent_rejected(reg):
+    p = _p([{"id": "a", "step": "doc-ingest", "models": {"task-executor": "opus"}}], [])
+
+    findings = pipeline.validate_pipeline(p, reg)
+
+    assert _codes(findings) == ["unknown-agent"]
+    assert "task-executor" in findings[0].message
+
+
+def test_illegal_model_tier_rejected(reg):
+    p = _p([{"id": "a", "step": "doc-ingest", "models": {"plan-worker": "gpt-4"}}], [])
+
+    findings = pipeline.validate_pipeline(p, reg)
+
+    assert _codes(findings) == ["illegal-tier"]
+    assert "haiku" in findings[0].message
+
+
+def test_absent_models_means_inherit_the_project_default(reg):
+    """Pipelines written before this field existed must stay valid."""
+    p = _p([{"id": "a", "step": "doc-ingest"}], [])
+
+    assert pipeline.validate_pipeline(p, reg) == []
+    assert p.nodes[0].models == {}
 
 
 def test_duplicate_node_id_rejected(reg):
@@ -1014,6 +1538,82 @@ class Finding:
     node_id: str | None = None
 
 
+def _validate_args(node: Node, step) -> list[Finding]:
+    """Flags must be allowed; value-taking flags must have a matching value.
+
+    Values are checked against the arg spec's regex here and passed as separate
+    argv elements later - never interpolated into a shell string. Both halves
+    matter: the pattern stops nonsense early, the argv vector stops injection.
+    """
+    import re
+
+    findings: list[Finding] = []
+    selected = set(node.args)
+
+    for arg in node.args:
+        spec = step.arg(arg)
+        if spec is None:
+            findings.append(Finding(
+                "disallowed-arg",
+                "node %s: arg %r not allowed for step %s (allowed: %s)"
+                % (node.id, arg, node.step, list(step.flags)),
+                node.id,
+            ))
+            continue
+        if not spec.takes_value:
+            continue
+        value = node.arg_values.get(arg)
+        if value is None or value == "":
+            findings.append(Finding(
+                "missing-arg-value",
+                "node %s: arg %r requires a value" % (node.id, arg),
+                node.id,
+            ))
+            continue
+        if not re.fullmatch(spec.value_pattern, str(value)):
+            findings.append(Finding(
+                "bad-arg-value",
+                "node %s: value %r for %r does not match %s"
+                % (node.id, value, arg, spec.value_pattern),
+                node.id,
+            ))
+
+    for arg in node.arg_values:
+        if arg not in selected:
+            findings.append(Finding(
+                "orphan-arg-value",
+                "node %s: arg_values has %r, which is not a selected arg" % (node.id, arg),
+                node.id,
+            ))
+
+    return findings
+
+
+def _validate_models(node: Node, step) -> list[Finding]:
+    """A tier override must name an agent this step actually dispatches."""
+    from .registry import TIERS
+
+    findings: list[Finding] = []
+    known = set(step.agent_names())
+    for agent, tier in node.models.items():
+        if agent not in known:
+            findings.append(Finding(
+                "unknown-agent",
+                "node %s: step %s does not dispatch agent %r (dispatches: %s)"
+                % (node.id, node.step, agent, sorted(known) or "none"),
+                node.id,
+            ))
+            continue
+        if tier not in TIERS:
+            findings.append(Finding(
+                "illegal-tier",
+                "node %s: %r is not a legal model tier for %s (legal: %s)"
+                % (node.id, tier, agent, list(TIERS)),
+                node.id,
+            ))
+    return findings
+
+
 def _find_cycle_nodes(node_ids: set[str], edges) -> set[str]:
     """Return every node that participates in a cycle, via iterative DFS colouring."""
     adjacency: dict[str, list[str]] = {n: [] for n in node_ids}
@@ -1073,14 +1673,9 @@ def validate_pipeline(p: Pipeline, reg) -> list[Finding]:
                 Finding("unknown-step", "node %s: unknown step %r" % (node.id, node.step), node.id)
             )
             continue
-        for arg in node.args:
-            if arg not in step.args_allowed:
-                findings.append(Finding(
-                    "disallowed-arg",
-                    "node %s: arg %r not allowed for step %s (allowed: %s)"
-                    % (node.id, arg, node.step, list(step.args_allowed)),
-                    node.id,
-                ))
+
+        findings.extend(_validate_args(node, step))
+        findings.extend(_validate_models(node, step))
 
     node_ids = seen
     for e in p.edges:
@@ -1518,10 +2113,16 @@ git commit -m "feat(studio): gate validation and evaluation against artefact fro
 - Consumes: nothing from the studio package — this runs inside the **existing stdlib-only**
   validator and must not import `implr_studio`, `yaml`, or anything third-party.
 - Produces:
-  - `checks.check_step_registry(root) -> list[Finding]` — validates
-    `scaffold/schemas/step-registry.json` against `skills/`.
+  - `checks.check_step_registry(root, contracts) -> list[Finding]` — validates
+    `scaffold/schemas/step-registry.json` against `skills/`, `.claude/agents/`, and the
+    artefact types in `contracts`.
   - `cli` exits `1` only when at least one finding is `level == "error"`. Findings at
     `level == "info"` print but do not fail the build.
+
+`re` must be imported in `checks.py` (it already is) and `json` added. The check stays
+standard-library only — it deliberately re-implements the loader's rules rather than
+importing `implr_studio`, because `implr_validate` must keep working in a project that has
+never installed the studio backend.
 
 This task exists because the spec's *Step Registry → Validation* section requires it and no
 other task delivers it. A planned step must be reported without failing CI — otherwise
@@ -1536,7 +2137,17 @@ Create `tests/test_step_registry_check.py`:
 import json
 import os
 
+import pytest
+
 from implr_validate.checks import check_step_registry
+from implr_validate.contracts import load_contracts
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+@pytest.fixture
+def contracts():
+    return load_contracts(os.path.join(REPO, "scaffold", "schemas"))
 
 
 def _write(root, steps):
@@ -1553,99 +2164,175 @@ def _skill(root, name):
         f.write("---\nname: %s\n---\n" % name)
 
 
+def _agent(root, name):
+    d = os.path.join(root, ".claude", "agents")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "%s.md" % name), "w", encoding="utf-8") as f:
+        f.write("---\nname: %s\n---\n" % name)
+
+
 BASE = {
     "id": "doc-ingest", "label": "Document Ingestion", "phase": "discovery",
-    "skill": "doc-ingest", "args_allowed": ["--dry-run"], "args_default": [],
-    "interactive": False, "produces": [], "description": "d",
+    "skill": "doc-ingest",
+    "args_allowed": [{"flag": "--dry-run", "takes_value": False, "note": ""}],
+    "args_default": [],
+    "interactive": False,
+    "agents": [], "consumes": [], "produces": [], "produces_artefact": None,
+    "description": "d",
 }
 
 
-def test_valid_registry_has_no_findings(tmp_path):
+def test_valid_registry_has_no_findings(tmp_path, contracts):
     root = str(tmp_path)
     _write(root, [BASE])
     _skill(root, "doc-ingest")
 
-    assert check_step_registry(root) == []
+    assert check_step_registry(root, contracts) == []
 
 
-def test_missing_registry_file_is_not_an_error(tmp_path):
+def test_missing_registry_file_is_not_an_error(tmp_path, contracts):
     """The registry is optional for repos that predate implr Studio."""
-    assert check_step_registry(str(tmp_path)) == []
+    assert check_step_registry(str(tmp_path), contracts) == []
 
 
-def test_planned_step_is_info_not_error(tmp_path):
+def test_planned_step_is_info_not_error(tmp_path, contracts):
     """Designing ahead of implementation must not fail the build."""
     root = str(tmp_path)
     _write(root, [dict(BASE, id="sec-review", skill="sec-review", phase="verify")])
     os.makedirs(os.path.join(root, "skills"), exist_ok=True)
 
-    findings = check_step_registry(root)
+    findings = check_step_registry(root, contracts)
 
     assert len(findings) == 1
     assert findings[0].level == "info"
     assert "sec-review" in findings[0].message
 
 
-def test_duplicate_id_is_an_error(tmp_path):
+def test_duplicate_id_is_an_error(tmp_path, contracts):
     root = str(tmp_path)
     _write(root, [BASE, dict(BASE)])
     _skill(root, "doc-ingest")
 
-    findings = check_step_registry(root)
+    findings = check_step_registry(root, contracts)
 
     assert [f.level for f in findings] == ["error"]
     assert "duplicate" in findings[0].message
 
 
-def test_unknown_phase_is_an_error(tmp_path):
+def test_unknown_phase_is_an_error(tmp_path, contracts):
     root = str(tmp_path)
     _write(root, [dict(BASE, phase="wibble")])
     _skill(root, "doc-ingest")
 
-    findings = check_step_registry(root)
+    findings = check_step_registry(root, contracts)
 
     assert findings[0].level == "error"
     assert "wibble" in findings[0].message
 
 
-def test_missing_required_field_is_an_error(tmp_path):
+def test_missing_required_field_is_an_error(tmp_path, contracts):
     root = str(tmp_path)
     _write(root, [{k: v for k, v in BASE.items() if k != "skill"}])
 
-    findings = check_step_registry(root)
+    findings = check_step_registry(root, contracts)
 
     assert findings[0].level == "error"
     assert "skill" in findings[0].message
 
 
-def test_args_default_outside_args_allowed_is_an_error(tmp_path):
+def test_args_default_outside_args_allowed_is_an_error(tmp_path, contracts):
     root = str(tmp_path)
     _write(root, [dict(BASE, args_default=["--nope"])])
     _skill(root, "doc-ingest")
 
-    findings = check_step_registry(root)
+    findings = check_step_registry(root, contracts)
 
     assert findings[0].level == "error"
     assert "--nope" in findings[0].message
 
 
-def test_malformed_json_is_an_error_not_a_crash(tmp_path):
+def test_malformed_json_is_an_error_not_a_crash(tmp_path, contracts):
     root = str(tmp_path)
     schema_dir = os.path.join(root, "scaffold", "schemas")
     os.makedirs(schema_dir)
     with open(os.path.join(schema_dir, "step-registry.json"), "w", encoding="utf-8") as f:
         f.write("{not json")
 
-    findings = check_step_registry(root)
+    findings = check_step_registry(root, contracts)
 
     assert findings[0].level == "error"
 
 
-def test_the_real_repo_registry_passes():
+def test_value_taking_arg_without_a_pattern_is_an_error(tmp_path, contracts):
+    root = str(tmp_path)
+    _write(root, [dict(BASE, args_allowed=[
+        {"flag": "--file", "takes_value": True, "note": ""},
+    ])])
+    _skill(root, "doc-ingest")
+
+    findings = check_step_registry(root, contracts)
+
+    assert findings[0].level == "error"
+    assert "value_pattern" in findings[0].message
+
+
+def test_bare_string_args_allowed_is_an_error(tmp_path, contracts):
+    """The pre-configurator format must fail loudly, not load with empty arg specs."""
+    root = str(tmp_path)
+    _write(root, [dict(BASE, args_allowed=["--dry-run"])])
+    _skill(root, "doc-ingest")
+
+    findings = check_step_registry(root, contracts)
+
+    assert findings[0].level == "error"
+    assert "objects" in findings[0].message
+
+
+def test_agent_without_a_definition_is_an_error(tmp_path, contracts):
+    """A tier selector for a non-existent agent configures nothing."""
+    root = str(tmp_path)
+    _write(root, [dict(BASE, agents=[{"name": "ghost-worker", "fan_out": "1"}])])
+    _skill(root, "doc-ingest")
+
+    findings = check_step_registry(root, contracts)
+
+    assert findings[0].level == "error"
+    assert "ghost-worker" in findings[0].message
+
+
+def test_declared_agent_with_a_definition_is_fine(tmp_path, contracts):
+    root = str(tmp_path)
+    _write(root, [dict(BASE, agents=[{"name": "plan-worker", "fan_out": "1"}])])
+    _skill(root, "doc-ingest")
+    _agent(root, "plan-worker")
+
+    assert check_step_registry(root, contracts) == []
+
+
+def test_unknown_produces_artefact_is_an_error(tmp_path, contracts):
+    root = str(tmp_path)
+    _write(root, [dict(BASE, produces_artefact="unicorn")])
+    _skill(root, "doc-ingest")
+
+    findings = check_step_registry(root, contracts)
+
+    assert findings[0].level == "error"
+    assert "unicorn" in findings[0].message
+
+
+def test_real_produces_artefact_is_fine(tmp_path, contracts):
+    root = str(tmp_path)
+    _write(root, [dict(BASE, produces_artefact="plan")])
+    _skill(root, "doc-ingest")
+
+    assert check_step_registry(root, contracts) == []
+
+
+def test_the_real_repo_registry_passes(contracts):
     """The shipped registry must be valid, with the two planned steps reported as info."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    findings = check_step_registry(root)
+    findings = check_step_registry(root, contracts)
 
     assert [f for f in findings if f.level == "error"] == []
     planned = {f.message for f in findings if f.level == "info"}
@@ -1678,16 +2365,19 @@ Append to `scripts/implr_validate/checks.py`:
 _REGISTRY_PHASES = ("discovery", "design", "requirements", "planning", "build", "verify")
 _REGISTRY_FIELDS = (
     "id", "label", "phase", "skill",
-    "args_allowed", "args_default", "interactive", "produces", "description",
+    "args_allowed", "args_default", "interactive",
+    "agents", "consumes", "produces", "produces_artefact", "description",
 )
 
 
-def check_step_registry(root):
-    """Validate scaffold/schemas/step-registry.json against skills/.
+def check_step_registry(root, contracts):
+    """Validate scaffold/schemas/step-registry.json against skills/ and the contracts.
 
     A registered step whose skill does not exist yet is reported at level "info",
     never "error": designing a pipeline ahead of implementing its steps is the
-    workflow the registry exists to support.
+    workflow the registry exists to support. Everything else - a malformed arg
+    spec, an agent with no definition, an unknown artefact type - is an error,
+    because each one produces a configurator control that configures nothing.
     """
     rel = os.path.join("scaffold", "schemas", "step-registry.json")
     path = os.path.join(root, rel)
@@ -1724,12 +2414,75 @@ def check_step_registry(root):
                 % (step_id, entry["phase"], list(_REGISTRY_PHASES)),
             ))
 
+        specs = {}
+        for spec in entry["args_allowed"]:
+            if not isinstance(spec, dict) or "flag" not in spec:
+                findings.append(Finding(
+                    "error", rel,
+                    "step %s args_allowed entries must be objects with a 'flag'" % step_id,
+                ))
+                continue
+            if spec["flag"] in specs:
+                findings.append(Finding(
+                    "error", rel,
+                    "step %s has duplicate flag %r in args_allowed" % (step_id, spec["flag"]),
+                ))
+                continue
+            specs[spec["flag"]] = spec
+            if spec.get("takes_value"):
+                pattern = spec.get("value_pattern")
+                if not pattern:
+                    findings.append(Finding(
+                        "error", rel,
+                        "step %s arg %r takes a value but has no value_pattern"
+                        % (step_id, spec["flag"]),
+                    ))
+                else:
+                    try:
+                        re.compile(pattern)
+                    except re.error as e:
+                        findings.append(Finding(
+                            "error", rel,
+                            "step %s arg %r has an invalid value_pattern: %s"
+                            % (step_id, spec["flag"], e),
+                        ))
+
         for arg in entry["args_default"]:
-            if arg not in entry["args_allowed"]:
+            spec = specs.get(arg)
+            if spec is None:
                 findings.append(Finding(
                     "error", rel,
                     "step %s args_default entry %r is not in args_allowed" % (step_id, arg),
                 ))
+            elif spec.get("takes_value"):
+                findings.append(Finding(
+                    "error", rel,
+                    "step %s args_default entry %r takes a value, so it cannot be a default"
+                    % (step_id, arg),
+                ))
+
+        # Every claimed agent must have a definition. A step that dispatches a
+        # non-existent agent renders a tier selector that configures nothing.
+        for agent in entry["agents"]:
+            name = agent.get("name") if isinstance(agent, dict) else None
+            if not name:
+                findings.append(Finding(
+                    "error", rel, "step %s has an agent entry with no name" % step_id))
+                continue
+            if not os.path.isfile(os.path.join(root, ".claude", "agents", "%s.md" % name)):
+                findings.append(Finding(
+                    "error", rel,
+                    "step %s dispatches agent %r, which has no .claude/agents/%s.md"
+                    % (step_id, name, name),
+                ))
+
+        artefact = entry["produces_artefact"]
+        if artefact is not None and artefact not in contracts.artefact_types:
+            findings.append(Finding(
+                "error", rel,
+                "step %s produces_artefact %r is not a known artefact type (known: %s)"
+                % (step_id, artefact, sorted(contracts.artefact_types)),
+            ))
 
         skill_md = os.path.join(root, "skills", entry["skill"], "SKILL.md")
         if not os.path.isfile(skill_md):
@@ -1752,10 +2505,10 @@ In `scripts/implr_validate/cli.py`, change the import line:
 from .checks import check_workspace, check_repo_prose, check_step_registry
 ```
 
-In the `if args.repo:` block, append one line:
+In the `if args.repo:` block, append one line (after `contracts` is already loaded there):
 
 ```python
-        findings.extend(check_step_registry(args.root))
+        findings.extend(check_step_registry(args.root, contracts))
 ```
 
 Replace the reporting block at the end of `main`:
@@ -1811,3 +2564,19 @@ git commit -m "feat(validate): check step-registry.json, with planned steps repo
 - [ ] `python -m implr_validate --repo --root .` exits `0` and reports the two planned
       steps at `info` level.
 - [ ] The 68 pre-existing `implr_validate` tests still pass.
+
+Configurator schema, added with the design:
+
+- [ ] `args_allowed` entries are objects; a bare-string entry is rejected by both the
+      loader and `check_step_registry`.
+- [ ] Every `takes_value: true` arg spec has a compilable `value_pattern`, and a spec
+      without one is rejected at load.
+- [ ] Selecting a value-taking flag with no value produces `missing-arg-value`; a value
+      containing `;`, `$(`, a backtick, a space or a quote produces `bad-arg-value`.
+- [ ] Every agent named in the shipped registry has a `.claude/agents/<name>.md` file, and
+      every `produces_artefact` names a real `frontmatter-rules.json` type — both asserted
+      against the real repo, not a fixture.
+- [ ] A `models` override naming an agent the step does not dispatch produces
+      `unknown-agent`; a tier outside `haiku | sonnet | opus` produces `illegal-tier`.
+- [ ] A `pipeline.yaml` with no `arg_values` and no `models` round-trips byte-identically
+      to the pre-configurator format — the new keys are omitted when empty.

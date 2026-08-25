@@ -47,6 +47,12 @@ directory in this repository, providing:
 4. A **provider-neutral `StepExecutor` interface** with exactly one implementation in this
    phase (Claude Code), so additional LLM providers can be added later without reworking
    the orchestrator.
+5. A **per-step configurator** — a modal, opened from any node, that selects the step's
+   arguments (including flags that take a value), the **model tier for each subagent that
+   step dispatches**, and shows the step's input sources and output artefact contract.
+6. A **shipped design system** (`studio/frontend/src/tokens.css`) — dark-first, with the
+   saturated palette reserved exclusively for run state and model tier, so colour in this
+   UI is always data.
 
 ---
 
@@ -61,7 +67,7 @@ This spec covers **Phase 1 only**. Phase 2 is explicitly deferred and specified 
 - Visual builder frontend (design mode + run mode).
 - Orchestrator backend: run lifecycle, gate evaluation, persistence, streaming.
 - Generic `StepExecutor` interface.
-- One adapter: Claude Code, via its bidirectional `stream-json` headless protocol.
+- One adapter: Claude Code, via the `claude-agent-sdk` Python package.
 - Interactive-step proxying: a step's questions surface in the browser; answers are sent
   back into the running step.
 
@@ -159,22 +165,46 @@ builder, backend, or frontend.
       "label": "Document Ingestion",
       "phase": "discovery",
       "skill": "doc-ingest",
-      "args_allowed": ["--digest", "--registry-only", "--file"],
-      "args_default": ["--digest"],
+      "args_allowed": [
+        { "flag": "--registry-only", "takes_value": false, "note": "fast scan, no digesting" },
+        { "flag": "--file", "takes_value": true, "value_pattern": "^[A-Za-z0-9._/-]{1,200}$",
+          "note": "one document only" },
+        { "flag": "--rebuild", "takes_value": false, "note": "ignore the incremental cache" },
+        { "flag": "--dry-run", "takes_value": false, "note": "report, write nothing" }
+      ],
+      "args_default": [],
       "interactive": false,
-      "produces": ["digest", "synthesis"],
+      "agents": [
+        { "name": "doc-ingest-digester", "fan_out": "1 per changed doc" },
+        { "name": "doc-ingest-synthesizer", "fan_out": "1 per domain" }
+      ],
+      "consumes": [
+        { "path": "docs/kb/**", "note": "18 formats" },
+        { "path": "docs/implr/kb-index/registry.md", "note": "incremental state" }
+      ],
+      "produces": [
+        { "path": "docs/implr/kb-index/digests/per-doc/*.md" },
+        { "path": "docs/implr/kb-index/master-synthesis.md" }
+      ],
+      "produces_artefact": null,
       "description": "Indexes and digests the knowledge base under docs/kb/."
     },
     {
-      "id": "arch-gen",
-      "label": "Architecture Brief",
-      "phase": "design",
-      "skill": "arch-gen",
-      "args_allowed": ["--dry-run", "--update"],
-      "args_default": [],
+      "id": "dev-planner",
+      "label": "Specification / Planning",
+      "phase": "planning",
+      "skill": "dev-planner",
+      "args_allowed": [
+        { "flag": "--all", "takes_value": false, "note": "every approved requirement" },
+        { "flag": "--brainstorm", "takes_value": false, "note": "ask before planning" }
+      ],
+      "args_default": ["--all"],
       "interactive": true,
-      "produces": ["architecture"],
-      "description": "Generates docs/ARCHITECTURE.md; confirms each decision with the user."
+      "agents": [{ "name": "plan-worker", "fan_out": "1 per requirement" }],
+      "consumes": [{ "path": "docs/implr/requirements/**", "note": "status: approved" }],
+      "produces": [],
+      "produces_artefact": "plan",
+      "description": "Creates implementation plans from approved requirements."
     }
   ]
 }
@@ -188,11 +218,28 @@ builder, backend, or frontend.
 | `label` | Display name in the palette and on the canvas node. |
 | `phase` | Palette grouping only (`discovery`, `design`, `requirements`, `planning`, `build`, `verify`). No execution meaning. |
 | `skill` | The implr skill name. Must correspond to `skills/<skill>/SKILL.md`. |
-| `args_allowed` | Whitelist of flags the node config UI offers. A pipeline referencing a flag outside this list fails validation. |
-| `args_default` | Args applied when the node is first dropped onto the canvas. |
+| `args_allowed` | Array of **arg specs**, not bare strings. Each has `flag`, `takes_value`, an optional `value_pattern` (required when `takes_value` is true) and an optional `note` shown in the configurator. A pipeline naming a flag outside this list, or supplying a value that fails the pattern, fails validation. |
+| `args_default` | Flags (bare strings) applied when the node is first dropped onto the canvas. Every entry must name an `args_allowed` flag whose `takes_value` is false. |
 | `interactive` | Whether the step is expected to ask the operator questions mid-run. Drives UI affordances only; the proxy channel is always available. |
-| `produces` | Free-form labels shown on the node. Documentation, not execution logic. |
-| `description` | Tooltip text. |
+| `agents` | The subagents this step dispatches, in dispatch order. `name` must be a key in `implr.config.yaml`'s `agents:` block; `fan_out` is descriptive text shown in the configurator. Drives the model-tier selector and the model-mix meter. |
+| `consumes` | What the step reads. `{path, note}`. **Descriptive** — see *Known Limitations*. |
+| `produces` | Files the step writes. `{path, note}`. Descriptive. |
+| `produces_artefact` | The `frontmatter-rules.json` artefact type this step produces, or `null`. When set, the configurator's Output tab renders that type's required fields and legal statuses — the same vocabulary a downstream gate reads. |
+| `description` | Plain-language summary. Shown as the configurator's lead paragraph and the palette tooltip. |
+
+### Why model tier is per agent, not per step
+
+`docs/implr/config/implr.config.yaml` already ships an `agents:` block mapping each implr
+subagent to `haiku | sonnet | opus`. That block is the existing, authoritative place model
+choice lives. The configurator therefore edits **it**, and the registry's `agents` array
+exists only to tell the UI which of those keys are relevant to a given step. Inventing a
+per-step `model` field would create a second source of truth for the same decision — the
+mistake `status-vocabulary.json`'s own header forbids for statuses, applied to models.
+
+A consequence worth stating: two nodes running the same step share the project-level
+default, but a node may override any of its agents' tiers locally (see `models` in the
+pipeline config below). The override lives on the node, so the same step can run cheap in
+one branch and expensive in another.
 
 ### Availability
 
@@ -248,7 +295,13 @@ nodes:
 
   - id: build
     step: dev-executor
-    args: ["--all"]
+    args: ["--all", "--task"]
+    # values for flags whose arg spec has takes_value: true
+    arg_values:
+      "--task": "PLAN-F-004#3"
+    # per-agent model overrides; absent agents inherit implr.config.yaml
+    models:
+      task-executor: sonnet
     position: { x: 1040, y: 120 }
 
   - id: review
@@ -281,17 +334,36 @@ edges:
 
 `position` is builder-owned layout state. The orchestrator ignores it.
 
+`arg_values` and `models` are both optional and both sparse. An absent `arg_values` entry
+for a value-taking flag is a validation error; an absent `models` entry simply means
+"inherit the project default", which is what every pipeline written before this field
+existed does. Existing `pipeline.yaml` files therefore stay valid.
+
 ### DAG validation (at save time)
 
 The config is rejected with an actionable error if:
 
 - Any `node.step` is not a registry `id`.
-- Any `node.args` entry is outside that step's `args_allowed`.
+- Any `node.args` entry does not name a flag in that step's `args_allowed`.
+- Any `node.args` flag whose spec has `takes_value: true` has no `arg_values` entry.
+- Any `arg_values` value fails its arg spec's `value_pattern`.
+- Any `arg_values` key is not a selected flag in `node.args`.
+- Any `models` key is not one of that step's registry `agents`.
+- Any `models` value is outside `haiku | sonnet | opus`.
 - Node `id`s are not unique.
 - Any edge references an unknown node `id`.
 - The graph contains a cycle.
 - Any node is unreachable from a root node (a node with no inbound edges).
 - The graph has no root node.
+
+The value rules exist because several implr flags genuinely take an argument —
+`doc-ingest --file <path>`, `dev-executor --task <id>`, `ba-requirements-gen --domain
+<name>`, `ba-cr --file <path>`. A flat flag whitelist makes those flags selectable and
+inert, which is worse than not offering them.
+
+**Values are never interpolated into a shell string.** They are validated against
+`value_pattern` and then passed as separate argv elements, so a value containing shell
+metacharacters is inert as well as pattern-rejected.
 
 Validation runs in the backend, not the frontend, so the same rules apply whether the file
 was written by the builder or edited by hand.
@@ -439,11 +511,40 @@ without asking; the adapter does not guess. That is a deliberate failure mode: a
 question surfaces as a step that finished with an unexpected result, which the operator can
 see, rather than as a run that hangs on a heuristic that misfired.
 
-**Permissions.** The adapter runs with `acceptEdits` plus an explicit `--allowedTools`
-allowlist covering what implr skills need. Anything outside the allowlist is denied and the
-denial appears in the node's log. `bypassPermissions` is deliberately not used: this agent
-is driven by a web page, and unrestricted shell access on that path is not a default anyone
-should inherit without choosing it.
+**Permissions.** The adapter runs with `permission_mode="acceptEdits"`.
+`bypassPermissions` is deliberately not used: this agent is driven by a web page, and
+unrestricted shell access on that path is not a default anyone should inherit without
+choosing it. (The SDK also refuses to consult `can_use_tool` at all under
+`bypassPermissions`, so using it would silently disable question proxying.)
+
+Three details about the allowlist are load-bearing, and all three were verified against
+`claude-agent-sdk` 0.2.144 rather than assumed:
+
+1. **`AskUserQuestion` must NOT appear in `allowed_tools`.** An `allowed_tools` entry that
+   names a whole tool auto-approves it *before* `can_use_tool` is consulted — the SDK ships
+   a warning helper that says exactly this. Allowlisting the tool the adapter exists to
+   intercept would defeat the entire question-proxying mechanism, silently. The tool is
+   left out so its calls fall through to the callback.
+2. **Deny is the default for anything unrecognised.** `can_use_tool` returns
+   `PermissionResultDeny` for any tool outside the known-good set, with a message naming
+   the tool, and the denial is emitted as a `log` event so it appears in the node's output.
+   Returning `allow` for everything not intercepted — the obvious implementation — would
+   make the allowlist decorative.
+3. **Skills are enabled through `skills`, not `allowed_tools`.** implr installs its skills
+   to `<project>/.claude/skills/<name>/SKILL.md`, and the SDK gates the `Skill` tool behind
+   the `skills` option, which "configures everything needed (including allowing the `Skill`
+   tool)". Passing `"Skill"` in `allowed_tools` is deprecated. The adapter passes
+   `skills="all"`, without which no implr step can be invoked at all.
+
+The tool set also includes **`Agent`** alongside `Task`: implr's own subagent definitions
+declare `tools: [..., Agent]`, and `doc-ingest`, `ba-requirements-gen`, `dev-planner`,
+`dev-executor` and `dev-code-review` all depend on subagent dispatch.
+
+**Model selection.** `ClaudeAgentOptions` accepts an `agents` dict of `AgentDefinition`,
+each carrying its own `model`. The node's `models` overrides map directly onto those
+fields — the adapter does not shim, re-prompt, or pass a model name in the prompt text.
+Agents the node does not override are omitted, so they resolve to the project default from
+`implr.config.yaml`.
 
 ---
 
@@ -511,10 +612,10 @@ claiming otherwise would be a lie about what happened.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/registry` | The step catalogue, each entry annotated `available: bool`. |
+| `GET` | `/api/registry` | The step catalogue (each entry annotated `available: bool`), plus `contracts` — every artefact type's fields, legal statuses and path globs — plus `agents`, the `implr.config.yaml` tier defaults per subagent. One call populates the whole configurator, and the status vocabulary keeps exactly one source of truth. |
 | `GET` | `/api/pipeline` | Current `pipeline.yaml`, parsed. |
 | `PUT` | `/api/pipeline` | Validate and save. `422` with a list of findings on failure. |
-| `POST` | `/api/runs` | Start a run of the saved pipeline. |
+| `POST` | `/api/runs` | Start a run of the saved pipeline. Returns `202` with `{run_id}` **immediately**, before the run advances. |
 | `GET` | `/api/runs` | Run history. |
 | `GET` | `/api/runs/{id}` | Full run state including per-node status. |
 | `POST` | `/api/runs/{id}/answer` | Answer a pending question. |
@@ -527,22 +628,98 @@ claiming otherwise would be a lie about what happened.
 The WebSocket replays persisted events from a client-supplied cursor on connect, so a
 browser refresh mid-run loses no output.
 
+**Every mutating route returns as soon as the state change is persisted — it never waits
+for the run to settle.** This is stated explicitly because the natural implementation is
+the wrong one: awaiting quiescence inside `POST /api/runs` makes the response deterministic
+and the tests simple, at the cost of holding one HTTP request open for the entire run. A
+`dev-executor` node can run for twenty minutes; the browser would learn the `run_id` only
+after the pipeline stopped, so it could not open the WebSocket until there was nothing
+left to stream. Live output is the point of Run mode, and it is incompatible with a
+blocking start.
+
+Tests therefore poll `GET /api/runs/{id}` through a helper rather than relying on the route
+to block. That helper is the only place test-only waiting logic lives.
+
+---
+
+## Component: Design System
+
+Shipped as `studio/frontend/src/tokens.css` and imported before every other stylesheet.
+It is a file, not a description, so "the design" cannot drift from the plan.
+
+**Dark is the default, in every theme state.** The bare `:root` block carries the complete
+dark palette. There is deliberately **no `prefers-color-scheme` query** — a viewer on a
+light OS still gets the dark console. Light appears only when the document is explicitly
+stamped `data-theme="light"`, which redefines the same token set. This is a product
+decision, not an oversight: the console is an operations surface that sits open beside a
+terminal.
+
+**Colour is data.** The accent is achromatic — bone `#eceae4` for primary actions — with a
+single cyan `#3ed8c9` for focus, selection and links. Every saturated hue in the palette is
+reserved, and the reservation is the rule that keeps the UI readable:
+
+| Token group | Meaning | Values |
+|---|---|---|
+| `--st-*` | Node run state | running, succeeded, failed, blocked, awaiting-input, awaiting-approval, skipped, pending |
+| `--tier-*` | Model tier | haiku, sonnet, opus |
+| `--gate` | Edge condition | one amber |
+| `--bone`, `--cyan` | Brand / interaction | achromatic + one cyan |
+
+No component may introduce a saturated colour outside those groups. A brand hue that
+competed with `--st-failed` would make a failing node harder to spot, which is the one
+thing this UI exists to show.
+
+**Type.** Three faces, three roles, loaded from Google Fonts (the only host the artifact
+CSP admits, and the only external request the built bundle makes):
+
+- **Sora** — display: the product mark, headings, modal titles.
+- **Manrope** — UI and body, down to 11px chrome. Chosen for legibility at small sizes.
+- **JetBrains Mono** — the technical layer: flags, artefact ids, schema fields, model
+  names, node ids, log output.
+
+Each `font-family` declares a real fallback stack, so a blocked font request degrades
+rather than silently reflowing.
+
 ---
 
 ## Component: Frontend
 
-One canvas, two modes.
+One canvas, two modes, and a modal configurator.
 
-**Design mode.** A palette on the left, grouped by `phase`, with unavailable steps greyed.
-Drag onto the canvas to create a node; drag between handles to create an edge. Selecting a
-node opens a config panel offering only that step's `args_allowed`. Selecting an edge opens
-the gate editor, whose artefact and status dropdowns are populated from the schema files —
-so an invalid gate is difficult to express, and rejected by the backend if it is.
+**Design mode.** A searchable palette on the left grouped by `phase`, with unimplemented
+steps dashed and non-draggable. Drag onto the canvas to create a node; drag between ports
+to create an edge. The right rail is **not** a form — it shows pipeline health: step and
+gate counts, the validation findings, and a **model-mix meter** summing every node's agent
+tiers, because model tier is the dominant cost driver and the operator should see it
+without opening anything.
 
-**Run mode.** The same graph, nodes tinted by run state, with a live log pane per node. A
-node in `awaiting-input` renders its question as markdown with a free-text answer box; a
-node in `awaiting-approval` renders an Approve button. Failed nodes offer Retry / Skip /
-Abort.
+**The step configurator.** Clicking a node opens a modal with four tabs. This replaces the
+first design's inline inspector, which could not hold this much without becoming a
+scroll-trap.
+
+| Tab | Contents |
+|---|---|
+| **Run** | The step's `description` as a lead paragraph, then its `args_allowed` as checkboxes — with a text input beside any flag whose `takes_value` is true, disabled until the flag is selected. Unimplemented steps show a banner explaining that the run will refuse to start them. Interactive steps show a banner explaining that their questions surface in Run mode. |
+| **Agents** | One card per registry `agent`: its name, `fan_out`, its role, a **model-tier selector** (haiku / sonnet / opus) defaulting to the `implr.config.yaml` value and marked *overridden* when changed, and its declared tool grant with repository-mutating tools (`Write`, `Edit`, `Bash`, `Agent`) visually distinguished. |
+| **Input** | The step's `consumes` paths, and its inbound edges' gates with a jump into the gate editor. Carries an explicit banner that this tab is descriptive. |
+| **Output** | The step's `produces` paths, and — when `produces_artefact` is set — that artefact type's required fields and legal statuses, rendered from the contract files. Plus the outbound edges it feeds. |
+
+The modal footer names the files an Apply will write: always `pipeline.yaml`, and
+additionally `implr.config.yaml` when any model tier was overridden. Escape closes it; the
+scrim closes it; focus moves into the dialog on open.
+
+**The gate editor** is the same modal shell with one pane, opened by clicking an edge. Its
+artefact and status dropdowns are populated from the schema files, so an invalid gate is
+hard to express and refused by the backend if it is. It renders the chosen gate as a plain
+sentence — *"Implementation starts once at least one plan is ready"* — beneath the
+dropdowns, because `any plan status=ready` is precise but not friendly.
+
+**Run mode.** The same graph, each node's stripe tinted by run state and its status named
+in a badge beneath it. Gates show open (✓) or held (⋯). The right rail carries the selected
+node's log, and its state's affordance: a question card with the agent's own options as
+buttons plus a free-text box for `awaiting-input`, Approve for `awaiting-approval`,
+Retry / Skip / Abort for `failed`, and for `blocked` an explanation that the gate advances
+on its own and needs no action.
 
 ---
 
@@ -565,15 +742,26 @@ cannot be tested through `FakeExecutor` is a design smell.
   state machine are each rejected at save time.
 - Orchestrator: state-machine transitions, concurrent-branch scheduling, failure pausing
   the run, retry, skip, and resume-after-restart (recovering a `running` node as `failed`).
-- Adapter: the Claude stream-event → `StepEvent` mapping is tested against recorded
-  fixture streams, with no subprocess. The turn-end-means-question mapping gets explicit
-  coverage.
+- Adapter: the SDK-message → `StepEvent` mapping is tested against fake message objects,
+  with no SDK installed and no subprocess. `AskUserQuestion` interception, deny-by-default
+  for unrecognised tools, and the model-override → `AgentDefinition` mapping each get
+  explicit coverage.
+- Arg values: a missing value for a `takes_value` flag, a value failing `value_pattern`,
+  and a value containing shell metacharacters are each rejected at save time.
+- Model overrides: an unknown agent name and an illegal tier are each rejected at save time.
 
 **Frontend (Vitest + React Testing Library):**
 
 - Palette-to-canvas drop reducer.
-- Pipeline serialization round-trip: load YAML → edit → save → byte-comparable structure.
+- Pipeline serialization round-trip: load YAML → edit → save → byte-comparable structure,
+  including `arg_values` and `models`.
 - Run-mode rendering per node state, including the question and approval affordances.
+- The step configurator: each tab renders from registry data alone; a value input is
+  disabled until its flag is selected; changing a tier marks the agent overridden and
+  updates the footer's file list; Escape closes the modal.
+- A `tokens.css` guard test asserting no component stylesheet declares a saturated colour
+  outside the reserved `--st-*` / `--tier-*` / `--gate` groups. This is the one design rule
+  worth enforcing mechanically, because violating it degrades the UI's only real job.
 
 **Live tests:** one opt-in suite marked `@pytest.mark.live`, skipped by default, exercising
 the real Claude adapter against a throwaway fixture project. Never part of the default run.
@@ -621,6 +809,21 @@ written for them, but the concurrency cap is 1, so branches queue rather than ov
 reason is that concurrent implr steps writing to shared artefact directories is unproven.
 Raising the cap is a config change once that is validated.
 
+**The configurator's Input tab is descriptive, not enforced.** `consumes` documents what a
+step reads so the graph is legible; nothing validates it. A real per-skill input contract
+does not exist today, and inventing one here would mean asserting a schema the skills do
+not actually honour. The tab carries a banner saying so, rather than implying a guarantee.
+
+**Manual approval is recorded per node, not per edge.** `node_runs.manual_approved` is a
+single flag read by every inbound edge, so a node with two inbound approval gates opens
+both from one click, and a retry does not clear it. Correct for the linear six-step
+pipeline; wrong for a genuine join. The gate editor warns when it would matter. Scoping
+approval to `(run_id, edge)` is the fix and is deferred.
+
+**Model overrides are per node, not per run.** There is no "run this whole pipeline on
+Sonnet" switch. The model-mix meter exists so the operator can see the aggregate before
+starting, but changing it means visiting the nodes that matter.
+
 ---
 
 ## Open Questions
@@ -647,3 +850,17 @@ of interactive steps.
 6. Killing and restarting the backend mid-run recovers the run: completed nodes stay
    completed, and the interrupted node is reported as failed rather than silently retried.
 7. The full backend and frontend test suites pass without invoking any LLM.
+8. Clicking the Implementation node opens the configurator, whose **Agents** tab lists
+   `arch-excerpter`, `plan-runner` and `task-executor` with the tier defaults read from
+   `implr.config.yaml`; dropping `task-executor` to `sonnet` marks it overridden, updates
+   the model-mix meter, and writes a `models:` entry on that node when saved.
+9. Selecting `dev-executor --task` without supplying a value is rejected at save time with
+   a message naming the flag; supplying `PLAN-F-004#3` is accepted and reaches the executor
+   as two separate argv elements.
+10. The configurator's **Output** tab for the Planning step lists the ten required `plan`
+    frontmatter fields and the five legal plan statuses, read from the contract files — the
+    same set the downstream gate editor offers.
+11. `POST /api/runs` returns a `run_id` before the first node finishes, and the browser's
+    WebSocket receives log events while the run is still going.
+12. The console renders dark with no `data-theme` stamp and on a light OS; only an explicit
+    `data-theme="light"` produces the light palette.

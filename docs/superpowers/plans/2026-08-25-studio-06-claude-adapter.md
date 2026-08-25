@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-25-implr-studio-design.md`
 
+**Runtime verification:** `docs/RUNTIME.md` — how to prove this plan actually runs, not just that its suite passes.
+
 ## Global Constraints
 
 - This is the only module permitted to mention Claude or Anthropic. `executors/base.py` must stay clean — Plan 2's `test_base_module_names_no_provider` enforces it.
@@ -117,8 +119,61 @@ def test_permission_mode_is_accept_edits_not_bypass():
 
 
 def test_allowlist_covers_what_implr_skills_need():
-    for tool in ("Read", "Write", "Edit", "Bash", "Glob", "Grep", "Task", "AskUserQuestion"):
+    for tool in ("Read", "Write", "Edit", "Bash", "Glob", "Grep", "Task", "Agent"):
         assert tool in _sdk.ALLOWED_TOOLS
+
+
+def test_ask_user_question_is_not_in_the_allowlist():
+    """The load-bearing negative assertion.
+
+    An allowed_tools entry naming a whole tool auto-approves it BEFORE
+    can_use_tool is consulted. Allowlisting AskUserQuestion would silently
+    disable every question the operator is supposed to see.
+    """
+    assert "AskUserQuestion" not in _sdk.ALLOWED_TOOLS
+    assert "AskUserQuestion" not in _sdk.PERMITTED_ON_REQUEST
+
+
+def test_skill_tool_is_enabled_through_the_skills_option():
+    """The SDK gates the Skill tool behind `skills`; passing it in allowed_tools
+    is deprecated and would not enable it."""
+    assert _sdk.SKILLS == "all"
+    assert "Skill" not in _sdk.ALLOWED_TOOLS
+
+
+def test_agent_tool_is_allowed_because_implr_agents_declare_it():
+    assert "Agent" in _sdk.ALLOWED_TOOLS
+
+
+def test_tier_map_covers_every_legal_tier():
+    from implr_studio.registry import TIERS
+
+    for tier in TIERS:
+        assert tier in _sdk.TIER_TO_MODEL
+
+
+def test_agent_definitions_is_none_without_overrides(tmp_path):
+    assert _sdk.agent_definitions(tmp_path, {}) is None
+
+
+def test_read_agent_file_returns_none_when_absent(tmp_path):
+    assert _sdk.read_agent_file(tmp_path, "nope") is None
+
+
+def test_read_agent_file_parses_description_body_and_tools(tmp_path):
+    d = tmp_path / ".claude" / "agents"
+    d.mkdir(parents=True)
+    (d / "plan-worker.md").write_text(
+        "---\nname: plan-worker\ndescription: Produces one plan.\n"
+        "tools: [Read, Write, Grep, Glob]\n---\nYou write plans.\n",
+        encoding="utf-8",
+    )
+
+    description, body, tools = _sdk.read_agent_file(tmp_path, "plan-worker")
+
+    assert description == "Produces one plan."
+    assert "You write plans." in body
+    assert tools == ["Read", "Write", "Grep", "Glob"]
 
 
 def test_no_bypass_permission_anywhere_in_the_module():
@@ -209,6 +264,16 @@ except ImportError:  # pragma: no cover
 # this agent is driven by a web page and must not get unrestricted shell access.
 PERMISSION_MODE = "acceptEdits"
 
+# Auto-approved without prompting. AskUserQuestion is deliberately ABSENT: an
+# allowed_tools entry naming a whole tool auto-approves it *before* can_use_tool
+# is consulted (the SDK ships a warning helper saying exactly that), so
+# allowlisting the one tool this adapter exists to intercept would silently
+# disable question proxying. Leaving it out makes its calls fall through to the
+# callback, which is the entire mechanism.
+#
+# Both "Task" and "Agent" appear because implr's own agent definitions declare
+# `tools: [..., Agent]`, and doc-ingest, ba-requirements-gen, dev-planner,
+# dev-executor and dev-code-review all depend on subagent dispatch.
 ALLOWED_TOOLS = (
     "Read",
     "Write",
@@ -217,9 +282,27 @@ ALLOWED_TOOLS = (
     "Grep",
     "Bash",
     "Task",
+    "Agent",
     "TodoWrite",
-    "AskUserQuestion",
 )
+
+# Tools that reach can_use_tool and are approved there. AskUserQuestion is
+# intercepted rather than approved, so it is not in this set either.
+PERMITTED_ON_REQUEST = ALLOWED_TOOLS + ("NotebookEdit", "BashOutput", "KillShell")
+
+# Skills are enabled through this option, never through allowed_tools: the SDK
+# gates the Skill tool behind it and "configures everything needed (including
+# allowing the Skill tool)". Passing "Skill" in allowed_tools is deprecated.
+# Without this, no implr step can be invoked at all.
+SKILLS = "all"
+
+# Tier -> the model alias the SDK accepts. Kept here so the tier vocabulary that
+# crosses the StepExecutor boundary stays provider-neutral.
+TIER_TO_MODEL = {
+    "haiku": "haiku",
+    "sonnet": "sonnet",
+    "opus": "opus",
+}
 
 QUESTION_INSTRUCTION = (
     "When you need a decision or clarification from the operator, you MUST ask via "
@@ -235,9 +318,7 @@ QUESTION_INSTRUCTION = (
 # there is no human on the other end of it. The wording below matters: a bare
 # denial reads as a refusal, so it states plainly that this is the answer.
 ANSWER_TEMPLATE = (
-    "The operator answered: {answer}
-
-"
+    "The operator answered: {answer}\n\n"
     "This is their decision, not a refusal of your request. Proceed using it, and do "
     "not ask the same question again."
 )
@@ -281,6 +362,74 @@ def build_prompt(skill: str, args: tuple[str, ...]) -> str:
     if args:
         command = "%s %s" % (command, " ".join(args))
     return "%s\n\n%s" % (command, QUESTION_INSTRUCTION)
+
+
+def read_agent_file(workspace, name: str) -> tuple[str, str, list[str] | None] | None:
+    """Return (description, body, tools) from <workspace>/.claude/agents/<name>.md.
+
+    Parsed with the same restricted frontmatter reader implr_validate uses, so
+    there is no second parser. Returns None when the file is absent.
+    """
+    from pathlib import Path
+
+    from ..implr_bridge import parse_frontmatter
+
+    path = Path(workspace) / ".claude" / "agents" / ("%s.md" % name)
+    if not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8")
+    try:
+        fm = parse_frontmatter(text)
+    except Exception:
+        return None
+
+    parts = text.split("---", 2)
+    body = parts[2].strip() if len(parts) == 3 else ""
+
+    raw_tools = fm.get("tools")
+    tools = None
+    if isinstance(raw_tools, str) and raw_tools.strip():
+        tools = [t.strip() for t in raw_tools.strip("[] ").split(",") if t.strip()]
+
+    return (str(fm.get("description", "")), body, tools)
+
+
+def agent_definitions(workspace, models: dict[str, str]):
+    """Turn a node's tier overrides into SDK AgentDefinition objects.
+
+    ClaudeAgentOptions takes an `agents` dict of AgentDefinition, each carrying
+    its own `model`, so a tier override lands on a real SDK field - nothing about
+    the model goes into the prompt text.
+
+    IMPORTANT: passing an entry here *defines* that agent for the session rather
+    than patching the one on disk. So the definition is rebuilt from
+    .claude/agents/<name>.md and only its model is changed. An agent whose file
+    cannot be read is skipped rather than replaced by a stub - a wrong prompt is
+    far worse than an un-overridden model tier.
+
+    Agents the node did not override are omitted entirely, so they resolve
+    normally from the filesystem with the project default tier.
+    """
+    if not models or not SDK_AVAILABLE:  # pragma: no cover - env dependent
+        return None
+    from claude_agent_sdk import AgentDefinition
+
+    out = {}
+    for agent, tier in models.items():
+        model = TIER_TO_MODEL.get(tier)
+        if model is None:
+            continue
+        found = read_agent_file(workspace, agent)
+        if found is None:
+            continue
+        description, body, tools = found
+        out[agent] = AgentDefinition(
+            description=description,
+            prompt=body,
+            model=model,
+            tools=tools,
+        )
+    return out or None
 ```
 
 - [ ] **Step 5: Run test to verify it passes**
@@ -642,11 +791,11 @@ The stub client contract used by tests (and satisfied by a thin wrapper over the
 
 ```python
 class Client(Protocol):
-    async def connect(self) -> None
-    async def query(self, prompt: str) -> None
-    def receive_messages(self) -> AsyncIterator[object]
-    async def interrupt(self) -> None
-    async def disconnect(self) -> None
+    async def connect(self) -> None: ...
+    async def query(self, prompt: str) -> None: ...
+    def receive_messages(self) -> AsyncIterator[object]: ...
+    async def interrupt(self) -> None: ...
+    async def disconnect(self) -> None: ...
 ```
 
 - [ ] **Step 1: Write the failing test**
@@ -846,6 +995,63 @@ async def test_other_tools_are_not_intercepted():
     assert decision.updated_input == {"command": "ls"}
 
 
+async def test_unrecognised_tool_is_denied_not_allowed():
+    """The spec's posture is deny-by-default. Allowing everything not
+    intercepted would make the allowlist decorative."""
+    executor, _ = _executor([ResultMessage()])
+    handle = await executor.start(_req())
+
+    decision = await asyncio.wait_for(
+        executor.can_use_tool(handle.id, "WebFetch", {"url": "https://example.com"}),
+        timeout=2,
+    )
+
+    assert decision.behavior == "deny"
+    assert "WebFetch" in decision.message
+
+
+async def test_a_denial_is_visible_in_the_node_log():
+    """A silent denial is indistinguishable from a step that just did nothing."""
+    executor, _ = _executor([ResultMessage()])
+    handle = await executor.start(_req())
+
+    await executor.can_use_tool(handle.id, "WebFetch", {"url": "https://example.com"})
+    events = await asyncio.wait_for(_drain(executor, handle), timeout=5)
+
+    logs = [e.text for e in events if e.kind == "log"]
+    assert any("denied WebFetch" in (t or "") for t in logs)
+
+
+async def test_model_overrides_reach_the_options_as_agent_definitions(tmp_path):
+    """A tier override must land on a real SDK field, not in the prompt text."""
+    d = tmp_path / ".claude" / "agents"
+    d.mkdir(parents=True)
+    (d / "task-executor.md").write_text(
+        "---\nname: task-executor\ndescription: Implements one task.\n"
+        "tools: [Read, Write, Edit, Bash]\n---\nYou implement one task.\n",
+        encoding="utf-8",
+    )
+
+    from implr_studio.executors import _sdk
+
+    definitions = _sdk.agent_definitions(tmp_path, {"task-executor": "sonnet"})
+
+    if not _sdk.SDK_AVAILABLE:
+        pytest.skip("claude-agent-sdk is not installed")
+    assert set(definitions) == {"task-executor"}
+    assert definitions["task-executor"].model == "sonnet"
+    # The on-disk definition is preserved - only the model changed.
+    assert "You implement one task." in definitions["task-executor"].prompt
+    assert definitions["task-executor"].description == "Implements one task."
+
+
+async def test_override_for_an_agent_with_no_file_is_skipped(tmp_path):
+    """Better an un-overridden tier than an agent replaced by a stub prompt."""
+    from implr_studio.executors import _sdk
+
+    assert _sdk.agent_definitions(tmp_path, {"ghost": "haiku"}) is None
+
+
 async def test_permission_results_are_sdk_objects_not_dicts():
     """can_use_tool must return PermissionResult dataclasses; a dict is rejected."""
     executor, _ = _executor([ResultMessage()])
@@ -989,6 +1195,11 @@ def _default_client_factory(request: StepRequest, can_use_tool, handle_id: str):
         cwd=str(request.workspace),
         permission_mode=PERMISSION_MODE,
         allowed_tools=list(ALLOWED_TOOLS),
+        # Enables the Skill tool and project setting sources. Without it the
+        # agent cannot invoke an implr skill at all.
+        skills=_sdk.SKILLS,
+        # Tier overrides for this node only; None when nothing was overridden.
+        agents=_sdk.agent_definitions(request.workspace, request.models),
         can_use_tool=_hook,
     )
     return ClaudeSDKClient(options=options)
@@ -1059,8 +1270,23 @@ class ClaudeCodeExecutor:
         it is not the carrier for per-step identity.
         """
         session = self._sessions.get(handle_id)
-        if tool_name != _ASK_TOOL or session is None:
-            return _sdk.allow(tool_input)
+
+        if tool_name != _ASK_TOOL:
+            # Deny by default. Returning allow for everything not intercepted -
+            # the obvious implementation - would make the allowlist decorative,
+            # and the spec's stated posture ("anything outside the allowlist is
+            # denied and the denial appears in the node's log") a fiction.
+            if tool_name in _sdk.PERMITTED_ON_REQUEST:
+                return _sdk.allow(tool_input)
+            reason = "tool %r is not permitted for implr steps" % tool_name
+            if session is not None:
+                await session.queue.put(StepEvent.log("· denied %s" % tool_name))
+            return _sdk.deny(reason)
+
+        if session is None:
+            # An AskUserQuestion with no session to route it through cannot be
+            # answered by anyone, so refuse rather than let it hang.
+            return _sdk.deny("no operator channel is available for this step")
 
         question_id = "q-%d" % next(self._ids)
         prompt_md, options = translate.question_from_tool_input(tool_input)
@@ -1363,11 +1589,80 @@ git commit -m "feat(studio): opt-in live adapter test and can_use_tool wiring"
 - [ ] A step whose agent never calls `AskUserQuestion` completes rather than hanging.
 - [ ] An SDK exception, and a stream that ends without a result, both produce a terminal `done` failure rather than a hang.
 - [ ] `events()` terminates on every path.
+- [ ] `AskUserQuestion` is **absent** from both `ALLOWED_TOOLS` and `PERMITTED_ON_REQUEST`,
+      asserted by test — allowlisting it would auto-approve the call before `can_use_tool`
+      ran and silently disable every operator question.
+- [ ] `skills="all"` is passed in `ClaudeAgentOptions`, and `"Skill"` is not in
+      `allowed_tools`. Without the option no implr step can be invoked.
+- [ ] `Agent` is in the allowlist alongside `Task`.
+- [ ] An unrecognised tool is **denied**, and the denial appears as a `log` event.
+- [ ] A tier override becomes an `AgentDefinition` whose `model` is the tier and whose
+      `prompt` is the real body of `.claude/agents/<name>.md` — an override never replaces
+      an agent with a stub, and an agent with no file is skipped rather than stubbed.
+- [ ] `_sdk.py` imports cleanly — `ANSWER_TEMPLATE` uses `\n\n`, not a literal newline
+      inside the string literal.
+
+### Step 2b: The live test that matters most
+
+Add to `studio/backend/tests/test_claude_live.py`:
+
+```python
+async def test_a_real_slash_command_invokes_a_real_implr_skill(tmp_path: Path):
+    """The one production assumption no offline test can reach.
+
+    Everything else about the adapter is verified with a stub client. But whether
+    `client.query("/doc-ingest --registry-only --dry-run")` actually resolves to
+    the installed implr skill - rather than being treated as literal prose - is a
+    property of the CLI, the workspace's .claude/skills tree, and the `skills`
+    option working together. If this fails, no pipeline runs at all, and the
+    stubbed suite would still be green.
+
+    Uses --dry-run against a throwaway workspace so nothing is written.
+    """
+    import shutil
+
+    from implr_studio.executors._sdk import build_prompt
+    from implr_studio import implr_bridge
+
+    # A minimal installed workspace: the skill, and somewhere for it to look.
+    repo = implr_bridge.repo_root()
+    shutil.copytree(repo / "skills" / "doc-ingest", tmp_path / ".claude" / "skills" / "doc-ingest")
+    (tmp_path / "docs" / "kb").mkdir(parents=True)
+    (tmp_path / "docs" / "kb" / "note.md").write_text("# A note\n\nHello.\n", encoding="utf-8")
+
+    executor = ClaudeCodeExecutor()
+    request = base.StepRequest(
+        node_id="live", skill="doc-ingest", args=("--registry-only", "--dry-run"),
+        workspace=tmp_path, timeout_seconds=300,
+    )
+
+    handle = await executor.start(request)
+    events = [e async for e in executor.events(handle)]
+
+    assert events[-1].kind == "done"
+    transcript = "\n".join(e.text or "" for e in events if e.kind == "log")
+    assert events[-1].outcome == base.OUTCOME_SUCCESS, (
+        "the step failed: %s\nTranscript:\n%s" % (events[-1].error, transcript)
+    )
+    # The skill ran, rather than the prompt being echoed as prose.
+    assert "doc-ingest" in transcript.lower()
+    assert build_prompt("doc-ingest", ("--registry-only", "--dry-run")).startswith(
+        "/doc-ingest --registry-only --dry-run"
+    )
+```
+
+---
 
 ## Risks requiring live verification
 
-Everything else in this plan is settled by offline tests. These two are not, and both are
+Everything else in this plan is settled by offline tests. These three are not, and all are
 proven or disproven by `pytest -m live`:
+
+0. **A slash command must actually invoke the installed skill.** `build_prompt` produces
+   `/doc-ingest --registry-only`, and whether that resolves to the skill or is read as
+   literal prose depends on the CLI, the workspace's `.claude/skills` tree and the `skills`
+   option agreeing. Nothing offline can test it, and if it is wrong, no pipeline runs at
+   all while the stubbed suite stays green. This is the first live test to run.
 
 1. **The agent must treat a `PermissionResultDeny` message as an answer.** This is the
    return path for every operator reply. `can_use_tool` can only return allow or deny, and

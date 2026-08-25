@@ -10,11 +10,17 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-25-implr-studio-design.md`
 
+**Runtime verification:** `docs/RUNTIME.md` — how to prove this plan actually runs, not just that its suite passes.
+
 ## Global Constraints
 
 - Gate decisions read the **filesystem** via `gates.evaluate_gate`. An `artifact` StepEvent is advisory and must never influence scheduling.
 - Concurrency cap is **1** in Phase 1. The scheduler is written to select many eligible nodes, but the driver runs them one at a time.
 - Persist before broadcast: write the state change to SQLite, then let it become visible. Never the reverse.
+- **Every public `Store` method body is wrapped in `with self._lock:`.** The remaining
+  method bodies in Task 2 are shown without it for readability; add it to each one. The
+  lock is non-reentrant, so a public method must never call another public method — extract
+  a `_locked` helper instead.
 - A node that was `running` when the process died is recovered as `failed`, never as `running` or silently retried. The child process did not survive; reporting otherwise would be false.
 - No module in this plan may import from `executors/fake.py`. The fake is a test fixture only.
 - Timestamps are UTC ISO-8601 via `datetime.now(timezone.utc).isoformat()`.
@@ -399,6 +405,7 @@ uses to replay history to a reconnecting client.
 """
 import json
 import sqlite3
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -455,16 +462,30 @@ def _now() -> str:
 
 
 class Store:
+    """One SQLite connection, serialised by a lock.
+
+    The connection is shared between two kinds of caller: the orchestrator's
+    driver task and the WebSocket handler, both on the event loop, and every
+    synchronous FastAPI route, which runs in a threadpool. Interleaved
+    `with self._conn:` transactions from different threads on one connection is
+    a real race, so every public method takes `self._lock`. The lock is
+    non-reentrant, so no method may call another public method while holding it -
+    the private `_*_locked` helpers exist for that.
+    """
+
     def __init__(self, db_path: Path) -> None:
         self.path = Path(db_path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
         self._conn = sqlite3.connect(str(self.path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
-        self._conn.executescript(_SCHEMA)
-        self._conn.commit()
+        with self._lock:
+            self._conn.executescript(_SCHEMA)
+            self._conn.commit()
 
     def close(self) -> None:
-        self._conn.close()
+        with self._lock:
+            self._conn.close()
 
     # --- runs ---
 
@@ -973,8 +994,16 @@ def reg(tmp_path: Path) -> registry.Registry:
     schema_dir.mkdir(parents=True)
     steps = [
         {"id": s, "label": s, "phase": "discovery", "skill": s,
-         "args_allowed": ["--all"], "args_default": [],
-         "interactive": False, "produces": [], "description": ""}
+         "args_allowed": [
+             {"flag": "--all", "takes_value": False, "note": ""},
+             {"flag": "--task", "takes_value": True,
+              "value_pattern": "^[A-Za-z0-9._#/-]{1,80}$", "note": ""},
+         ],
+         "args_default": [],
+         "interactive": False,
+         "agents": [{"name": "plan-worker", "fan_out": "1"}],
+         "consumes": [], "produces": [], "produces_artefact": None,
+         "description": ""}
         for s in ("doc-ingest", "arch-gen", "missing-skill")
     ]
     (schema_dir / "step-registry.json").write_text(json.dumps({"steps": steps}), encoding="utf-8")
@@ -1182,6 +1211,10 @@ class Orchestrator:
         self.store = store
         self.concurrency = concurrency
         self._drivers: dict[str, asyncio.Task] = {}
+        # Instance attributes, never class attributes: a class-level dict is
+        # shared by every Orchestrator and leaks run state between tests.
+        self._handles: dict[tuple[str, str], object] = {}
+        self._streams: dict[tuple[str, str], object] = {}
 
     # --- public API ---
 
@@ -1226,8 +1259,6 @@ class Orchestrator:
 
     # --- driver ---
 
-    _handles: dict = {}
-
     def _spawn_driver(self, run_id: str) -> None:
         existing = self._drivers.get(run_id)
         if existing is not None and not existing.done():
@@ -1260,23 +1291,54 @@ class Orchestrator:
                 return node.id
         return None
 
+    @staticmethod
+    def build_argv(node, step) -> tuple[str, ...]:
+        """Flatten a node's selected flags into an argv vector.
+
+        A value-taking flag contributes TWO elements - the flag and its value -
+        never one interpolated string. Values were already checked against their
+        arg spec's regex at save time; passing them separately means even a value
+        that somehow got past that check cannot become shell syntax.
+        """
+        argv: list[str] = []
+        for flag in node.args:
+            argv.append(flag)
+            spec = step.arg(flag)
+            if spec is not None and spec.takes_value:
+                argv.append(str(node.arg_values[flag]))
+        return tuple(argv)
+
     async def _run_node(self, run_id: str, node_id: str) -> None:
-        run = self.store.get_run(run_id)
-        node = next(n for n in run["pipeline"].nodes if n.id == node_id)
+        """Run or resume one node.
+
+        A question abandons the event iterator mid-stream, so the live iterator is
+        cached in self._streams and resumed on a later driver pass rather than
+        restarted - restarting would re-invoke the step from the top and lose the
+        agent's context.
+        """
+        key = (run_id, node_id)
+        stream = self._streams.get(key)
+
+        if stream is None:
+            run = self.store.get_run(run_id)
+            node = next(n for n in run["pipeline"].nodes if n.id == node_id)
+            step = self.registry.get(node.step)
+            request = StepRequest(
+                node_id=node_id,
+                skill=step.skill,
+                args=self.build_argv(node, step),
+                workspace=self.workspace,
+                models=dict(node.models),
+            )
+            handle = await self.executor.start(request)
+            self._handles[key] = handle
+            stream = self.executor.events(handle)
+            self._streams[key] = stream
 
         self.store.set_node_status(run_id, node_id, rs.RUNNING)
         self.store.append_event(run_id, node_id, "status", {"status": rs.RUNNING})
 
-        request = StepRequest(
-            node_id=node_id,
-            skill=self.registry.get(node.step).skill,
-            args=tuple(node.args),
-            workspace=self.workspace,
-        )
-        handle = await self.executor.start(request)
-        self._handles[(run_id, node_id)] = handle
-
-        async for event in self.executor.events(handle):
+        async for event in stream:
             self.store.append_event(run_id, node_id, event.kind, dict(event.payload))
 
             if event.kind == "question":
@@ -1293,7 +1355,8 @@ class Orchestrator:
                     run_id, node_id, status, summary=event.summary, error=event.error
                 )
                 self.store.append_event(run_id, node_id, "status", {"status": status})
-                self._handles.pop((run_id, node_id), None)
+                self._handles.pop(key, None)
+                self._streams.pop(key, None)
                 return
 
     def _refresh_blocked_states(self, run_id: str) -> None:
@@ -1329,73 +1392,39 @@ Note on `answer()`: after recording the answer it must resume the driver. Add th
         self._spawn_driver(run_id)
 ```
 
-Wait — the node is mid-`events()` iteration inside a driver that already returned. Because `_run_node` returns on a question, the *previous* driver exited and its `events()` generator was abandoned. Resuming must therefore re-enter the executor's event stream. Implement `_run_node` so that it resumes an existing handle instead of starting a new step:
+Finally, make the driver loop exception-safe. `_drive` as written has `try/finally` but no
+`except`, so an exception escaping `_run_node` -- an executor that raises instead of
+emitting a `done` event, a registry lookup that returns `None` -- propagates out of the
+background task, leaves the node stuck at `running` forever, and surfaces as an HTTP 500
+from whichever route awaited it. A step that blew up is a failed step, not a crashed
+service:
 
 ```python
-    async def _run_node(self, run_id: str, node_id: str) -> None:
-        handle = self._handles.get((run_id, node_id))
-        if handle is None:
-            ...   # the start path shown above
-        else:
-            self.store.set_node_status(run_id, node_id, rs.RUNNING)
-        async for event in self._stream(run_id, node_id, handle):
-            ...
+    async def _drive(self, run_id: str) -> None:
+        try:
+            while True:
+                node_id = self._next_ready(run_id)
+                if node_id is None:
+                    break
+                try:
+                    await self._run_node(run_id, node_id)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:                        # noqa: BLE001
+                    self._handles.pop((run_id, node_id), None)
+                    self._streams.pop((run_id, node_id), None)
+                    self.store.set_node_status(
+                        run_id, node_id, rs.FAILED,
+                        summary="the step raised before reporting a result",
+                        error="%s: %s" % (type(e).__name__, e),
+                    )
+                    self.store.append_event(
+                        run_id, node_id, "status", {"status": rs.FAILED})
+                    break
+        finally:
+            self._refresh_blocked_states(run_id)
+            self._finalise_run_status(run_id)
 ```
-
-To keep this simple and correct, hold **one live iterator per handle** in `self._streams[(run_id, node_id)]`, created once when the step starts, and resumed on later driver passes. Replace the `_run_node` body with:
-
-```python
-    async def _run_node(self, run_id: str, node_id: str) -> None:
-        key = (run_id, node_id)
-        stream = self._streams.get(key)
-
-        if stream is None:
-            run = self.store.get_run(run_id)
-            node = next(n for n in run["pipeline"].nodes if n.id == node_id)
-            request = StepRequest(
-                node_id=node_id,
-                skill=self.registry.get(node.step).skill,
-                args=tuple(node.args),
-                workspace=self.workspace,
-            )
-            handle = await self.executor.start(request)
-            self._handles[key] = handle
-            stream = self.executor.events(handle)
-            self._streams[key] = stream
-
-        self.store.set_node_status(run_id, node_id, rs.RUNNING)
-        self.store.append_event(run_id, node_id, "status", {"status": rs.RUNNING})
-
-        async for event in stream:
-            self.store.append_event(run_id, node_id, event.kind, dict(event.payload))
-
-            if event.kind == "question":
-                self.store.create_question(
-                    event.question_id, run_id, node_id, event.prompt_md, event.options
-                )
-                self.store.set_node_status(run_id, node_id, rs.AWAITING_INPUT)
-                self.store.append_event(run_id, node_id, "status", {"status": rs.AWAITING_INPUT})
-                return
-
-            if event.is_terminal:
-                status = rs.SUCCEEDED if event.outcome == OUTCOME_SUCCESS else rs.FAILED
-                self.store.set_node_status(
-                    run_id, node_id, status, summary=event.summary, error=event.error
-                )
-                self.store.append_event(run_id, node_id, "status", {"status": status})
-                self._handles.pop(key, None)
-                self._streams.pop(key, None)
-                return
-```
-
-and declare both dicts as real instance attributes in `__init__` (not class attributes — a class-level dict is shared across every Orchestrator instance and will leak state between tests):
-
-```python
-        self._handles: dict[tuple[str, str], object] = {}
-        self._streams: dict[tuple[str, str], object] = {}
-```
-
-Delete the `_handles: dict = {}` class attribute shown earlier.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -1459,7 +1488,9 @@ def reg(tmp_path: Path) -> registry.Registry:
     steps = [
         {"id": s, "label": s, "phase": "discovery", "skill": s,
          "args_allowed": [], "args_default": [],
-         "interactive": False, "produces": [], "description": ""}
+         "interactive": False,
+         "agents": [], "consumes": [], "produces": [], "produces_artefact": None,
+         "description": ""}
         for s in ("doc-ingest", "arch-gen")
     ]
     (schema_dir / "step-registry.json").write_text(json.dumps({"steps": steps}), encoding="utf-8")
@@ -1761,3 +1792,11 @@ git commit -m "feat(studio): operator actions and restart recovery"
 - [ ] A run whose gate is unsatisfied stays `paused` and starts no downstream step.
 - [ ] `READY` is never written to the store.
 - [ ] `_handles` and `_streams` are instance attributes, so two `Orchestrator` objects share no state.
+- [ ] Answering a question resumes the **same** executor event stream rather than restarting
+      the step — asserted by `len(ex.started) == 1` across the whole question round trip.
+- [ ] A step that raises instead of emitting a terminal event leaves the node `failed` with
+      the exception in `error`, the run `paused`, and the driver task completed — never a
+      node stuck at `running`.
+- [ ] `Orchestrator.build_argv` emits a value-taking flag as **two** argv elements, proven
+      by a test asserting `("--task", "PLAN-F-004#3")` rather than one joined string.
+- [ ] Every public `Store` method holds `self._lock` for its whole body.
