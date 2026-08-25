@@ -1,0 +1,103 @@
+# Local development of HOSTED mode: the full topology, no Azure subscription.
+#
+#   docker compose -f docker/compose.yaml up --build
+#   open http://127.0.0.1:8000
+#
+# This is not how you run implr Studio on a laptop for real work — that is
+# `implr-studio --workspace .`, loopback-only and unauthenticated. This file
+# exists so the hosted code path is developable and testable.
+#
+# Deliberate parallels to the Azure topology:
+#   - the API and the worker are separate images with different trust levels
+#   - the worker has no database credentials
+#   - postgres is not published to the host
+# Deliberate departures, because they need Azure:
+#   - no Entra auth (AUTH_MODE=dev trusts a header)
+#   - no egress firewall on the worker
+#   - Azurite stands in for Blob Storage
+
+name: implr-studio
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: implr
+      POSTGRES_USER: implr
+      POSTGRES_PASSWORD: devonly
+    # No `ports:` on purpose. In Azure the database sits behind a private
+    # endpoint; publishing it here would let local habits diverge from that.
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U implr -d implr"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  blob:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    command: ["azurite-blob", "--blobHost", "0.0.0.0", "--skipApiVersionCheck"]
+    volumes:
+      - blob-data:/data
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/api.Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+      blob:
+        condition: service_started
+    environment:
+      IMPLR_MODE: hosted
+      DATABASE_URL: postgresql://implr:devonly@db:5432/implr
+      BLOB_ENDPOINT: http://blob:10000/devstoreaccount1
+      # Dev only. In Azure this is `entra` and the API validates a real token.
+      AUTH_MODE: dev
+      DEV_USER_EMAIL: you@example.com
+      # How the API starts a run. `compose` shells out to `docker run`; Azure
+      # uses `containerapps-job`. Same interface, different launcher.
+      RUN_LAUNCHER: compose
+      WORKER_IMAGE: implr-studio-worker
+      # Seeded into the database on boot from /app/plugin/skills.
+      PLUGIN_DIR: /app/plugin
+    ports:
+      - "127.0.0.1:8000:8000"
+    # The API must not be able to execute a step. Nothing here grants it git,
+    # Node, or the CLI — the image does not contain them.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+  # Built but not started: the API launches one container per run. `--build`
+  # still produces the image, which is the point.
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/worker.Dockerfile
+    image: implr-studio-worker
+    profiles: ["build-only"]
+    environment:
+      IMPLR_MODE: worker
+      # Injected per job in Azure. Here it comes from your shell so a real run
+      # is possible locally: `export ANTHROPIC_API_KEY=...`
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Note what is ABSENT: no DATABASE_URL. The worker reports through the
+      # callback endpoint, never straight to the database.
+      CALLBACK_URL: http://api:8000/api/internal/runs
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - type: tmpfs
+        target: /workspace
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  db-data:
+  blob-data:
