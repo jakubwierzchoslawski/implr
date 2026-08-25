@@ -94,10 +94,10 @@ phase is free. Phases 15, 18 and 19 are the only ones that cost anything.
 | 1 | [See the steps](2026-08-25-studio-phase-01-palette.md) | Nine real steps grouped by phase; the two unimplemented ones dashed; search filters | none |
 | 2 | [Draw a pipeline](2026-08-25-studio-phase-02-canvas.md) | Drag two steps, connect them, Save → `pipeline.yaml` on disk; reload keeps the graph | none |
 | 3 | [Refuse bad graphs](2026-08-25-studio-phase-03-validation.md) | Make a cycle, Save, see the finding named; nothing written to disk | none |
-| 4 | Configure arguments | Open a step, tick `--task`, type a value; a bad value is refused inline | none |
-| 5 | Pick models | Drop `task-executor` to Sonnet; the node's dots, the mix meter and the YAML all change | none |
-| 6 | Conditions | Build an artefact gate; an illegal status is not offered, and is refused if hand-edited in | none |
-| 7 | Input / Output tabs | The Output tab shows the ten real `plan` fields and five legal statuses | none |
+| 4 | [Configure arguments](2026-08-25-studio-phase-04-arguments.md) | Open a step, tick `--task`, type a value; a bad value is refused inline | none |
+| 5 | [Pick models](2026-08-25-studio-phase-05-models.md) | Drop `task-executor` to Sonnet; the node's dots, the mix meter and the YAML all change | none |
+| 6 | [Conditions](2026-08-25-studio-phase-06-conditions.md) | Build an artefact gate; an illegal status is not offered, and is refused if hand-edited in | none |
+| 7 | [Input / Output tabs](2026-08-25-studio-phase-07-io-tabs.md) | The Output tab shows the ten real `plan` fields and five legal statuses | none |
 | 8 | **Author a step** | Create your own step in the UI — point it at any installed skill, or write its instruction and agents outright — and drag it onto the canvas | none |
 | 9 | Run one node | Press Run; one node goes green | none |
 | 10 | Live logs | Log lines appear *while* the step is running; a refresh loses nothing | none |
@@ -124,7 +124,7 @@ a retry. See *Component: Human-in-the-loop* in the design spec. Without 13, "HIT
 
 ## Phase specifications
 
-Phases −1, 0–3, 13 and 18 have their own documents. The rest are specified here until theirs are written.
+Phases −1, 0–7, 13 and 18 have their own documents. The rest are specified here until theirs are written.
 
 ### Phase −1 — Restructure
 
@@ -628,18 +628,19 @@ Not a straight line. Phases 4–7 depend only on 1–3, so they can be reordered
 parallelised. Phases 9–14 are strictly sequential.
 
 ```
--1 ─> 0 ─> 1 ─> 2 ─> 3 ─┬─> 4 ─> 5 ─┐
-                        ├─> 6 ─> 7 ─┴─> 8
-                        └────────────────> 9 ─> 10 ─> 11 ─> 12 ─> 13 ─> 14 ─> 15
-                                                                               │
-                                                            16 ─> 17 ─> 18 ─> 19
+-1 ─> 0 ─> 1 ─> 2 ─> 3 ─┬─> 4 ─> 5 ─> 6 ─> 7 ─> 8
+                        └─> 9 ─> 10 ─> 11 ─> 12 ─> 13 ─> 14 ─> 15
+                                                                 │
+                                              16 ─> 17 ─> 18 ─> 19
 ```
 
-- **4 before 5** — the Agents tab reuses the modal shell the Run tab introduces.
-- **6 before 7** — the Output tab renders the `contracts` payload Phase 6 adds.
-- **4, 5 and 7 before 8** — the authoring surface writes arg specs, agent definitions and
-  I/O paths, so it needs every field the configurator already renders. Authoring a shape the
-  UI cannot display would be building blind.
+- **4 → 5 → 6 → 7 is a chain, not two branches.** Phase 4 introduces `Modal.tsx`, and both
+  the Agents pane (5) and the gate editor (6) reuse it; Phase 7's Output tab renders the
+  `contracts` payload Phase 6 adds. An earlier draft of this graph showed (4→5) and (6→7) as
+  parallel, which was wrong — the gate editor is a modal.
+- **7 before 8** — the authoring surface writes arg specs, agent definitions and I/O paths, so
+  it needs every field the configurator already renders. Authoring a shape the UI cannot
+  display would be building blind.
 - **6 before 11** — save-time gate validation before runtime gate evaluation, so an
   unrunnable condition cannot be saved in the first place.
 - **9 before 10** — the 202 contract must exist before streaming can prove it.
@@ -655,9 +656,13 @@ parallelised. Phases 9–14 are strictly sequential.
 - **17 before 19** — do not put an unauthenticated agent runner on the public internet. Of
   every edge in this graph, this is the one not to reorder.
 
-Three useful stopping points. **Phase 7** is a complete pipeline *designer* for the steps
-implr ships. **Phase 8** makes that designer open-ended. **Phase 15** is the whole local
-product, working, with no hosting. Each is shippable; execution starts at 9 and hosting at 16.
+Three useful stopping points. **Phase 7** is a complete pipeline *designer* for the nine
+steps implr ships — no execution, no hosting, and shippable on its own. **Phase 8** makes that
+designer open-ended. **Phase 15** is the whole local product working. Execution starts at 9
+and hosting at 16.
+
+Note that **9 branches from 3, not from 7**: the run phases need the canvas and validation, not
+the configurator. If execution matters more to you than configuration, 4–8 can wait.
 
 ---
 
