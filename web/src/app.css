@@ -54,3 +54,51 @@
   padding: .875rem; font-size: 12.5px; color: var(--text-faint);
   font-family: var(--mono);
 }
+
+/* --- Phase 1: the step palette ------------------------------------------ */
+.rail { display: flex; flex-direction: column; }
+.rail__search { padding: .625rem; border-bottom: 1px solid var(--hair-soft); }
+.rail__search input {
+  width: 100%; background: var(--sunk); border: 1px solid var(--hair);
+  border-radius: var(--r-sm); padding: .4rem .55rem; font-size: 12.5px;
+}
+.rail__search input::placeholder { color: var(--text-faint); }
+.rail__list { overflow-y: auto; padding: .5rem .625rem 1rem; flex: 1; min-height: 0; }
+.rail__empty { font-size: 12.5px; color: var(--text-faint); padding: .5rem 0; margin: 0; }
+
+.phase {
+  display: flex; align-items: center; gap: .45rem;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--text-faint);
+  margin: 1rem 0 .4rem;
+}
+.rail__list section:first-child .phase { margin-top: .25rem; }
+.phase::after { content: ""; flex: 1; height: 1px; background: var(--hair-soft); }
+
+.chip-step {
+  display: flex; align-items: center; gap: .5rem;
+  background: var(--raised); border: 1px solid var(--hair);
+  border-radius: var(--r-md); padding: .45rem .55rem;
+  margin-bottom: .3rem; font-size: 12.5px; font-weight: 500;
+  transition: border-color var(--t);
+}
+.chip-step:hover { border-color: var(--cyan); }
+.chip-step--off { opacity: .42; border-style: dashed; }
+.chip-step--off:hover { border-color: var(--hair); }
+.chip-step__meta { margin-left: auto; display: flex; gap: .2rem; flex: none; }
+
+.tag {
+  font-family: var(--mono); font-size: 9px; font-weight: 600;
+  letter-spacing: .04em; text-transform: uppercase;
+  padding: .1rem .3rem; border-radius: 4px;
+  border: 1px solid currentColor; opacity: .85;
+}
+.tag--ask  { color: var(--st-input); }
+.tag--soon { color: var(--st-blocked); }
+
+.notice {
+  font-size: 12.5px; margin: 0; padding: .55rem .65rem;
+  border-radius: var(--r-sm); border: 1px solid var(--hair);
+  background: var(--sunk);
+}
+.notice--bad { color: var(--st-failed); border-color: currentColor; }
