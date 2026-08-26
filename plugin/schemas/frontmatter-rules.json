@@ -55,7 +55,7 @@
     ],
     "banned_token_surfaces": ["plugin/", "README.md", "docs/WORKFLOW.md"],
     "enum_comment_surfaces": ["plugin/schemas/", "plugin/templates/"],
-    "exempt_paths": ["CHANGELOG.md", "docs/superpowers/", ".superpowers/"],
+    "exempt_paths": ["CHANGELOG.md", "docs/superpowers/", ".superpowers/", "web/node_modules/", "web/dist/"],
     "enum_check_exempt": ["plugin/schemas/status-vocabulary.json", "plugin/schemas/status-vocabulary.md"],
     "cache_path_surfaces": ["plugin/schemas/", "plugin/skills/", "plugin/agents/", "README.md", "docs/WORKFLOW.md"],
     "canonical_formats": ["md", "pdf", "docx", "xlsx", "pptx", "odp", "odt", "ods", "csv", "txt", "vtt", "png", "jpg", "jpeg", "gif", "webp", "tiff", "bmp"],
