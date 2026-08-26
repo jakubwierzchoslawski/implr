@@ -32,3 +32,6 @@ docs/implr/.studio/
 # recreate the second source of truth that removing scaffold/ deleted.
 docs/implr/
 /CLAUDE.md
+
+# typescript build-mode metadata
+*.tsbuildinfo

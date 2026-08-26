@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    // Vite bundles; tsc only typechecks. Without this, `tsc -b` emits a .js
+    // beside every .tsx source, which then shadows the source it came from.
+    "noEmit": true,
+    "noUnusedLocals": true,
+    "skipLibCheck": true,
+    "types": ["vitest/globals", "@testing-library/jest-dom", "node"]
+  },
+  "include": ["src", "test"]
+}
