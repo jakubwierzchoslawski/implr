@@ -6,8 +6,8 @@ Phase 0 has one real route; later phases add to create_app.
 """
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Response
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 VERSION = "0.1.0"
@@ -33,6 +33,11 @@ npm run build</pre>
 def create_app(workspace_name: str) -> FastAPI:
     app = FastAPI(title="implr Studio", version=VERSION)
 
+    # Set by mount_frontend. The index route consults it rather than letting the
+    # static mount answer "/": an explicitly registered route always wins over a
+    # later mount, so without this the built SPA is never served.
+    app.state.dist_index = None
+
     @app.get("/api/health")
     def health() -> dict:
         # The workspace NAME, never its path: the frontend shows it in the app
@@ -43,9 +48,12 @@ def create_app(workspace_name: str) -> FastAPI:
         # token service is down. It therefore returns nothing tenant-specific.
         return {"status": "ok", "workspace": workspace_name, "version": VERSION}
 
-    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    def index() -> str:
-        return _NOT_BUILT
+    @app.get("/", include_in_schema=False)
+    def index() -> Response:
+        dist_index = app.state.dist_index
+        if dist_index is not None:
+            return FileResponse(dist_index)
+        return HTMLResponse(_NOT_BUILT)
 
     return app
 
@@ -58,7 +66,11 @@ def mount_frontend(app: FastAPI, dist_dir) -> bool:
     route is registered, because a route registered before a mount wins.
     """
     dist_dir = Path(dist_dir)
-    if not (dist_dir / "index.html").is_file():
+    index = dist_dir / "index.html"
+    if not index.is_file():
         return False
+    # The mount serves /assets/*; "/" itself is answered by the index route,
+    # which this hands the built document to.
+    app.state.dist_index = index
     app.mount("/", StaticFiles(directory=str(dist_dir), html=True), name="frontend")
     return True

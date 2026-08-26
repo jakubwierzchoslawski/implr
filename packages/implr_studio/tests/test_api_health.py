@@ -30,9 +30,12 @@ def test_root_explains_itself_when_the_ui_is_not_built(client):
 
 
 def test_root_serves_the_spa_when_built(tmp_path):
+    # A marker that cannot appear in the not-built page. Asserting on "studio"
+    # passes against that page too, because it says `restart implr-studio`.
+    marker = "__SPA_MARKER__"
     dist = tmp_path / "dist"
     dist.mkdir()
-    (dist / "index.html").write_text("<html><body>studio</body></html>", encoding="utf-8")
+    (dist / "index.html").write_text("<html><body>%s</body></html>" % marker, encoding="utf-8")
     (dist / "assets").mkdir()
     (dist / "assets" / "app.js").write_text("console.log(1)", encoding="utf-8")
 
@@ -40,7 +43,9 @@ def test_root_serves_the_spa_when_built(tmp_path):
     assert api_mod.mount_frontend(app, dist) is True
 
     with TestClient(app) as client:
-        assert "studio" in client.get("/").text
+        body = client.get("/").text
+        assert marker in body
+        assert "npm run build" not in body, "the not-built page is shadowing the SPA"
         assert client.get("/assets/app.js").status_code == 200
 
 
