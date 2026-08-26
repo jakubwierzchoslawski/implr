@@ -1,0 +1,56 @@
+/* Component styles. Colours come from tokens.css only -
+   src/tokens.test.ts fails the build if a saturated hex appears here. */
+.layout {
+  display: grid;
+  grid-template-columns: 246px minmax(0, 1fr) 316px;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+}
+@media (max-width: 1040px) {
+  .layout { grid-template-columns: 1fr; grid-template-rows: auto repeat(3, minmax(0, 1fr)); }
+}
+
+.appbar {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: .875rem; flex-wrap: wrap;
+  padding: .625rem .875rem;
+  border-bottom: 1px solid var(--hair);
+  background: linear-gradient(var(--raised), var(--surface));
+}
+.mark {
+  display: flex; align-items: center; gap: .5rem;
+  font-family: var(--display); font-weight: 600; font-size: .9375rem;
+  letter-spacing: -.01em;
+}
+.mark i {
+  width: 22px; height: 22px; border-radius: 7px;
+  background: var(--cyan); color: var(--bone-ink);
+  display: grid; place-items: center;
+  font-family: var(--mono); font-size: 12px; font-weight: 600; font-style: normal;
+}
+.ws {
+  display: flex; align-items: center; gap: .4rem; min-width: 0;
+  font-family: var(--mono); font-size: 11.5px; color: var(--text-soft);
+  background: var(--sunk); border: 1px solid var(--hair);
+  padding: .3rem .5rem; border-radius: var(--r-sm);
+}
+.ws span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spacer { flex: 1 1 1rem; }
+
+.dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+.dot--ok   { background: var(--st-succeeded); }
+.dot--down { background: var(--st-failed); }
+.dot--wait { background: var(--st-pending); }
+
+.rail   { border-right: 1px solid var(--hair); background: var(--surface); overflow-y: auto; }
+.stage  { position: relative; overflow: auto; min-width: 0;
+          background: radial-gradient(circle at 1px 1px, var(--hair) 1px, transparent 0)
+                      0 0 / 18px 18px, var(--sunk); }
+.aside  { border-left: 1px solid var(--hair); background: var(--surface);
+          padding: .875rem; overflow-y: auto;
+          display: flex; flex-direction: column; gap: .75rem; }
+
+.placeholder {
+  padding: .875rem; font-size: 12.5px; color: var(--text-faint);
+  font-family: var(--mono);
+}

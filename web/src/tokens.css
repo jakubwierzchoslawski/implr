@@ -1,0 +1,128 @@
+/* ============================================================
+   implr Studio design system.
+
+   Dark is the commitment: :root carries the complete dark palette
+   and there is deliberately NO prefers-color-scheme query, so a
+   viewer on a light OS still gets the console. Light appears only
+   under an explicit data-theme="light".
+
+   Colour is data. The accent is achromatic (bone) with one cyan
+   for focus and selection. Every saturated hue belongs to a
+   reserved group: --st-* is run state, --tier-* is model tier,
+   --gate is an edge condition. No component may add another.
+   ============================================================ */
+:root {
+  --ground:      #0b0e14;
+  --surface:     #131822;
+  --raised:      #1a2130;
+  --raised-2:    #212a3b;
+  --sunk:        #0e131b;
+  --hair:        #232b3a;
+  --hair-soft:   #1b222e;
+
+  --text:        #e8ecf3;
+  --text-soft:   #9aa5b8;
+  --text-faint:  #656f80;
+
+  --bone:        #eceae4;
+  --bone-ink:    #0b0e14;
+  --cyan:        #3ed8c9;
+  --cyan-sunk:   #10322f;
+
+  --st-running:   #e8a33d;
+  --st-succeeded: #43c08a;
+  --st-failed:    #f2685c;
+  --st-blocked:   #7a8494;
+  --st-input:     #a78bfa;
+  --st-approval:  #56b6e8;
+  --st-skipped:   #5a6270;
+  --st-pending:   #3b4453;
+  /* Phase 13 adds awaiting-review as a run state. Its token lives here from the
+     start because app.css may introduce no saturated colour of its own. */
+  --st-review:    #d9a3e8;
+
+  --gate:        #d9b25c;
+  --gate-sunk:   #2c2413;
+  --edge:        #333d4e;
+
+  --tier-haiku:  #56b6e8;
+  --tier-sonnet: #43c08a;
+  --tier-opus:   #e8a33d;
+
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+
+  --shadow-1: 0 1px 2px rgb(0 0 0 / .5);
+  --shadow-2: 0 4px 12px -2px rgb(0 0 0 / .55);
+  --shadow-3: 0 24px 60px -12px rgb(0 0 0 / .8), 0 2px 8px rgb(0 0 0 / .5);
+
+  --sans:    "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --display: "Sora", "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --mono:    "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+
+  --t: 160ms cubic-bezier(.2, .7, .3, 1);
+}
+
+:root[data-theme="light"] {
+  --ground:      #f4f5f8;
+  --surface:     #ffffff;
+  --raised:      #ffffff;
+  --raised-2:    #f0f2f6;
+  --sunk:        #eaecf1;
+  --hair:        #dde1e9;
+  --hair-soft:   #e8ebf1;
+
+  --text:        #141a24;
+  --text-soft:   #545e6f;
+  --text-faint:  #7f8898;
+
+  --bone:        #141a24;
+  --bone-ink:    #ffffff;
+  --cyan:        #0f8b80;
+  --cyan-sunk:   #dff3f1;
+
+  --st-running:   #b4740f;
+  --st-succeeded: #1d8055;
+  --st-failed:    #c8382c;
+  --st-blocked:   #6b7383;
+  --st-input:     #6d4bd0;
+  --st-approval:  #1a7fb5;
+  --st-skipped:   #949bab;
+  --st-pending:   #c8cdd7;
+  --st-review:    #8e3fa8;
+
+  --gate:        #8a6a12;
+  --gate-sunk:   #faf0d3;
+  --edge:        #bcc3ce;
+
+  --tier-haiku:  #1a7fb5;
+  --tier-sonnet: #1d8055;
+  --tier-opus:   #b4740f;
+
+  --shadow-1: 0 1px 2px rgb(20 26 36 / .06);
+  --shadow-2: 0 4px 12px -2px rgb(20 26 36 / .1);
+  --shadow-3: 0 24px 60px -12px rgb(20 26 36 / .22), 0 2px 8px rgb(20 26 36 / .08);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  /* Explicit, from a token: a transparent body borrows the host's ground. */
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, select, textarea { font-family: inherit; color: inherit; }
+
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; border-radius: 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
