@@ -1,0 +1,213 @@
+{
+  "_comment": "Catalogue of pipeline steps for implr Studio. Adding a step here makes it appear in the palette and its agents in the step configurator; no code change is required. A step whose skills/<skill>/SKILL.md does not exist is rendered unavailable, not rejected.",
+  "steps": [
+    {
+      "id": "doc-ingest",
+      "kind": "skill",
+      "label": "Document Ingestion",
+      "phase": "discovery",
+      "skill": "doc-ingest",
+      "args_allowed": [
+        { "flag": "--registry-only", "takes_value": false, "note": "fast scan, no digesting" },
+        { "flag": "--file", "takes_value": true, "value_pattern": "^[A-Za-z0-9._/-]{1,200}$", "note": "one document only" },
+        { "flag": "--rebuild", "takes_value": false, "note": "ignore the incremental cache" },
+        { "flag": "--dry-run", "takes_value": false, "note": "report, write nothing" }
+      ],
+      "args_default": [],
+      "interactive": false,
+      "agents": [
+        { "name": "doc-ingest-digester", "fan_out": "1 per changed doc" },
+        { "name": "doc-ingest-synthesizer", "fan_out": "1 per domain" }
+      ],
+      "consumes": [
+        { "path": "docs/kb/**", "note": "18 supported formats" },
+        { "path": "docs/implr/kb-index/registry.md", "note": "incremental state" }
+      ],
+      "produces": [
+        { "path": "docs/implr/kb-index/digests/per-doc/*.md", "note": "" },
+        { "path": "docs/implr/kb-index/domains/*.md", "note": "" },
+        { "path": "docs/implr/kb-index/master-synthesis.md", "note": "" }
+      ],
+      "produces_artefact": null,
+      "description": "Reads everything under docs/kb/, digests each document, then rebuilds the per-domain and master syntheses that every later step depends on."
+    },
+    {
+      "id": "arch-gen",
+      "kind": "skill",
+      "label": "Architecture Brief",
+      "phase": "design",
+      "skill": "arch-gen",
+      "args_allowed": [
+        { "flag": "--update", "takes_value": false, "note": "amend instead of replace" },
+        { "flag": "--dry-run", "takes_value": false, "note": "report, write nothing" }
+      ],
+      "args_default": [],
+      "interactive": true,
+      "agents": [{ "name": "arch-drafter", "fan_out": "1" }],
+      "consumes": [
+        { "path": "docs/implr/kb-index/master-synthesis.md", "note": "required" },
+        { "path": "docs/implr/config/DEV-STANDARDS.md", "note": "optional" }
+      ],
+      "produces": [{ "path": "docs/ARCHITECTURE.md", "note": "" }],
+      "produces_artefact": null,
+      "description": "Infers architectural decisions from the master synthesis and confirms each one with the operator before writing ARCHITECTURE.md."
+    },
+    {
+      "id": "ba-requirements-gen",
+      "kind": "skill",
+      "label": "Requirements Generation",
+      "phase": "requirements",
+      "skill": "ba-requirements-gen",
+      "args_allowed": [
+        { "flag": "--domain", "takes_value": true, "value_pattern": "^[a-z0-9-]{1,60}$", "note": "restrict to one domain" },
+        { "flag": "--reprocess", "takes_value": false, "note": "regenerate existing" },
+        { "flag": "--dry-run", "takes_value": false, "note": "report, write nothing" }
+      ],
+      "args_default": [],
+      "interactive": false,
+      "agents": [{ "name": "requirements-domain-worker", "fan_out": "1 per domain" }],
+      "consumes": [
+        { "path": "docs/implr/kb-index/domains/*.md", "note": "per domain" },
+        { "path": "docs/implr/kb-index/master-synthesis.md", "note": "NFR signals" }
+      ],
+      "produces": [],
+      "produces_artefact": "requirement",
+      "description": "Turns the digested knowledge base into numbered functional and non-functional requirements, one worker per domain."
+    },
+    {
+      "id": "ba-cr",
+      "kind": "skill",
+      "label": "Change Request",
+      "phase": "requirements",
+      "skill": "ba-cr",
+      "args_allowed": [
+        { "flag": "--file", "takes_value": true, "value_pattern": "^[A-Za-z0-9._/-]{1,200}$", "note": "the CR document" },
+        { "flag": "--ingest-file", "takes_value": true, "value_pattern": "^[A-Za-z0-9._/-]{1,200}$", "note": "ingest then analyse" },
+        { "flag": "--impact-only", "takes_value": false, "note": "analyse, do not apply" },
+        { "flag": "--dry-run", "takes_value": false, "note": "report, write nothing" }
+      ],
+      "args_default": [],
+      "interactive": true,
+      "agents": [
+        { "name": "cr-impact-analyzer", "fan_out": "1" },
+        { "name": "cr-applier", "fan_out": "1 per target" }
+      ],
+      "consumes": [
+        { "path": "docs/kb/change-requests/*.md", "note": "" },
+        { "path": "docs/implr/requirements/**", "note": "impact set" }
+      ],
+      "produces": [],
+      "produces_artefact": "cr",
+      "description": "Analyses what a Change Request would touch, shows the blast radius, then applies it across requirements and plans."
+    },
+    {
+      "id": "dev-planner",
+      "kind": "skill",
+      "label": "Specification / Planning",
+      "phase": "planning",
+      "skill": "dev-planner",
+      "args_allowed": [
+        { "flag": "--all", "takes_value": false, "note": "every approved requirement" },
+        { "flag": "--replan", "takes_value": false, "note": "rewrite needs-rework plans" },
+        { "flag": "--brainstorm", "takes_value": false, "note": "ask before planning" },
+        { "flag": "--coherence-check", "takes_value": false, "note": "cross-plan consistency" },
+        { "flag": "--dry-run", "takes_value": false, "note": "report, write nothing" }
+      ],
+      "args_default": ["--all"],
+      "interactive": true,
+      "agents": [{ "name": "plan-worker", "fan_out": "1 per requirement" }],
+      "consumes": [
+        { "path": "docs/implr/requirements/**", "note": "status: approved" },
+        { "path": "docs/ARCHITECTURE.md", "note": "" },
+        { "path": "docs/implr/config/DEV-STANDARDS.md", "note": "" }
+      ],
+      "produces": [],
+      "produces_artefact": "plan",
+      "description": "Writes an implementation plan per approved requirement, with per-task TDD flags and injected NFR constraints."
+    },
+    {
+      "id": "dev-executor",
+      "kind": "skill",
+      "label": "Implementation",
+      "phase": "build",
+      "skill": "dev-executor",
+      "args_allowed": [
+        { "flag": "--all", "takes_value": false, "note": "every ready plan" },
+        { "flag": "--task", "takes_value": true, "value_pattern": "^[A-Za-z0-9._#/-]{1,80}$", "note": "one task id only" },
+        { "flag": "--review", "takes_value": false, "note": "review after each plan" },
+        { "flag": "--commit", "takes_value": false, "note": "commit per plan" },
+        { "flag": "--verbose", "takes_value": false, "note": "stream task detail" },
+        { "flag": "--dry-run", "takes_value": false, "note": "report, write nothing" }
+      ],
+      "args_default": ["--all"],
+      "interactive": false,
+      "agents": [
+        { "name": "arch-excerpter", "fan_out": "1 per plan" },
+        { "name": "plan-runner", "fan_out": "1 per plan, cap 5" },
+        { "name": "task-executor", "fan_out": "1 per task" }
+      ],
+      "consumes": [
+        { "path": "docs/implr/plans/**", "note": "status: ready" },
+        { "path": "docs/ARCHITECTURE.md", "note": "excerpted per plan" },
+        { "path": "docs/implr/config/DEV-STANDARDS.md", "note": "" }
+      ],
+      "produces": [
+        { "path": "src/**", "note": "implementation" },
+        { "path": "tests/**", "note": "tests first when TDD is required" }
+      ],
+      "produces_artefact": null,
+      "description": "Implements ready plans task by task. Parses each plan into envelopes, then runs one task agent per task under TDD enforcement."
+    },
+    {
+      "id": "dev-code-review",
+      "kind": "skill",
+      "label": "Code Review",
+      "phase": "verify",
+      "skill": "dev-code-review",
+      "args_allowed": [
+        { "flag": "--all", "takes_value": false, "note": "every implemented plan" },
+        { "flag": "--verbose", "takes_value": false, "note": "full finding detail" }
+      ],
+      "args_default": ["--all"],
+      "interactive": false,
+      "agents": [{ "name": "code-review-worker", "fan_out": "1 per plan" }],
+      "consumes": [
+        { "path": "docs/implr/plans/**", "note": "acceptance criteria" },
+        { "path": "src/**", "note": "the diff" }
+      ],
+      "produces": [],
+      "produces_artefact": "review",
+      "description": "Reviews what was built against each plan's acceptance criteria in a fresh context, then issues a verdict."
+    },
+    {
+      "id": "qa-testing",
+      "kind": "skill",
+      "label": "Testing",
+      "phase": "verify",
+      "skill": "qa-testing",
+      "args_allowed": [{ "flag": "--all", "takes_value": false, "note": "" }],
+      "args_default": ["--all"],
+      "interactive": false,
+      "agents": [],
+      "consumes": [],
+      "produces": [],
+      "produces_artefact": null,
+      "description": "PLANNED - a dedicated test-execution step. Declared so it appears in the process diagram; the skill does not exist yet."
+    },
+    {
+      "id": "sec-review",
+      "kind": "skill",
+      "label": "Security Checks",
+      "phase": "verify",
+      "skill": "sec-review",
+      "args_allowed": [{ "flag": "--all", "takes_value": false, "note": "" }],
+      "args_default": ["--all"],
+      "interactive": false,
+      "agents": [],
+      "consumes": [],
+      "produces": [],
+      "produces_artefact": null,
+      "description": "PLANNED - a dedicated security review step. Declared so it appears in the process diagram; the skill does not exist yet."
+    }
+  ]
+}

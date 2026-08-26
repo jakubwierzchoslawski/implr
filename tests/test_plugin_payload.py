@@ -29,7 +29,10 @@ def test_the_contracts_moved():
 
     assert (schemas / "status-vocabulary.json").is_file()
     assert (schemas / "frontmatter-rules.json").is_file()
-    assert len(list(schemas.glob("*.json"))) == 2
+    # Phase 1 adds step-registry.json: the studio step catalogue is a contract
+    # the installer ships like any other.
+    assert (schemas / "step-registry.json").is_file()
+    assert len(list(schemas.glob("*.json"))) == 3
     assert len(list(schemas.glob("*.md"))) == 8
 
 
