@@ -1,6 +1,5 @@
 # tests/test_contracts.py
-import os, sys, unittest
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+import os, unittest
 from implr_validate.contracts import load_contracts
 
 SCHEMA_DIR = os.path.join(os.path.dirname(__file__), "..", "scaffold", "schemas")

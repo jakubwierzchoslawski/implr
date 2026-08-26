@@ -1,0 +1,23 @@
+[project]
+name = "implr-validate"
+version = "3.0.0"
+description = "Contract validation for implr workspaces"
+requires-python = ">=3.11"
+# Deliberately empty. A target project installs this package; it must not pull in
+# the studio backend's dependency tree.
+dependencies = []
+
+[project.scripts]
+implr-validate = "implr_validate.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["implr_validate*"]
+
+[tool.setuptools.package-data]
+# The contracts travel with the package so `implr-validate` works in a project
+# that has not installed the plugin payload.
+implr_validate = ["contracts/*.json"]

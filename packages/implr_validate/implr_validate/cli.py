@@ -19,8 +19,10 @@ def _resolve_schema_dir(root, override):
     return os.path.join(root, "docs", "implr", "schemas")
 
 
-def main(argv):
-    parser = argparse.ArgumentParser(prog="implr_validate", add_help=True)
+def main(argv=None):
+    # argv defaults to None so the `implr-validate` console script, which calls
+    # main() with no arguments, works. argparse reads sys.argv[1:] for None.
+    parser = argparse.ArgumentParser(prog="implr-validate", add_help=True)
     parser.add_argument("--repo", action="store_true", help="validate the plugin source tree")
     parser.add_argument("--workspace", nargs="?", const=".", default=None,
                         help="validate an installed docs/implr workspace at PATH (default cwd)")

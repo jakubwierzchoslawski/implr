@@ -1,6 +1,5 @@
 # tests/test_frontmatter.py
-import os, sys, unittest
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+import unittest
 from implr_validate.frontmatter import split_frontmatter, parse_frontmatter, FrontmatterError
 
 

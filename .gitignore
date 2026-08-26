@@ -8,5 +8,11 @@ Thumbs.db
 # build artefacts
 *.skill
 *.zip
-# Claude Code session state (.claude/agents/ IS tracked — plugin payload)
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+# Claude Code session state
 .claude/settings.local.json

@@ -1,6 +1,5 @@
 # tests/test_cli.py
-import json, os, sys, tempfile, unittest
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+import json, os, tempfile, unittest
 from implr_validate.cli import main
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")

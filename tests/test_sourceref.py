@@ -1,5 +1,4 @@
-import os, shutil, subprocess, sys, tempfile, unittest
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+import os, shutil, subprocess, tempfile, unittest
 from implr_validate.sourceref import source_ref, source_ref_fallback
 
 GIT = shutil.which("git")

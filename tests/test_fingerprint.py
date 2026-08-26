@@ -1,6 +1,5 @@
 # tests/test_fingerprint.py
-import os, sys, unittest
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+import unittest
 from implr_validate.fingerprint import contradiction_fingerprint, FINGERPRINT_VERSION
 
 BASE = {

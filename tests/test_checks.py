@@ -1,6 +1,5 @@
 # tests/test_checks.py
-import os, sys, tempfile, unittest
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+import os, tempfile, unittest
 from implr_validate.contracts import load_contracts
 from implr_validate.checks import check_artefact_file
 
