@@ -92,7 +92,7 @@ agent's `default_model` declared in `.claude/agents/<name>.md`.
 
 Each dispatch carries a small scope payload (file path, requirement id, domain name —
 whatever the worker needs to act on). The orchestrator never sends the full phase
-instructions inline; they live in `skills/<skill>/phases/*.md` and in the agent's system
+instructions inline; they live in `plugin/skills/<skill>/phases/*.md` and in the agent's system
 prompt body. This keeps payloads small and prompt-cache hits high.
 
 ### Stable-reads-first convention
@@ -179,7 +179,7 @@ Contradictions are found at synthesis time, resolved before requirement generati
    document is automatically compared against every existing document in its domain.
 3. Contradictions are classified: Hard conflict, Soft conflict, Version drift, Scope overlap.
    Each is given a stable `(fingerprint_version, fingerprint)` — a versioned SHA-256 over its
-   normalised, order-independent fields, computed by `scripts/implr_validate --fingerprint`
+   normalised, order-independent fields, computed by `implr-validate --fingerprint`
    (an LLM must not hand-compute it). A `C-xxx` ID is also assigned as a display label only.
 4. Cross-domain contradictions are caught when the master synthesis is rebuilt from domain
    syntheses.
@@ -475,9 +475,9 @@ not the index. `index.md` is the current state of the KB file registry.
 
 To add a skill (for example the planned `ba-jira-populate`):
 
-1. Create `skills/<name>/SKILL.md` with frontmatter (name, description with trigger phrases).
-2. If it needs schemas or templates, add them under `scaffold/schemas/` or `scaffold/seeds/`.
-   The installer copies `scaffold/schemas/` to `docs/implr/schemas/` and `scaffold/seeds/` files
+1. Create `plugin/skills/<name>/SKILL.md` with frontmatter (name, description with trigger phrases).
+2. If it needs schemas or templates, add them under `plugin/schemas/` or `plugin/seeds/`.
+   The installer copies `plugin/schemas/` to `docs/implr/schemas/` and `plugin/seeds/` files
    to `docs/implr/` as skip-if-exists seeds.
 3. Reference `docs/implr/` paths from the SKILL.md — never bundle data inside the skill.
 4. Add the skill to the installer's skill list and to the README skills table.

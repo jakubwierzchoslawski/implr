@@ -1,7 +1,7 @@
-# scripts/implr_validate/fingerprint.py
+# packages/implr_validate/implr_validate/fingerprint.py
 """Deterministic, versioned, order-independent contradiction fingerprint.
 An LLM cannot compute SHA-256 reliably; this is the canonical implementation that
-doc-ingest invokes (via `python scripts/implr_validate --fingerprint`) and that
+doc-ingest invokes (via `implr-validate --fingerprint`) and that
 `--workspace` validation recomputes to verify stored fingerprints."""
 import hashlib
 import json

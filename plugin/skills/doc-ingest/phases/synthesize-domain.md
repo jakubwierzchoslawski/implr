@@ -38,4 +38,4 @@ contradictions_for_fingerprinting:
 
 Emit one `contradictions_for_fingerprinting` entry per detected contradiction with its five
 raw fields. **Do not compute the fingerprint hash yourself** — the orchestrator computes it
-via `python scripts/implr_validate --fingerprint` and writes it into the synthesis table.
+via `implr-validate --fingerprint` and writes it into the synthesis table.

@@ -1,4 +1,4 @@
-# scripts/implr_validate/cli.py
+# packages/implr_validate/implr_validate/cli.py
 import argparse
 import json
 import os
@@ -13,7 +13,9 @@ from .sourceref import source_ref
 def _resolve_schema_dir(root, override):
     if override:
         return override
-    candidate = os.path.join(root, "scaffold", "schemas")
+    # A plugin-source checkout has plugin/schemas; an installed workspace has
+    # docs/implr/schemas.
+    candidate = os.path.join(root, "plugin", "schemas")
     if os.path.isdir(candidate):
         return candidate
     return os.path.join(root, "docs", "implr", "schemas")

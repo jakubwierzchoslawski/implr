@@ -53,13 +53,13 @@
       {"token": "replan_required", "reason": "retired plan-status marker; use needs-rework"},
       {"token": "impact-analysed", "reason": "never a real CR status; CR states are draft|approved|rejected|applied"}
     ],
-    "banned_token_surfaces": ["scaffold/", "skills/", ".claude/agents/", "README.md", "docs/WORKFLOW.md"],
-    "enum_comment_surfaces": ["scaffold/schemas/", "scaffold/templates/"],
+    "banned_token_surfaces": ["plugin/", "README.md", "docs/WORKFLOW.md"],
+    "enum_comment_surfaces": ["plugin/schemas/", "plugin/templates/"],
     "exempt_paths": ["CHANGELOG.md", "docs/superpowers/", ".superpowers/"],
-    "enum_check_exempt": ["scaffold/schemas/status-vocabulary.json", "scaffold/schemas/status-vocabulary.md"],
-    "cache_path_surfaces": ["scaffold/schemas/", "skills/", ".claude/agents/", "README.md", "docs/WORKFLOW.md"],
+    "enum_check_exempt": ["plugin/schemas/status-vocabulary.json", "plugin/schemas/status-vocabulary.md"],
+    "cache_path_surfaces": ["plugin/schemas/", "plugin/skills/", "plugin/agents/", "README.md", "docs/WORKFLOW.md"],
     "canonical_formats": ["md", "pdf", "docx", "xlsx", "pptx", "odp", "odt", "ods", "csv", "txt", "vtt", "png", "jpg", "jpeg", "gif", "webp", "tiff", "bmp"],
-    "format_presence_surfaces": ["scaffold/schemas/kb-index-schema.md", "README.md", "skills/doc-ingest/phases/extract.md"],
+    "format_presence_surfaces": ["plugin/schemas/kb-index-schema.md", "README.md", "plugin/skills/doc-ingest/phases/extract.md"],
     "plan_status_misuse_tokens": ["changes-required"]
   }
 }

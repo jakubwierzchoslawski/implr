@@ -1,4 +1,4 @@
-# scripts/implr_validate/frontmatter.py
+# packages/implr_validate/implr_validate/frontmatter.py
 """Parser for the restricted YAML-frontmatter subset implr templates produce.
 Standard library only. Anything outside the subset is a validation error."""
 import re

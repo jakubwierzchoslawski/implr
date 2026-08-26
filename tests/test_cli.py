@@ -12,18 +12,18 @@ class TestCli(unittest.TestCase):
             with open(fpath, "w", encoding="utf-8") as f:
                 json.dump({"source_a": "a", "statement_a": "x", "source_b": "b",
                            "statement_b": "y", "type": "Hard conflict"}, f)
-            rc = main(["--fingerprint", fpath, "--schema-dir", os.path.join(REPO_ROOT, "scaffold", "schemas")])
+            rc = main(["--fingerprint", fpath, "--schema-dir", os.path.join(REPO_ROOT, "plugin", "schemas")])
             self.assertEqual(rc, 0)
 
     def test_repo_mode_clean_tree_returns_zero(self):
         with tempfile.TemporaryDirectory() as tmp:
-            os.makedirs(os.path.join(tmp, "scaffold", "schemas"))
+            os.makedirs(os.path.join(tmp, "plugin", "schemas"))
             # copy the two contract files so load works, no offending prose present
             for fn in ("status-vocabulary.json", "frontmatter-rules.json"):
-                src = os.path.join(REPO_ROOT, "scaffold", "schemas", fn)
-                with open(src, encoding="utf-8") as a, open(os.path.join(tmp, "scaffold", "schemas", fn), "w", encoding="utf-8") as b:
+                src = os.path.join(REPO_ROOT, "plugin", "schemas", fn)
+                with open(src, encoding="utf-8") as a, open(os.path.join(tmp, "plugin", "schemas", fn), "w", encoding="utf-8") as b:
                     b.write(a.read())
-            rc = main(["--repo", "--root", tmp, "--schema-dir", os.path.join(tmp, "scaffold", "schemas")])
+            rc = main(["--repo", "--root", tmp, "--schema-dir", os.path.join(tmp, "plugin", "schemas")])
             self.assertEqual(rc, 0)
 
     def test_usage_error_returns_two(self):
@@ -40,17 +40,17 @@ class TestCli(unittest.TestCase):
                     "arch_excerpt_hash": "h", "interfaces_contracts": "i",
                     "applied_nfrs": "n", "standards_card_hash": "s", "test_runner": "pytest",
                 }, f)
-            rc = main(["--task-fingerprint", p, "--schema-dir", os.path.join(REPO_ROOT, "scaffold", "schemas")])
+            rc = main(["--task-fingerprint", p, "--schema-dir", os.path.join(REPO_ROOT, "plugin", "schemas")])
             self.assertEqual(rc, 0)
 
     def test_source_ref_mode(self):
-        rc = main(["--source-ref", "scaffold", "--root", REPO_ROOT, "--schema-dir", os.path.join(REPO_ROOT, "scaffold", "schemas")])
+        rc = main(["--source-ref", "plugin", "--root", REPO_ROOT, "--schema-dir", os.path.join(REPO_ROOT, "plugin", "schemas")])
         self.assertEqual(rc, 0)
 
 
 # --- Task 10: sample-kb fixture integration tests ---
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "sample-kb")
-SCHEMA_DIR = os.path.join(REPO_ROOT, "scaffold", "schemas")
+SCHEMA_DIR = os.path.join(REPO_ROOT, "plugin", "schemas")
 
 
 class TestFixture(unittest.TestCase):

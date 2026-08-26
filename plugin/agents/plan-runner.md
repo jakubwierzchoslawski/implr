@@ -93,7 +93,7 @@ When all envelopes processed (or on stop), Edit `plan_path` frontmatter:
     | `test_runner`              | envelope's top-level `test_runner`                                  |
 
     Write these fields to a temp JSON file and run
-    `python scripts/implr_validate --task-fingerprint <tmp>`. Store the printed value
+    `implr-validate --task-fingerprint <tmp>`. Store the printed value
     (e.g. `t1:<hash>`) as `task_fingerprints[TASK-NNN]`. **Never hand-compute the hash**
     — the validator CLI is the sole source of the fingerprint value.
 - Any stop condition → `status: in-progress`; if blocked, set `blocked_reason: <reason>`.
@@ -119,7 +119,7 @@ ensure the directory `docs/implr/plans/test-results/` exists (create it if missi
 
 - `plan_id`: this plan's `plan_id`.
 - `run_at`: now, as an ISO timestamp.
-- `source_ref`: run `python scripts/implr_validate --source-ref <src_path> <tests_path>`,
+- `source_ref`: run `implr-validate --source-ref <src_path> <tests_path>`,
   using the dispatched envelopes' top-level `src_path` and `tests_path` fields (the same
   envelope fields task-executor's Inputs define; identical across all envelopes for this
   plan), and use the printed `git:<hash>` / `fb:<hash>` output verbatim. **Never

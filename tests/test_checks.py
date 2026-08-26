@@ -3,7 +3,7 @@ import os, tempfile, unittest
 from implr_validate.contracts import load_contracts
 from implr_validate.checks import check_artefact_file
 
-SCHEMA_DIR = os.path.join(os.path.dirname(__file__), "..", "scaffold", "schemas")
+SCHEMA_DIR = os.path.join(os.path.dirname(__file__), "..", "plugin", "schemas")
 
 VALID_REQ = """---
 req_id: REQ-F-001
@@ -239,7 +239,7 @@ class TestRepoProse(unittest.TestCase):
 
     def test_banned_token_flagged_in_template(self):
         with tempfile.TemporaryDirectory() as root:
-            self._repo(root, "scaffold/templates/plan-template.md", "status: replan_required\n")
+            self._repo(root, "plugin/templates/plan-template.md", "status: replan_required\n")
             self.assertTrue(any("replan_required" in f.message for f in check_repo_prose(root, self.c)))
 
     def test_banned_token_flagged_in_readme_and_workflow(self):
@@ -253,7 +253,7 @@ class TestRepoProse(unittest.TestCase):
 
     def test_banned_token_flagged_in_skill(self):
         with tempfile.TemporaryDirectory() as root:
-            self._repo(root, "skills/ba-cr/SKILL.md", "sets replan_required on the plan\n")
+            self._repo(root, "plugin/skills/ba-cr/SKILL.md", "sets replan_required on the plan\n")
             self.assertTrue(any("replan_required" in f.message for f in check_repo_prose(root, self.c)))
 
     def test_banned_token_exempt_in_changelog(self):
@@ -263,24 +263,24 @@ class TestRepoProse(unittest.TestCase):
 
     def test_divergent_enum_comment_flagged(self):
         with tempfile.TemporaryDirectory() as root:
-            self._repo(root, "scaffold/schemas/plan-schema.md",
+            self._repo(root, "plugin/schemas/plan-schema.md",
                        "status: ready   # ready | in-progress | done | changes-required\n")
             self.assertTrue(any("changes-required" in f.message for f in check_repo_prose(root, self.c)))
 
     def test_matching_enum_comment_clean(self):
         with tempfile.TemporaryDirectory() as root:
-            self._repo(root, "scaffold/schemas/plan-schema.md",
+            self._repo(root, "plugin/schemas/plan-schema.md",
                        "status: ready   # ready | in-progress | done | blocked | needs-rework\n")
             self.assertEqual(check_repo_prose(root, self.c), [])
 
     def test_cache_md_extension_flagged(self):
         with tempfile.TemporaryDirectory() as root:
-            self._repo(root, "scaffold/schemas/kb-index-schema.md", "cache_path: docs/implr/kb-index/cache/x.md\n")
+            self._repo(root, "plugin/schemas/kb-index-schema.md", "cache_path: docs/implr/kb-index/cache/x.md\n")
             self.assertTrue(any("cache" in f.message.lower() for f in check_repo_prose(root, self.c)))
 
     def test_format_list_mismatch_flagged(self):
         with tempfile.TemporaryDirectory() as root:
-            self._repo(root, "scaffold/config/implr.config.yaml", "  kb_supported_formats: [md, pdf, docx]\n")
+            self._repo(root, "plugin/config/implr.config.yaml", "  kb_supported_formats: [md, pdf, docx]\n")
             self.assertTrue(any("kb_supported_formats" in f.message for f in check_repo_prose(root, self.c)))
 
     def test_format_array_mismatch_in_readme_flagged(self):
@@ -292,7 +292,7 @@ class TestRepoProse(unittest.TestCase):
     def test_format_presence_missing_flagged(self):
         # (e) each canonical format must appear on a presence surface; omit 'bmp'
         with tempfile.TemporaryDirectory() as root:
-            self._repo(root, "skills/doc-ingest/phases/extract.md",
+            self._repo(root, "plugin/skills/doc-ingest/phases/extract.md",
                        "handles: md pdf docx xlsx pptx odp odt ods csv txt vtt png jpg jpeg gif webp tiff\n")
             findings = check_repo_prose(root, self.c)
             self.assertTrue(any("bmp" in f.message and "not mentioned" in f.message for f in findings))

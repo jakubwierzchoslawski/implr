@@ -294,7 +294,7 @@ ones. To change a decision, edit the file manually and re-run `/ba-requirements-
 | Column | Source | Notes |
 |--------|--------|-------|
 | C-ID | domain/master synthesis | Display label only, assigned at synthesis time; NOT used for matching |
-| Fingerprint | computed via `scripts/implr_validate --fingerprint` | Stable identity used to match against this file |
+| Fingerprint | computed via `implr-validate --fingerprint` | Stable identity used to match against this file |
 | FP-Ver | fingerprint algorithm version | Bumped when the algorithm changes |
 | Type | synthesis Contradictions Detected | Hard conflict / Soft conflict / Version drift / Scope overlap |
 | Source A | synthesis | File path + section if available |
@@ -320,7 +320,7 @@ Every contradiction row carries a `fingerprint` and `fingerprint_version`. The f
 the stable identity used to match against `resolved-contradictions.md` — `C-xxx` IDs are display
 labels only and are NOT used for matching.
 
-Algorithm (version 1), implemented canonically in `scripts/implr_validate/fingerprint.py`:
+Algorithm (version 1), implemented canonically in `packages/implr_validate/implr_validate/fingerprint.py`:
 
 1. Normalize every field: trim, collapse internal whitespace, lowercase, strip trailing
    `.,;:!?`.
@@ -335,7 +335,7 @@ version for human readers.
 
 An LLM must NOT hand-compute this hash. The `doc-ingest` orchestrator computes it by writing the
 five fields to a temp JSON file and calling
-`python scripts/implr_validate --fingerprint <file>`. `implr-validate --workspace` recomputes
+`implr-validate --fingerprint <file>`. `implr-validate --workspace` recomputes
 each fingerprint stored in a domain synthesis `Contradictions Detected` table AND in the master
 `Cross-Domain Contradictions` table (both carry all five raw fields as named columns) from its
 cells and fails on any mismatch — so a hand-written or hallucinated hash is caught. The

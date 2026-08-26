@@ -133,7 +133,7 @@ compute SHA-256 reliably, so for each contradiction:
 
 1. Write the five fields (`source_a`, `statement_a`, `source_b`, `statement_b`, `type`) to a
    temp JSON file, e.g. `docs/implr/kb-index/.fp-tmp.json`.
-2. Run `python scripts/implr_validate --fingerprint <tmp>` and capture the printed
+2. Run `implr-validate --fingerprint <tmp>` and capture the printed
    `<ver>:<hash>`.
 3. Write the full printed `<ver>:<hash>` into the row's `Fingerprint` column and the `<ver>`
    into `FP-Ver` of the domain synthesis `Contradictions Detected` table.
@@ -161,7 +161,7 @@ in-skill:
 For each cross-domain contradiction, record its two conflicting statements (`Statement A`,
 `Statement B`) and sources, then compute its `Fingerprint`/`FP-Ver` the **same way as Phase 5**:
 write the five fields (`source_a`, `statement_a`, `source_b`, `statement_b`, `type`) to a temp
-JSON file, run `python scripts/implr_validate --fingerprint <tmp>`, and write the full printed
+JSON file, run `implr-validate --fingerprint <tmp>`, and write the full printed
 `<ver>:<hash>` into the `Fingerprint` column and `<ver>` into `FP-Ver`. Do not hand-compute the
 hash; `implr-validate --workspace` recomputes and verifies these too.
 

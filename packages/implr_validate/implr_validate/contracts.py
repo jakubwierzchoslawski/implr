@@ -1,4 +1,4 @@
-# scripts/implr_validate/contracts.py
+# packages/implr_validate/implr_validate/contracts.py
 """Load the JSON contract files (standard library only)."""
 import json
 import os

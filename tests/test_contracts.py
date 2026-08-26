@@ -2,7 +2,7 @@
 import os, unittest
 from implr_validate.contracts import load_contracts
 
-SCHEMA_DIR = os.path.join(os.path.dirname(__file__), "..", "scaffold", "schemas")
+SCHEMA_DIR = os.path.join(os.path.dirname(__file__), "..", "plugin", "schemas")
 
 
 class TestContracts(unittest.TestCase):

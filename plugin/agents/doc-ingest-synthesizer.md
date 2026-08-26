@@ -37,7 +37,7 @@ across the domain's digests.
 For each contradiction, record the five raw fields that identify it: `source_a`,
 `statement_a`, `source_b`, `statement_b`, `type`. **Do not compute the fingerprint hash
 yourself** — an LLM cannot compute SHA-256 reliably. The orchestrator computes it via
-`python scripts/implr_validate --fingerprint`. Emit the raw fields in your return summary
+`implr-validate --fingerprint`. Emit the raw fields in your return summary
 (see `contradictions_for_fingerprinting` below) so the orchestrator can compute and write
 `fingerprint` + `fingerprint_version` into the synthesis contradiction table.
 

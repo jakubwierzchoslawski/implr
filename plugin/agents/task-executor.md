@@ -75,7 +75,7 @@ plan_id_for_log: PLAN-F-NNN
 0. **Idempotent skip check.** If `prior_fingerprint` is non-empty, recompute this task's
    fingerprint by writing a temp JSON file with the `task_fingerprint()` field set built
    from the envelope as follows, and running
-   `python scripts/implr_validate --task-fingerprint <tmp>` — **never hand-compute the
+   `implr-validate --task-fingerprint <tmp>` — **never hand-compute the
    hash** (you have Bash; hashing is the validator's job, per the global constraint):
 
    | fingerprint field        | envelope source                                                    |

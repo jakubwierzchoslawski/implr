@@ -973,8 +973,8 @@ re-synthesise everything).
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). In short: skills are plain `SKILL.md` instruction files;
-dedicated agents live in `.claude/agents/<name>.md` with frontmatter and a system-prompt body;
-phase prompts live in `skills/<skill>/phases/*.md`. Keep skills thin (orchestration only); keep
+dedicated agents live in `plugin/agents/<name>.md` with frontmatter and a system-prompt body;
+phase prompts live in `plugin/skills/<skill>/phases/*.md`. Keep skills thin (orchestration only); keep
 the schemas authoritative; include before/after examples in PRs that change skill behaviour.
 
 ---

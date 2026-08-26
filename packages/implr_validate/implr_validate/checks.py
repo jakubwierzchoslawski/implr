@@ -1,4 +1,4 @@
-# scripts/implr_validate/checks.py
+# packages/implr_validate/implr_validate/checks.py
 """Validation checks. Standard library only."""
 import os
 import re
