@@ -37,6 +37,13 @@ def test_the_installers_agree_on_the_skill_list():
     assert len(lists[0]) == 8
 
 
+def test_bootstrapping_implr_itself_installs_editable():
+    """A plain install into this repo shadows the source tree with a snapshot copy,
+    so a contributor's edits to packages/implr_validate stop taking effect."""
+    for name in ("install.sh", "install.ps1"):
+        assert "--editable" in (REPO / name).read_text(encoding="utf-8"), name
+
+
 def test_the_bootstrap_step_is_documented():
     """A fresh clone cannot run an implr skill until .claude/agents exists."""
     assert "install.sh" in (REPO / "CONTRIBUTING.md").read_text(encoding="utf-8")

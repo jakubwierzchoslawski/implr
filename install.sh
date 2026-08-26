@@ -58,8 +58,17 @@ provision_workspace() {
   if command -v pip >/dev/null 2>&1; then
     # A plain path, not a file:// URL: file:// with a drive-lettered Windows
     # path is mangled by pip, and a path works identically on every platform.
-    pip install --quiet --upgrade "$VALIDATE_PKG"
-    echo "  implr-validate installed"
+    #
+    # Bootstrapping implr itself installs editable, so a contributor's edits to
+    # packages/implr_validate take effect. A target project gets a normal
+    # install: its copy must keep working if the implr checkout moves away.
+    if [ "$SCRIPT_DIR" = "$(pwd)" ]; then
+      pip install --quiet --upgrade --editable "$VALIDATE_PKG"
+      echo "  implr-validate installed (editable - this is the implr repo)"
+    else
+      pip install --quiet --upgrade "$VALIDATE_PKG"
+      echo "  implr-validate installed"
+    fi
   else
     echo "  WARNING: pip not found - install implr-validate manually:"
     echo "    pip install $VALIDATE_PKG"

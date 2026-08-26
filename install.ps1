@@ -61,8 +61,17 @@ function Initialize-Workspace {
     if (Get-Command pip -ErrorAction SilentlyContinue) {
         # A plain path, not a file:// URL: pip does not accept file:// with a
         # drive-lettered Windows path.
-        pip install --quiet --upgrade $ValidatePkg
-        Write-Host "  implr-validate installed"
+        #
+        # Bootstrapping implr itself installs editable, so a contributor's edits
+        # to packages/implr_validate take effect. A target project gets a normal
+        # install: its copy must keep working if the implr checkout moves away.
+        if ((Resolve-Path $ScriptDir).Path -eq (Get-Location).Path) {
+            pip install --quiet --upgrade --editable $ValidatePkg
+            Write-Host "  implr-validate installed (editable - this is the implr repo)"
+        } else {
+            pip install --quiet --upgrade $ValidatePkg
+            Write-Host "  implr-validate installed"
+        }
     } else {
         Write-Host "  WARNING: pip not found - install implr-validate manually:"
         Write-Host "    pip install $ValidatePkg"
