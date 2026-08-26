@@ -1,5 +1,6 @@
 # packages/implr_validate/implr_validate/checks.py
 """Validation checks. Standard library only."""
+import json
 import os
 import re
 
@@ -289,4 +290,139 @@ def check_repo_prose(root, contracts):
         for fmt in canonical:
             if not re.search(r"\b%s\b" % re.escape(fmt), text):
                 findings.append(Finding("error", rel, "canonical format %r not mentioned on this surface" % fmt))
+    return findings
+
+
+# --- step registry (implr Studio) ---
+
+_REGISTRY_PHASES = ("discovery", "design", "requirements", "planning", "build", "verify")
+_REGISTRY_KINDS = ("skill", "agent")
+_REGISTRY_FIELDS = (
+    "id", "kind", "label", "phase", "skill",
+    "args_allowed", "args_default", "interactive",
+    "agents", "consumes", "produces", "produces_artefact", "description",
+)
+
+
+def check_step_registry(root, contracts):
+    """Validate plugin/schemas/step-registry.json against the plugin payload.
+
+    A registered step whose skill does not exist yet is reported at level "info",
+    never "error": designing a pipeline ahead of implementing its steps is the
+    workflow the registry exists to support. Everything else - a malformed arg
+    spec, an agent with no definition, an unknown artefact type - is an error,
+    because each one produces a UI control that configures nothing.
+
+    Deliberately re-implements the loader's rules rather than importing
+    implr_studio: implr-validate must keep working in a project that has never
+    installed the studio backend, and stays standard library only.
+    """
+    rel = os.path.join("plugin", "schemas", "step-registry.json")
+    path = os.path.join(root, rel)
+    if not os.path.isfile(path):
+        return []
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+    except ValueError as e:
+        return [Finding("error", rel, "invalid JSON: %s" % e)]
+
+    findings = []
+    seen = set()
+    for entry in raw.get("steps", []):
+        step_id = entry.get("id", "<no id>")
+
+        missing = [f for f in _REGISTRY_FIELDS if f not in entry]
+        if missing:
+            findings.append(Finding(
+                "error", rel,
+                "step %s missing required field(s): %s" % (step_id, ", ".join(missing))))
+            continue
+
+        if step_id in seen:
+            findings.append(Finding("error", rel, "duplicate step id: %s" % step_id))
+            continue
+        seen.add(step_id)
+
+        if entry["kind"] not in _REGISTRY_KINDS:
+            findings.append(Finding(
+                "error", rel,
+                "step %s has unknown kind %r (legal: %s)"
+                % (step_id, entry["kind"], list(_REGISTRY_KINDS))))
+
+        if entry["phase"] not in _REGISTRY_PHASES:
+            findings.append(Finding(
+                "error", rel,
+                "step %s has unknown phase %r (legal: %s)"
+                % (step_id, entry["phase"], list(_REGISTRY_PHASES))))
+
+        specs = {}
+        for spec in entry["args_allowed"]:
+            if not isinstance(spec, dict) or "flag" not in spec:
+                findings.append(Finding(
+                    "error", rel,
+                    "step %s args_allowed entries must be objects with a 'flag'" % step_id))
+                continue
+            if spec["flag"] in specs:
+                findings.append(Finding(
+                    "error", rel,
+                    "step %s has duplicate flag %r in args_allowed" % (step_id, spec["flag"])))
+                continue
+            specs[spec["flag"]] = spec
+            if spec.get("takes_value"):
+                pattern = spec.get("value_pattern")
+                if not pattern:
+                    findings.append(Finding(
+                        "error", rel,
+                        "step %s arg %r takes a value but has no value_pattern"
+                        % (step_id, spec["flag"])))
+                else:
+                    try:
+                        re.compile(pattern)
+                    except re.error as e:
+                        findings.append(Finding(
+                            "error", rel,
+                            "step %s arg %r has an invalid value_pattern: %s"
+                            % (step_id, spec["flag"], e)))
+
+        for arg in entry["args_default"]:
+            spec = specs.get(arg)
+            if spec is None:
+                findings.append(Finding(
+                    "error", rel,
+                    "step %s args_default entry %r is not in args_allowed" % (step_id, arg)))
+            elif spec.get("takes_value"):
+                findings.append(Finding(
+                    "error", rel,
+                    "step %s args_default entry %r takes a value, so it cannot be a default"
+                    % (step_id, arg)))
+
+        for agent in entry["agents"]:
+            name = agent.get("name") if isinstance(agent, dict) else None
+            if not name:
+                findings.append(Finding(
+                    "error", rel, "step %s has an agent entry with no name" % step_id))
+                continue
+            if not os.path.isfile(
+                    os.path.join(root, "plugin", "agents", "%s.md" % name)):
+                findings.append(Finding(
+                    "error", rel,
+                    "step %s dispatches agent %r, which has no plugin/agents/%s.md"
+                    % (step_id, name, name)))
+
+        artefact = entry["produces_artefact"]
+        if artefact is not None and artefact not in contracts.artefact_types:
+            findings.append(Finding(
+                "error", rel,
+                "step %s produces_artefact %r is not a known artefact type (known: %s)"
+                % (step_id, artefact, sorted(contracts.artefact_types))))
+
+        if not os.path.isfile(
+                os.path.join(root, "plugin", "skills", entry["skill"], "SKILL.md")):
+            findings.append(Finding(
+                "info", rel,
+                "step %s is planned: plugin/skills/%s/SKILL.md does not exist yet"
+                % (step_id, entry["skill"])))
+
     return findings

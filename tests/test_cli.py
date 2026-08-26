@@ -100,3 +100,9 @@ class TestFixture(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLevelAwareExit(unittest.TestCase):
+    def test_info_findings_do_not_fail_the_exit_code(self):
+        """A planned step prints but must not break the build."""
+        self.assertEqual(main(["--repo", "--root", REPO_ROOT]), 0)

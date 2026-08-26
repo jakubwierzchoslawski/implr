@@ -5,7 +5,7 @@ import os
 import sys
 
 from .contracts import load_contracts
-from .checks import check_workspace, check_repo_prose
+from .checks import check_workspace, check_repo_prose, check_step_registry
 from .fingerprint import contradiction_fingerprint, task_fingerprint
 from .sourceref import source_ref
 
@@ -62,6 +62,7 @@ def main(argv=None):
         schema_dir = _resolve_schema_dir(args.root, args.schema_dir)
         contracts = load_contracts(schema_dir)
         findings.extend(check_repo_prose(args.root, contracts))
+        findings.extend(check_step_registry(args.root, contracts))
     if args.workspace is not None:
         ws = args.workspace
         schema_dir = _resolve_schema_dir(ws, args.schema_dir)
@@ -71,7 +72,13 @@ def main(argv=None):
     if findings:
         for fnd in findings:
             sys.stderr.write("%s: %s: %s\n" % (fnd.level, fnd.path, fnd.message))
-        sys.stderr.write("\n%d finding(s)\n" % len(findings))
-        return 1
+        # Level-aware from Phase 1: an "info" finding prints without failing, so
+        # declaring a step before its skill exists does not break the build.
+        # Every finding that predates this change is level "error", so nothing
+        # that used to fail starts passing.
+        errors = [f for f in findings if f.level == "error"]
+        sys.stderr.write("\n%d finding(s), %d error(s)\n" % (len(findings), len(errors)))
+        if errors:
+            return 1
     sys.stdout.write("implr-validate: OK\n")
     return 0
