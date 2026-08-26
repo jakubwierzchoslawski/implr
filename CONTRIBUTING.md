@@ -6,21 +6,48 @@ Thanks for your interest in improving implr.
 
 ```
 implr/
-├── skills/                     one folder per skill, each with a SKILL.md
-│   ├── <skill>/phases/         per-skill dispatch prompt templates (v2.0)
-│   └── implr-init/assets/      schemas, templates, config seeded into projects
-├── .claude/agents/             dedicated subagent definitions (v2.0)
+├── plugin/                     the payload — everything a target project receives
+│   ├── skills/                 one folder per skill, each with a SKILL.md
+│   │   └── <skill>/phases/     per-skill dispatch prompt templates
+│   ├── agents/                 dedicated subagent definitions
+│   ├── schemas/                the authoritative contracts
+│   ├── templates/              artefact templates seeded into projects
+│   ├── config/                 implr.config.yaml, DEV-STANDARDS.md
+│   ├── seeds/                  skip-if-exists starter documents
+│   └── steps/                  step registry (from Phase 1)
+├── packages/
+│   └── implr_validate/         the contract validator, an installable package
 ├── install.sh / .ps1 / .bat    cross-platform installers
 ├── docs/WORKFLOW.md            internal design deep-dive
+├── tests/
 ├── README.md
 ├── CHANGELOG.md
 └── LICENSE
 ```
 
+`plugin/` is one directory with one lifecycle: what it contains is exactly what a
+target project receives, so a container needs one `COPY` line and "what does a
+project get?" is answerable by `ls`.
+
+## Developing implr on implr
+
+`.claude/agents/` is generated. `plugin/agents/` is the source, so a fresh clone has no
+agents and no skills registered until you bootstrap:
+
+    bash install.sh            # or: pwsh install.ps1
+
+This copies `plugin/skills/` and `plugin/agents/` into `.claude/`, which is what lets you run
+`/dev-executor` on this repository. It also means **the installer is exercised on every
+developer setup** — if it breaks, your dev environment breaks, and you find out immediately
+rather than when a customer does.
+
+It also installs the validator as a package, so `implr-validate --repo --root .` works
+with no `PYTHONPATH`.
+
 ## Design principles
 
 1. **Skills are thin.** A skill is an instruction file (SKILL.md). Data — schemas, templates,
-   config — lives under `skills/implr-init/assets/` and is placed into `docs/implr/` at init.
+   config — lives under `plugin/schemas/`, `plugin/templates/` and `plugin/config/` and is placed into `docs/implr/` at init.
    Skills reference those paths; they do not bundle their own copies.
 2. **Schemas are authoritative.** Every data structure is defined once in a schema file that all
    skills reference. Change the schema, not each skill's idea of it.
@@ -32,17 +59,17 @@ implr/
 ## Making changes
 
 ### Editing a skill
-Edit `skills/<name>/SKILL.md`. The frontmatter `description` controls when Claude Code triggers
+Edit `plugin/skills/<name>/SKILL.md`. The frontmatter `description` controls when Claude Code triggers
 the skill — keep its trigger phrases accurate. In PRs that change behaviour, include a
 before/after example of the skill's output.
 
 ### Editing schemas or templates
-Edit the files under `skills/implr-init/assets/`. Remember these are copied into every project on
+Edit the files under `plugin/schemas/`, `plugin/templates/` and `plugin/config/`. Remember these are copied into every project on
 install/init, so changes are breaking if they alter the structure downstream skills parse.
 
 ### Adding a skill
-1. Create `skills/<name>/SKILL.md`.
-2. Add any assets under `skills/implr-init/assets/`.
+1. Create `plugin/skills/<name>/SKILL.md`.
+2. Add any schemas, templates or seeds under `plugin/`.
 3. Add the skill name to all three installers' skill lists.
 4. Add it to the README skills table and command reference.
 5. Validate the skill before opening the PR.
@@ -54,7 +81,7 @@ skill-creator tooling, or ensure `SKILL.md` parses and the description is under 
 
 ## Authoring a dedicated subagent (v2.0+)
 
-Dedicated subagents live at `.claude/agents/<agent-name>.md`. Each is a Markdown file with
+Dedicated subagents live at `plugin/agents/<agent-name>.md`. Each is a Markdown file with
 YAML frontmatter (the contract) and a Markdown body (the agent's system prompt).
 
 ### Frontmatter contract
@@ -87,7 +114,7 @@ default_model: haiku|sonnet|opus     # Used when implr.config.yaml does not over
 The skill's SKILL.md is the orchestrator. It reads `agents.<agent-name>` from
 `implr.config.yaml`, falls back to the agent's `default_model`, and calls the `Agent` tool
 with `subagent_type`, `model`, and a small scope payload (e.g. a file path or a requirement
-id). The full phase instructions live in `skills/<skill>/phases/<phase>.md`.
+id). The full phase instructions live in `plugin/skills/<skill>/phases/<phase>.md`.
 
 ## Prompt-cache-friendly ordering
 
@@ -119,7 +146,7 @@ Pattern:
 Each heavy skill has a `phases/` subfolder. Each file is the dispatch prompt template the
 orchestrator sends to a subagent.
 
-- File path: `skills/<skill>/phases/<phase-name>.md`
+- File path: `plugin/skills/<skill>/phases/<phase-name>.md`
 - Naming: short verb or noun (`extract`, `digest`, `plan-one`, `apply`).
 - Content: stable-reads-first block, scope block (with `{{PLACEHOLDERS}}` the orchestrator
   fills), task block, return summary block.

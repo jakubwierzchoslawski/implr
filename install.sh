@@ -10,10 +10,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SKILLS_SRC="$SCRIPT_DIR/skills"
-AGENTS_SRC="$SCRIPT_DIR/.claude/agents"
-SCAFFOLD_SRC="$SCRIPT_DIR/scaffold"
-VALIDATE_SRC="$SCRIPT_DIR/scripts/implr_validate"
+PLUGIN_SRC="$SCRIPT_DIR/plugin"
+SKILLS_SRC="$PLUGIN_SRC/skills"
+AGENTS_SRC="$PLUGIN_SRC/agents"
+VALIDATE_PKG="$SCRIPT_DIR/packages/implr_validate"
 SKILLS=(implr-init doc-ingest arch-gen ba-requirements-gen ba-cr dev-planner dev-executor dev-code-review)
 
 GLOBAL=false
@@ -24,9 +24,9 @@ for arg in "$@"; do
   esac
 done
 
-scaffold_workspace() {
+provision_workspace() {
   echo ""
-  echo "Scaffolding workspace..."
+  echo "Provisioning workspace..."
 
   # Create workspace directories (idempotent)
   for d in \
@@ -48,21 +48,28 @@ scaffold_workspace() {
   done
 
   # Always overwrite: schemas and templates (plugin-owned)
-  cp -f "$SCAFFOLD_SRC"/schemas/*.md "docs/implr/schemas/"
-  cp -f "$SCAFFOLD_SRC"/schemas/*.json "docs/implr/schemas/"
-  cp -f "$SCAFFOLD_SRC"/templates/*.md "docs/implr/templates/"
+  cp -f "$PLUGIN_SRC"/schemas/*.md "docs/implr/schemas/"
+  cp -f "$PLUGIN_SRC"/schemas/*.json "docs/implr/schemas/"
+  cp -f "$PLUGIN_SRC"/templates/*.md "docs/implr/templates/"
   echo "  schemas and templates installed"
 
-  # Always overwrite: implr_validate tool (plugin-owned)
-  mkdir -p "scripts/implr_validate"
-  cp -f "$VALIDATE_SRC"/*.py "scripts/implr_validate/"
-  echo "  implr_validate tool installed"
+  # implr-validate is a package, not a copied directory: a target project pins a
+  # version instead of receiving a snapshot that nothing will ever update.
+  if command -v pip >/dev/null 2>&1; then
+    # A plain path, not a file:// URL: file:// with a drive-lettered Windows
+    # path is mangled by pip, and a path works identically on every platform.
+    pip install --quiet --upgrade "$VALIDATE_PKG"
+    echo "  implr-validate installed"
+  else
+    echo "  WARNING: pip not found - install implr-validate manually:"
+    echo "    pip install $VALIDATE_PKG"
+  fi
 
   # Skip if exists: config files (user-owned after first write)
   for f in implr.config.yaml DEV-STANDARDS.md; do
     dest="docs/implr/config/$f"
     if [ ! -f "$dest" ]; then
-      cp "$SCAFFOLD_SRC/config/$f" "$dest"
+      cp "$PLUGIN_SRC/config/$f" "$dest"
       echo "  created $dest"
     else
       echo "  kept existing $dest"
@@ -71,7 +78,7 @@ scaffold_workspace() {
 
   # Skip if exists: CLAUDE.md at project root
   if [ ! -f "CLAUDE.md" ]; then
-    cp "$SCAFFOLD_SRC/templates/CLAUDE-template.md" "CLAUDE.md"
+    cp "$PLUGIN_SRC/templates/CLAUDE-template.md" "CLAUDE.md"
     echo "  created CLAUDE.md"
   else
     echo "  kept existing CLAUDE.md"
@@ -79,7 +86,7 @@ scaffold_workspace() {
 
   # Skip if exists: cr-index.md seed
   if [ ! -f "docs/implr/requirements/cr-index.md" ]; then
-    cp "$SCAFFOLD_SRC/seeds/cr-index.md" "docs/implr/requirements/cr-index.md"
+    cp "$PLUGIN_SRC/seeds/cr-index.md" "docs/implr/requirements/cr-index.md"
     echo "  created docs/implr/requirements/cr-index.md"
   else
     echo "  kept existing docs/implr/requirements/cr-index.md"
@@ -87,7 +94,7 @@ scaffold_workspace() {
 
   # Skip if exists: resolved-contradictions.md seed
   if [ ! -f "docs/implr/requirements/resolved-contradictions.md" ]; then
-    cp "$SCAFFOLD_SRC/seeds/resolved-contradictions.md" "docs/implr/requirements/resolved-contradictions.md"
+    cp "$PLUGIN_SRC/seeds/resolved-contradictions.md" "docs/implr/requirements/resolved-contradictions.md"
     echo "  created docs/implr/requirements/resolved-contradictions.md"
   else
     echo "  kept existing docs/implr/requirements/resolved-contradictions.md"
@@ -95,13 +102,13 @@ scaffold_workspace() {
 
   # Skip if exists: DOD.md seed
   if [ ! -f "docs/implr/DOD.md" ]; then
-    cp "$SCRIPT_DIR/scaffold/seeds/DOD.md" "docs/implr/DOD.md"
+    cp "$PLUGIN_SRC/seeds/DOD.md" "docs/implr/DOD.md"
     echo "  created docs/implr/DOD.md"
   else
     echo "  kept existing docs/implr/DOD.md"
   fi
 
-  echo "  workspace scaffolded"
+  echo "  workspace provisioned"
 }
 
 if [ "$GLOBAL" = true ]; then
@@ -126,8 +133,8 @@ for s in "${SKILLS[@]}"; do
 done
 
 if [ ! -d "$AGENTS_SRC" ]; then echo "ERROR: Missing agents source: $AGENTS_SRC"; exit 1; fi
-if [ ! -d "$SCAFFOLD_SRC" ]; then echo "ERROR: Missing scaffold source: $SCAFFOLD_SRC"; exit 1; fi
-if [ ! -d "$VALIDATE_SRC" ]; then echo "ERROR: Missing implr_validate source: $VALIDATE_SRC"; exit 1; fi
+if [ ! -d "$PLUGIN_SRC" ]; then echo "ERROR: Missing plugin payload: $PLUGIN_SRC"; exit 1; fi
+if [ ! -f "$VALIDATE_PKG/pyproject.toml" ]; then echo "ERROR: Missing implr-validate package: $VALIDATE_PKG"; exit 1; fi
 mkdir -p "$AGENTS_DEST"
 cp -f "$AGENTS_SRC/"*.md "$AGENTS_DEST/"
 echo "  installed agents"
@@ -138,8 +145,8 @@ if [ -f "$AGENTS_DEST/executor-worker.md" ]; then
     echo "  removed deprecated agent: executor-worker.md (replaced by plan-runner.md in v3)"
 fi
 
-# Workspace scaffolding always targets the current project (CWD), regardless of --global.
-scaffold_workspace
+# Workspace provisioning always targets the current project (CWD), regardless of --global.
+provision_workspace
 
 echo ""
 echo "==============================================="

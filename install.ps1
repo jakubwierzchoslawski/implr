@@ -14,15 +14,15 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$SkillsSrc = Join-Path $ScriptDir "skills"
-$AgentsSrc = Join-Path $ScriptDir ".claude/agents"
-$ScaffoldSrc = Join-Path $ScriptDir "scaffold"
-$ValidateSrc = Join-Path $ScriptDir "scripts/implr_validate"
+$PluginSrc = Join-Path $ScriptDir "plugin"
+$SkillsSrc = Join-Path $PluginSrc "skills"
+$AgentsSrc = Join-Path $PluginSrc "agents"
+$ValidatePkg = Join-Path $ScriptDir "packages/implr_validate"
 $Skills = @("implr-init","doc-ingest","arch-gen","ba-requirements-gen","ba-cr","dev-planner","dev-executor","dev-code-review")
 
-function Scaffold-Workspace {
+function Initialize-Workspace {
     Write-Host ""
-    Write-Host "Scaffolding workspace..."
+    Write-Host "Provisioning workspace..."
 
     # Create workspace directories (idempotent)
     $dirs = @(
@@ -45,28 +45,33 @@ function Scaffold-Workspace {
     }
 
     # Always overwrite: schemas and templates (plugin-owned)
-    Get-ChildItem -Path (Join-Path $ScaffoldSrc "schemas") -Filter "*.md" | ForEach-Object {
+    Get-ChildItem -Path (Join-Path $PluginSrc "schemas") -Filter "*.md" | ForEach-Object {
         Copy-Item -Force $_.FullName "docs\implr\schemas\"
     }
-    Get-ChildItem -Path (Join-Path $ScaffoldSrc "schemas") -Filter "*.json" | ForEach-Object {
+    Get-ChildItem -Path (Join-Path $PluginSrc "schemas") -Filter "*.json" | ForEach-Object {
         Copy-Item -Force $_.FullName "docs\implr\schemas\"
     }
-    Get-ChildItem -Path (Join-Path $ScaffoldSrc "templates") -Filter "*.md" | ForEach-Object {
+    Get-ChildItem -Path (Join-Path $PluginSrc "templates") -Filter "*.md" | ForEach-Object {
         Copy-Item -Force $_.FullName "docs\implr\templates\"
     }
     Write-Host "  schemas and templates installed"
 
-    # Always overwrite: implr_validate tool (plugin-owned)
-    New-Item -ItemType Directory -Force -Path "scripts\implr_validate" | Out-Null
-    Get-ChildItem -Path $ValidateSrc -Filter "*.py" | ForEach-Object {
-        Copy-Item -Force $_.FullName "scripts\implr_validate\"
+    # implr-validate is a package, not a copied directory: a target project pins a
+    # version instead of receiving a snapshot that nothing will ever update.
+    if (Get-Command pip -ErrorAction SilentlyContinue) {
+        # A plain path, not a file:// URL: pip does not accept file:// with a
+        # drive-lettered Windows path.
+        pip install --quiet --upgrade $ValidatePkg
+        Write-Host "  implr-validate installed"
+    } else {
+        Write-Host "  WARNING: pip not found - install implr-validate manually:"
+        Write-Host "    pip install $ValidatePkg"
     }
-    Write-Host "  implr_validate tool installed"
 
     # Skip if exists: config files (user-owned after first write)
     foreach ($f in @("implr.config.yaml", "DEV-STANDARDS.md")) {
         $dest = "docs\implr\config\$f"
-        $src  = Join-Path $ScaffoldSrc "config\$f"
+        $src  = Join-Path $PluginSrc "config\$f"
         if (-not (Test-Path $dest)) {
             Copy-Item $src $dest
             Write-Host "  created $dest"
@@ -77,7 +82,7 @@ function Scaffold-Workspace {
 
     # Skip if exists: CLAUDE.md at project root
     if (-not (Test-Path "CLAUDE.md")) {
-        Copy-Item (Join-Path $ScaffoldSrc "templates\CLAUDE-template.md") "CLAUDE.md"
+        Copy-Item (Join-Path $PluginSrc "templates\CLAUDE-template.md") "CLAUDE.md"
         Write-Host "  created CLAUDE.md"
     } else {
         Write-Host "  kept existing CLAUDE.md"
@@ -85,7 +90,7 @@ function Scaffold-Workspace {
 
     # Skip if exists: cr-index.md seed
     if (-not (Test-Path "docs\implr\requirements\cr-index.md")) {
-        Copy-Item (Join-Path $ScaffoldSrc "seeds\cr-index.md") "docs\implr\requirements\cr-index.md"
+        Copy-Item (Join-Path $PluginSrc "seeds\cr-index.md") "docs\implr\requirements\cr-index.md"
         Write-Host "  created docs\implr\requirements\cr-index.md"
     } else {
         Write-Host "  kept existing docs\implr\requirements\cr-index.md"
@@ -93,7 +98,7 @@ function Scaffold-Workspace {
 
     # Skip if exists: resolved-contradictions.md seed
     if (-not (Test-Path "docs\implr\requirements\resolved-contradictions.md")) {
-        Copy-Item (Join-Path $ScaffoldSrc "seeds\resolved-contradictions.md") "docs\implr\requirements\resolved-contradictions.md"
+        Copy-Item (Join-Path $PluginSrc "seeds\resolved-contradictions.md") "docs\implr\requirements\resolved-contradictions.md"
         Write-Host "  created docs\implr\requirements\resolved-contradictions.md"
     } else {
         Write-Host "  kept existing docs\implr\requirements\resolved-contradictions.md"
@@ -101,13 +106,13 @@ function Scaffold-Workspace {
 
     # Skip if exists: DOD.md seed at docs/implr/DOD.md
     if (-not (Test-Path "docs\implr\DOD.md")) {
-        Copy-Item (Join-Path $ScaffoldSrc "seeds\DOD.md") "docs\implr\DOD.md"
+        Copy-Item (Join-Path $PluginSrc "seeds\DOD.md") "docs\implr\DOD.md"
         Write-Host "  created docs\implr\DOD.md"
     } else {
         Write-Host "  kept existing docs\implr\DOD.md"
     }
 
-    Write-Host "  workspace scaffolded"
+    Write-Host "  workspace provisioned"
 }
 
 if ($Global) {
@@ -134,8 +139,8 @@ foreach ($s in $Skills) {
 }
 
 if (-not (Test-Path $AgentsSrc)) { Write-Error "Missing agents source: $AgentsSrc"; exit 1 }
-if (-not (Test-Path $ScaffoldSrc)) { Write-Error "Missing scaffold source: $ScaffoldSrc"; exit 1 }
-if (-not (Test-Path $ValidateSrc)) { Write-Error "Missing implr_validate source: $ValidateSrc"; exit 1 }
+if (-not (Test-Path $PluginSrc)) { Write-Error "Missing plugin payload: $PluginSrc"; exit 1 }
+if (-not (Test-Path (Join-Path $ValidatePkg "pyproject.toml"))) { Write-Error "Missing implr-validate package: $ValidatePkg"; exit 1 }
 New-Item -ItemType Directory -Force -Path $AgentsDest | Out-Null
 Copy-Item -Force (Join-Path $AgentsSrc "*.md") $AgentsDest
 $agentCount = (Get-ChildItem -Path $AgentsDest -Filter "*.md" -File).Count
@@ -148,8 +153,8 @@ Write-Host "  installed $agentCount agents"
         Write-Host "  removed deprecated agent: executor-worker.md (replaced by plan-runner.md in v3)"
     }
 
-# Workspace scaffolding always targets the current project (CWD), regardless of -Global.
-Scaffold-Workspace
+# Workspace provisioning always targets the current project (CWD), regardless of -Global.
+Initialize-Workspace
 
 Write-Host ""
 Write-Host "==============================================="
