@@ -12,6 +12,7 @@ from pathlib import Path
 import uvicorn
 
 from .api import create_app, mount_frontend
+from .context import build_context
 from .implr_bridge import repo_root
 
 LOOPBACK = "127.0.0.1"
@@ -31,9 +32,15 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    # The workspace NAME only. The path stays here; from Phase 1 it goes into an
-    # AppContext, and never into a route signature.
-    app = create_app(workspace_name=workspace.name)
+    try:
+        context = build_context(workspace)
+    except Exception as e:
+        sys.stderr.write("error: could not load the step registry: %s\n" % e)
+        sys.stderr.write(
+            "hint: re-run the implr installer so docs/implr/schemas is current.\n")
+        return 2
+
+    app = create_app(context)
 
     dist = repo_root() / "web" / "dist"
     served = mount_frontend(app, dist)

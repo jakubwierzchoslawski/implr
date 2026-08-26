@@ -4,12 +4,27 @@ import pytest
 from fastapi.testclient import TestClient
 
 from implr_studio import api as api_mod
+from implr_studio import context as ctx_mod
 from implr_studio.api import create_app
 
 
+def _app(tmp_path, name="ws"):
+    """Phase 1 changed create_app to take an AppContext. A workspace needs the
+    schemas installed for the registry to load, so build one."""
+    from implr_studio import implr_bridge
+
+    workspace = tmp_path / name
+    schemas = workspace / "docs" / "implr" / "schemas"
+    schemas.mkdir(parents=True)
+    for f in (implr_bridge.repo_root() / "plugin" / "schemas").glob("*.json"):
+        (schemas / f.name).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+    (workspace / ".claude" / "skills").mkdir(parents=True)
+    return create_app(ctx_mod.build_context(workspace))
+
+
 @pytest.fixture
-def client():
-    with TestClient(create_app(workspace_name="acme-platform")) as c:
+def client(tmp_path):
+    with TestClient(_app(tmp_path, "acme-platform")) as c:
         yield c
 
 
@@ -39,7 +54,7 @@ def test_root_serves_the_spa_when_built(tmp_path):
     (dist / "assets").mkdir()
     (dist / "assets" / "app.js").write_text("console.log(1)", encoding="utf-8")
 
-    app = create_app(workspace_name="ws")
+    app = _app(tmp_path)
     assert api_mod.mount_frontend(app, dist) is True
 
     with TestClient(app) as client:
@@ -50,7 +65,7 @@ def test_root_serves_the_spa_when_built(tmp_path):
 
 
 def test_mount_returns_false_for_a_missing_dist(tmp_path):
-    assert api_mod.mount_frontend(create_app(workspace_name="ws"), tmp_path / "nope") is False
+    assert api_mod.mount_frontend(_app(tmp_path), tmp_path / "nope") is False
 
 
 def test_api_routes_still_win_over_the_spa_mount(tmp_path):
@@ -59,16 +74,16 @@ def test_api_routes_still_win_over_the_spa_mount(tmp_path):
     dist.mkdir()
     (dist / "index.html").write_text("<html>spa</html>", encoding="utf-8")
 
-    app = create_app(workspace_name="ws")
+    app = _app(tmp_path)
     api_mod.mount_frontend(app, dist)
 
     with TestClient(app) as client:
         assert client.get("/api/health").json()["status"] == "ok"
 
 
-def test_no_route_exposes_a_filesystem_path():
+def test_no_route_exposes_a_filesystem_path(tmp_path):
     """Security constraint: the workspace is fixed at startup."""
-    with TestClient(create_app(workspace_name="ws")) as client:
+    with TestClient(_app(tmp_path)) as client:
         blob = str(client.get("/openapi.json").json()).lower()
 
     for banned in ("workspace_path", "cwd", "directory", "file_path"):
