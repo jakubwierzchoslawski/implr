@@ -6,6 +6,7 @@ import sys
 
 from .contracts import load_contracts
 from .checks import check_workspace, check_repo_prose
+from .finalize import finalize_plan
 from .fingerprint import contradiction_fingerprint, task_fingerprint
 from .sourceref import source_ref
 
@@ -27,11 +28,13 @@ def main(argv):
     parser.add_argument("--fingerprint", metavar="FILE", help="print fingerprint of a JSON fields file")
     parser.add_argument("--task-fingerprint", metavar="FILE", help="print task fingerprint of a JSON fields file")
     parser.add_argument("--source-ref", nargs="+", metavar="PATH", help="print the source ref for the given paths")
-    parser.add_argument("--root", default=".", help="repo root for --repo (default cwd)")
+    parser.add_argument("--finalize-plan", metavar="WORKDIR", help="finalize a plan from its work dir; prints a JSON summary")
+    parser.add_argument("--root", default=".", help="repo root for --repo / --finalize-plan (default cwd)")
     parser.add_argument("--schema-dir", default=None, help="override contract directory")
     args = parser.parse_args(argv)
 
-    if not (args.repo or args.workspace is not None or args.fingerprint or args.task_fingerprint or args.source_ref):
+    if not (args.repo or args.workspace is not None or args.fingerprint or args.task_fingerprint or args.source_ref
+            or args.finalize_plan):
         sys.stderr.write("error: one of --repo, --workspace, --fingerprint is required\n")
         return 2
 
@@ -47,6 +50,15 @@ def main(argv):
         with open(args.task_fingerprint, encoding="utf-8") as f:
             fields = json.load(f)
         sys.stdout.write(task_fingerprint(fields) + "\n")
+        return 0
+
+    if args.finalize_plan:
+        try:
+            summary = finalize_plan(args.finalize_plan, args.root)
+        except (OSError, KeyError, ValueError) as e:
+            sys.stderr.write("error: finalize-plan failed: %s\n" % e)
+            return 1
+        sys.stdout.write(json.dumps(summary) + "\n")
         return 0
 
     if args.source_ref:

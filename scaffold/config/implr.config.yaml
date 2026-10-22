@@ -45,7 +45,7 @@ jira:
 #   cr-impact-analyzer: sonnet
 #   cr-applier: sonnet
 #   plan-worker: sonnet
-#   plan-runner: opus                 # per-plan dispatcher (no stable reads)
+#   plan-runner: sonnet               # per-plan dispatcher (no stable reads)
 #   arch-excerpter: sonnet            # per-plan ARCHITECTURE excerpt
 #   task-executor: opus               # TDD + SOLID enforcement per task (main cost driver)
 #   code-review-worker: sonnet

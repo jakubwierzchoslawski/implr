@@ -364,11 +364,11 @@ cp ~/specs/*.md docs/kb/
    sweep via the built-in Explore subagent. Writes PLAN-F-* with task-level TDD flags.
 
 8. IMPLEMENT         /dev-executor
-   Dispatches arch-excerpter (Sonnet, once per plan) then plan-runner (Opus) per plan in
+   Dispatches arch-excerpter (Sonnet, once per plan) then plan-runner (Sonnet) per plan in
    parallel waves. Each plan-runner dispatches one task-executor per task (sequential).
    task-executor writes production code and tests, enforcing TDD for M/L/XL tasks and
    SOLID throughout. Notes manual actions it cannot perform. Opus by default — TDD + SOLID
-   need a strong model. plan-runner also writes each plan's test-results.md. Commits are
+   need a strong model. Envelopes are passed as files in `docs/implr/.work/<PLAN-ID>/` (plan context once, one file per task); `implr_validate --finalize-plan` — run by plan-runner — writes each plan's test-results.md and updates its status. Commits are
    off by default (commit_mode: defer — no git side effects at all); pass --commit to opt
    plan-runner into an auto-commit per plan once it reaches done.
 
@@ -786,7 +786,7 @@ agents:
   cr-impact-analyzer: sonnet
   cr-applier: sonnet
   plan-worker: sonnet
-  plan-runner: opus                 # per-plan dispatcher (no stable reads)
+  plan-runner: sonnet               # per-plan dispatcher (no stable reads)
   arch-excerpter: sonnet            # per-plan ARCHITECTURE excerpt
   task-executor: opus               # TDD + SOLID enforcement per task
   code-review-worker: sonnet
