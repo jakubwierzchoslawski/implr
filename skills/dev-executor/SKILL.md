@@ -11,13 +11,13 @@ description: >
 
 You orchestrate plan execution. Per-plan implementation runs in `plan-runner` subagents
 (parallel within dependency waves); each plan-runner dispatches one `task-executor` per
-task sequentially. **You** parse each plan ONCE and build per-task envelopes — neither
-plan-runner nor task-executor reads the plan file.
+task sequentially. **You** parse each plan ONCE and write per-plan/per-task envelope files to a work dir —
+neither plan-runner nor task-executor reads the plan file.
 
 ## Read first
 
 - `docs/implr/config/implr.config.yaml` — for paths and agent model overrides.
-- `docs/implr/config/standards-card.md` — passed inline in every envelope. Halt if
+- `docs/implr/config/standards-card.md` — written into `plan-context.md` in each plan's work dir. Halt if
   missing: `❌ docs/implr/config/standards-card.md not found. Run /implr-init (or /implr-init --refresh-card) first.`
 
 Do NOT read `docs/ARCHITECTURE.md` — arch-excerpter handles that per plan.
@@ -67,7 +67,7 @@ Topological sort by plan dependencies. Each wave contains plans whose deps are a
 For EACH in-scope plan (run this preparation sequentially across all plans before
 dispatching any wave):
 
-**a. Parse the plan into task envelopes.**
+**a. Parse the plan into tasks.**
 
 Read the plan file. Extract:
 - Frontmatter (YAML between first and second `---`)
@@ -97,7 +97,7 @@ Read the linked requirement (`linked_requirement:` frontmatter → look up in
 `docs/implr/requirements/`). Extract each `- [ ] AC-NNN:` line. Build `ac_full` list.
 Also read that requirement's `updated_at:` frontmatter value and capture it as
 `requirement_updated_at` — every task in this plan shares the same linked requirement,
-so this value is resolved once per plan and reused in every task envelope built in
+so this value is resolved once per plan and reused in every task fingerprint file written in
 step f below.
 
 **c. Dispatch arch-excerpter.**
@@ -114,24 +114,45 @@ first") is the `standards_card` value.
 **e. Resolve model.**
 
 Read `agents.task-executor` from `implr.config.yaml`; fall back to `opus`.
-Read `agents.plan-runner` from `implr.config.yaml`; fall back to `opus`.
+Read `agents.plan-runner` from `implr.config.yaml`; fall back to `sonnet`.
 
-**f. Build the envelope list.**
+**f. Write the work directory.**
 
-For each parsed task, build a complete envelope per the `task-executor` input schema:
-plan_id, plan_path, plan_objective, plan_arch_context, interfaces, applied_nfrs, task
-(id/title/complexity/tdd_required/files/body/ac_covered/tests_first), ac_full,
-requirement_updated_at (from step b, same value for every task envelope in this plan),
-prior_fingerprint (`task_fingerprints.get(task.id, "")` from the map read in step a — empty
-string if the plan has no recorded fingerprint for this task yet), arch_excerpt,
-standards_card, prior_decisions_summary (empty initially), src_path, tests_path,
-test_runner, plan_id_for_log.
+Envelopes are passed by file, never by value. Create `docs/implr/.work/<PLAN-ID>/`
+(replace it if a stale one exists) containing a `.gitignore` with the single line `*`
+(so the directory is never staged or committed), and write:
 
-For `--task` mode: build only the envelope for the named task; set it as the sole
-element of `task_envelopes`; set `resume_task` to the task id.
+- `plan-context.md` — once per plan: `plan_objective`, `plan_arch_context`, `interfaces`,
+  `applied_nfrs`, `arch_excerpt`, `standards_card`, each under its own `##` heading.
+- `TASK-NNN.md` — one per task: id, title, complexity, `tdd_required`, `files`, `body`,
+  `ac_covered`, `tests_first`, and the full text of the ACs it covers (from `ac_full`).
+- `TASK-NNN.fp.json` — one per task: a JSON object with exactly the 11 fields that
+  `python scripts/implr_validate --task-fingerprint` requires:
 
-For `--dry-run`: do NOT dispatch. Print the `files` list from each task envelope per
-plan, then stop.
+  | field                    | source                                                              |
+  |--------------------------|---------------------------------------------------------------------|
+  | `task_body`              | the task `body`                                                     |
+  | `ac_ids`                 | `ac_covered` (list of AC ids)                                       |
+  | `ac_text`                | for each id in `ac_covered`, its `text` from `ac_full`              |
+  | `files`                  | the task `files`                                                    |
+  | `tests_first`            | the task `tests_first` (empty list if absent)                       |
+  | `requirement_updated_at` | `requirement_updated_at` from step b                                |
+  | `arch_excerpt_hash`      | `arch_excerpt` (raw text passthrough, not a hash)                   |
+  | `interfaces_contracts`   | `interfaces`                                                        |
+  | `applied_nfrs`           | `applied_nfrs`                                                      |
+  | `standards_card_hash`    | `standards_card` (raw text passthrough, not a hash)                 |
+  | `test_runner`            | the configured test runner                                          |
+
+- `meta.json` — `plan_id`, `plan_path`, `src_path`, `tests_path`, `test_runner`,
+  `commit_mode` (`auto` only when `--commit` was passed, else `defer`), `task_ids`
+  (the tasks scheduled for this run, in plan order), and `prior_fingerprints`
+  (`task_fingerprints` map from step a; `{}` if none).
+
+For `--task` mode: write only the named task's files and set `task_ids` to that one id;
+set `resume_task` to the task id.
+
+For `--dry-run`: do NOT write the work dir or dispatch. Print the `files` list of each
+task per plan, then stop.
 
 ### Phase 5 — Dispatch `plan-runner` per plan (parallel within wave)
 
@@ -139,12 +160,12 @@ For each wave (in topological order), dispatch all wave plans IN PARALLEL (singl
 multiple Agent calls; cap 5). Each dispatch passes:
 
 ```
-plan_id, plan_path, resume_task (empty unless --task mode), commit_mode (auto only when --commit passed; otherwise defer),
-task_envelopes (the prepared list for this plan),
-arch_excerpt (already embedded in envelopes, but also pass top-level for plan-runner reference),
-standards_card (already embedded in envelopes),
+plan_id, plan_path, work_dir (docs/implr/.work/<PLAN-ID>), resume_task (empty unless --task mode),
 task_executor_model
 ```
+
+Nothing else is passed: the work dir files are the envelope. `plan-runner` finalizes the
+plan itself (`implr_validate --finalize-plan`), which removes the work dir on `done`.
 
 Wait for wave completion. Collect each plan-runner's return summary.
 

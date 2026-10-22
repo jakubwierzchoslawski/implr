@@ -3,6 +3,20 @@
 All notable changes to implr are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+### Smaller execution contexts
+
+- **Envelopes by file.** `dev-executor` writes `docs/implr/.work/<PLAN-ID>/` (self-ignoring
+  via an inner `.gitignore`): `plan-context.md` once per plan, `TASK-NNN.md` and a prebuilt
+  `TASK-NNN.fp.json` per task, and `meta.json`. `plan-runner` and `task-executor` receive
+  paths, not copies — no more N duplicates of arch excerpt/standards card, and no re-typing
+  of full envelopes on every dispatch.
+- **`implr_validate --finalize-plan <workdir>`.** Plan status, `implemented_files`,
+  `task_fingerprints`, optional commit, `source_ref` and `test-results.md` are now
+  deterministic code. `plan-runner` shrinks to a dispatch loop and defaults to Sonnet.
+  The work dir is deleted when the plan reaches `done`, kept otherwise for `--task` resume.
+
 ## v3.1.0 — 2026-06-03
 
 ### Cost reduction Wave 2

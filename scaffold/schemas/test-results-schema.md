@@ -1,6 +1,6 @@
 # Test Results Schema
 
-Per-plan record of test execution, written by `plan-runner` and consumed by
+Per-plan record of test execution, written by `implr_validate --finalize-plan` (run by `plan-runner`) and consumed by
 `code-review-worker` for the staleness rule. One file per plan.
 
 Location: `docs/implr/plans/test-results/PLAN-F-NNN-results.md`

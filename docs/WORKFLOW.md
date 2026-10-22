@@ -35,7 +35,7 @@ docs/implr/plans/
    │
    ▼  dev-executor  (reads ARCHITECTURE.md + DEV-STANDARDS.md)
 src/**  tests/**
-docs/implr/plans/test-results/{plan_id}-results.md   (written by plan-runner)
+docs/implr/plans/test-results/{plan_id}-results.md   (written by `implr_validate --finalize-plan`)
    │
    ▼  dev-code-review  (fresh context; test-aware — staleness rule on the file above)
 docs/implr/reviews/REVIEW-F-*.md
@@ -67,7 +67,7 @@ restricted tool allowlist, and a tier-appropriate model.
 | dev-planner | Phase 5 (plan-one) | plan-worker | sonnet | Yes per wave (cap 5) |
 | dev-planner | Phase 6 (coherence) | Explore (built-in) | n/a | No |
 | dev-executor | Phase 4 (arch excerpt) | arch-excerpter | sonnet | One per plan, before dispatch |
-| dev-executor | Phase 5 (plan execute) | plan-runner | **opus** | Yes per wave (cap 5) |
+| dev-executor | Phase 5 (plan execute) | plan-runner | **sonnet** | Yes per wave (cap 5) |
 | dev-executor | Phase 5 (per-task) | task-executor | **opus** | Sequential within each plan-runner |
 | dev-code-review | Phase 2 (review) | code-review-worker | sonnet | Yes (cap 5) |
 
@@ -105,6 +105,7 @@ across dispatches within a session.
 ### Why this saves tokens
 
 - Per-task envelopes: task-executor never re-reads the full plan, schema, ARCHITECTURE.md, or DEV-STANDARDS.md.
+- Envelopes are files in `docs/implr/.work/<PLAN-ID>/` (plan context once, one file per task) instead of N inline copies; plan finalization is deterministic code (`implr_validate --finalize-plan`).
 - plan-runner has no stable reads — replaces v2's per-plan dispatcher (~30k stable prefix gone).
 - standards-card (~55 lines auto-generated) replaces DEV-STANDARDS.md reads in task-executor and code-review-worker.
 - arch-excerpter runs once per plan (Sonnet); amortises over all tasks in that plan.

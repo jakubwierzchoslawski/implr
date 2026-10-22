@@ -20,8 +20,8 @@ status: ready                    # ready | in-progress | done | blocked
 blocked_reason:                  # text if status is blocked, else blank
 rework_cr:                       # CR id that put this plan in needs-rework, else blank
 rework_reason:                   # short text when status is needs-rework, else blank
-implemented_files: []            # files written for this plan; set by plan-runner on completion
-task_fingerprints: {}            # { TASK-NNN: "t1:<hash>" } recorded by plan-runner per task
+implemented_files: []            # files written for this plan; set by --finalize-plan on completion
+task_fingerprints: {}            # { TASK-NNN: "t1:<hash>" } recorded by --finalize-plan per task
 complexity: M
 tdd_required: true
 linked_nfrs:

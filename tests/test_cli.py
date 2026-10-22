@@ -27,6 +27,30 @@ class TestCli(unittest.TestCase):
             rc = main(["--repo", "--root", tmp, "--schema-dir", os.path.join(tmp, "scaffold", "schemas")])
             self.assertEqual(rc, 0)
 
+    def test_finalize_plan_mode_prints_summary(self):
+        import io, contextlib
+        with tempfile.TemporaryDirectory() as tmp:
+            plan_rel = "docs/implr/plans/functional/PLAN-F-001-x.md"
+            os.makedirs(os.path.join(tmp, "docs", "implr", "plans", "functional"))
+            os.makedirs(os.path.join(tmp, "src"))
+            os.makedirs(os.path.join(tmp, "tests"))
+            with open(os.path.join(tmp, plan_rel), "w", encoding="utf-8") as f:
+                f.write("---\nplan_id: PLAN-F-001\nstatus: ready\n---\nbody\n")
+            work = os.path.join(tmp, "docs", "implr", ".work", "PLAN-F-001")
+            os.makedirs(work)
+            with open(os.path.join(work, "meta.json"), "w", encoding="utf-8") as f:
+                json.dump({"plan_id": "PLAN-F-001", "plan_path": plan_rel, "src_path": "src",
+                           "tests_path": "tests", "commit_mode": "defer", "task_ids": []}, f)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = main(["--finalize-plan", work, "--root", tmp])
+            self.assertEqual(rc, 0)
+            self.assertEqual(json.loads(buf.getvalue())["plan_id"], "PLAN-F-001")
+
+    def test_finalize_plan_bad_workdir_returns_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(main(["--finalize-plan", tmp, "--root", tmp]), 1)
+
     def test_usage_error_returns_two(self):
         self.assertEqual(main([]), 2)
 
