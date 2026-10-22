@@ -3,7 +3,7 @@
 All notable changes to implr are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
-## Unreleased
+## v4.0.0 — 2026-10-22
 
 ### Smaller execution contexts
 
