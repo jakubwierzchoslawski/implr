@@ -41,8 +41,9 @@ If both `--digest` and `--registry-only` are passed, `--registry-only` wins with
 
 ## Model resolution
 
-For each dispatch, resolve model from `agents.<agent-name>` in `implr.config.yaml`; fall
-back to the agent's `default_model`.
+For each dispatch, pass `agents.<agent-name>` from `implr.config.yaml` as the Agent tool's `model` parameter on every
+dispatch of that agent. If the key is absent (commented out), omit `model` — the agent's own
+`model:` frontmatter applies.
 
 Phase 3 extraction is inline (no subagent), so no model is resolved for it. Phases 4–5
 still dispatch `doc-ingest-digester` and `doc-ingest-synthesizer`.

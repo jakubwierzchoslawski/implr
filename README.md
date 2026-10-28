@@ -773,7 +773,7 @@ sections are marked `[FILL IN]`.
 
 ## Customising Model Tiers
 
-Each subagent has a built-in `default_model`. Override per agent in
+Each subagent declares a default `model:` in its `.claude/agents/<name>.md` frontmatter. Override per agent in
 `docs/implr/config/implr.config.yaml`:
 
 ```yaml
@@ -798,7 +798,7 @@ updates.
 
 **Resolution order** at dispatch time:
 1. `agents.<agent-name>` from `implr.config.yaml`
-2. `default_model` declared in `.claude/agents/<agent-name>.md`
+2. `model:` declared in `.claude/agents/<agent-name>.md` (applies when no `model` is passed at dispatch)
 
 **When to override:**
 - *Downgrade to save cost* — e.g. `task-executor: sonnet` if your tasks are simpler (task-executor is the cost driver; plan-runner can also be downgraded independently)

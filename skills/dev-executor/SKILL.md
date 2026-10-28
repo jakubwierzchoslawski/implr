@@ -113,8 +113,9 @@ first") is the `standards_card` value.
 
 **e. Resolve model.**
 
-Read `agents.task-executor` from `implr.config.yaml`; fall back to `opus`.
-Read `agents.plan-runner` from `implr.config.yaml`; fall back to `sonnet`.
+Read `agents.task-executor` and `agents.plan-runner` from `implr.config.yaml`. Each is the
+Agent tool's `model` parameter for that agent when set; when absent, leave it unset — the
+agent's own `model:` frontmatter applies. Do not hardcode fallbacks here.
 
 **f. Write the work directory.**
 
@@ -161,8 +162,10 @@ multiple Agent calls; cap 5). Each dispatch passes:
 
 ```
 plan_id, plan_path, work_dir (docs/implr/.work/<PLAN-ID>), resume_task (empty unless --task mode),
-task_executor_model
+task_executor_model (only when set in the config; otherwise omit)
 ```
+
+Set the Agent tool's `model` parameter to `agents.plan-runner` when the config sets it; omit it otherwise.
 
 Nothing else is passed: the work dir files are the envelope. `plan-runner` finalizes the
 plan itself (`implr_validate --finalize-plan`), which removes the work dir on `done`.

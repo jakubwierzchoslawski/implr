@@ -2,7 +2,7 @@
 name: arch-excerpter
 description: Produces a compact, plan-specific excerpt of docs/ARCHITECTURE.md. Returns only the components, layers, and concerns referenced by the named plan, plus the full Cross-Cutting Concerns and Technology Decisions sections verbatim. Read-only. Dispatched once per plan by dev-executor before any task-executor dispatches.
 tools: [Read, Grep, Glob]
-default_model: sonnet
+model: sonnet
 ---
 
 # arch-excerpter

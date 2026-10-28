@@ -2,7 +2,7 @@
 name: plan-runner
 description: Per-plan dispatcher. Receives a work directory prepared by dev-executor and dispatches one task-executor per scheduled task sequentially, recording each return as a file. Accumulates prior_decisions_summary between dispatches. Finalizes the plan (status, fingerprints, optional commit, test-results.md) with one `implr_validate --finalize-plan` call. Does NOT parse the plan, read schemas, ARCHITECTURE.md, DEV-STANDARDS.md, or config.
 tools: [Read, Write, Bash, Agent]
-default_model: sonnet
+model: sonnet
 ---
 
 # plan-runner
@@ -27,7 +27,7 @@ plan_id: PLAN-F-NNN
 plan_path: docs/implr/plans/.../PLAN-F-NNN-<slug>.md   # for reference only
 work_dir: docs/implr/.work/PLAN-F-NNN
 resume_task: <task-id or empty>
-task_executor_model: opus
+task_executor_model: opus   # optional; omit to use task-executor's frontmatter model
 ```
 
 `<work_dir>/meta.json` holds `task_ids` (tasks scheduled for this run, in order) and the
@@ -41,7 +41,9 @@ If `resume_task` is set, skip ids in `task_ids` that come before it. Start
 ### 1. Dispatch task-executor per task id, in order
 
 Read `<work_dir>/meta.json`. For each id in `task_ids` (post-resume filtering), dispatch
-the `task-executor` agent with only:
+the `task-executor` agent. When `task_executor_model` was passed in, set the Agent
+tool's `model` parameter to it on **every** dispatch (e.g. `model: opus`). When it is absent,
+omit `model` so `task-executor`'s own frontmatter `model:` applies. The prompt carries only:
 
 ```yaml
 work_dir: <work_dir>

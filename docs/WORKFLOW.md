@@ -86,7 +86,7 @@ restricted tool allowlist, and a tier-appropriate model.
 
 Users override per agent in `docs/implr/config/implr.config.yaml` under the `agents:`
 key. Values: `haiku`, `sonnet`, `opus`. Resolution: config value wins; falls back to the
-agent's `default_model` declared in `.claude/agents/<name>.md`.
+agent's `model:` declared in `.claude/agents/<name>.md`.
 
 ### Dispatch payload contract
 

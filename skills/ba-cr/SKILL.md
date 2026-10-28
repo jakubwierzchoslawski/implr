@@ -62,7 +62,10 @@ present to the user for review before continuing.
 
 ### Phase 2 — Dispatch `cr-impact-analyzer`
 
-Resolve model. Dispatch with scope `{cr_path, requirements_dir, plans_dir}`.
+Model: if `agents.<agent-name>` is set in `implr.config.yaml`, pass it as the Agent tool's `model`
+parameter on every dispatch; if absent, omit `model` (the agent's frontmatter `model:` applies).
+
+Dispatch with scope `{cr_path, requirements_dir, plans_dir}`.
 
 Read the return summary. If `--impact-only`, print and stop.
 

@@ -2,7 +2,7 @@
 name: plan-worker
 description: Produces one implementation plan for one approved requirement. Applies SOLID at design level, injects NFR constraints, sets per-task TDD flags.
 tools: [Read, Write, Grep, Glob]
-default_model: sonnet
+model: sonnet
 ---
 
 # plan-worker

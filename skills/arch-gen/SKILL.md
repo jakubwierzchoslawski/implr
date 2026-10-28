@@ -57,7 +57,10 @@ Collect all confirmations. If `--dry-run`, do not dispatch — list the decision
 
 ### Phase 4 — Dispatch `arch-drafter`
 
-Resolve model. Dispatch with scope:
+Model (`arch-drafter`): if `agents.<agent-name>` is set in `implr.config.yaml`, pass it as the Agent tool's `model`
+parameter on every dispatch; if absent, omit `model` (the agent's frontmatter `model:` applies).
+
+Dispatch with scope:
 ```
 mode: create | update
 existing_path: docs/ARCHITECTURE.md     (only for update)

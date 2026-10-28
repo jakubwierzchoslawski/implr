@@ -2,7 +2,7 @@
 name: cr-impact-analyzer
 description: Analyses the impact of a Change Request across all requirements and plans. Returns the set of REQ/PLAN files affected and the kind of change required for each.
 tools: [Read, Grep, Glob]
-default_model: sonnet
+model: sonnet
 ---
 
 # cr-impact-analyzer

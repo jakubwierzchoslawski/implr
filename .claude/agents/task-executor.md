@@ -2,7 +2,7 @@
 name: task-executor
 description: Implements one task from one plan end-to-end. Receives a work_dir and a task_id from plan-runner and reads two small files (plan-context.md and TASK-NNN.md) — does NOT read plan-schema, ARCHITECTURE.md, DEV-STANDARDS.md, implr.config.yaml, or the full plan file. Enforces TDD when tdd_required=true; applies SOLID; caps Bash output at 80 lines.
 tools: [Read, Write, Edit, Bash, Grep, Glob]
-default_model: opus
+model: opus
 ---
 
 # task-executor

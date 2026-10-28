@@ -45,6 +45,9 @@ For `--all`: read `plans-index.md`, pick `done` plans without an existing review
 
 ### Phase 2 — Dispatch `code-review-worker` per plan (parallel)
 
+Model: if `agents.code-review-worker` is set in `implr.config.yaml`, pass it as the Agent tool's `model`
+parameter on every dispatch; if absent, omit `model` (the agent's frontmatter `model:` applies).
+
 Before dispatch, compute `current_source_ref` by running `python scripts/implr_validate
 --source-ref <src_path> <tests_path>` (read `src`/`tests` from `implr.config.yaml` paths) and
 use the printed value verbatim. **Never hand-compute this value** — the validator CLI is the

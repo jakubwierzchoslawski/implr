@@ -95,6 +95,9 @@ dependencies are already planned.
 
 ### Phase 5 — Dispatch `plan-worker` per requirement (parallel within wave)
 
+Model: if `agents.<agent-name>` is set in `implr.config.yaml`, pass it as the Agent tool's `model`
+parameter on every dispatch; if absent, omit `model` (the agent's frontmatter `model:` applies).
+
 For each wave, dispatch all reqs in parallel (cap 5):
 
 Scope per dispatch: `{requirement_path, plan_path_out, mode, existing_plan_path,

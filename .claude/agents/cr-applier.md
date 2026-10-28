@@ -2,7 +2,7 @@
 name: cr-applier
 description: Applies one Change Request's specified diff to one target file (a requirement or a plan). Updates status, source_docs, and writes the change.
 tools: [Read, Write, Edit]
-default_model: sonnet
+model: sonnet
 ---
 
 # cr-applier
