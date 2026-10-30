@@ -3,6 +3,14 @@
 All notable changes to implr are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+- **Configurable reasoning effort.** Every agent declares `effort: medium` in its frontmatter.
+  New `agent_effort:` section in `implr.config.yaml` overrides it per agent; skills pass it as
+  the Agent tool's `effort` parameter, and `plan-runner` forwards `task_executor_effort`.
+- `dev-executor` now honours `agents.arch-excerpter` (previously hardcoded to Sonnet).
+- Removed the stale `doc-ingest-extractor` entry from the config template and README.
+
 ## v4.0.0 — 2026-10-22
 
 ### Smaller execution contexts

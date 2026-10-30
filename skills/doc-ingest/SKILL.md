@@ -45,7 +45,10 @@ For each dispatch, pass `agents.<agent-name>` from `implr.config.yaml` as the Ag
 dispatch of that agent. If the key is absent (commented out), omit `model` — the agent's own
 `model:` frontmatter applies.
 
-Phase 3 extraction is inline (no subagent), so no model is resolved for it. Phases 4–5
+Resolve effort the same way: pass `agent_effort.<agent-name>` as the Agent tool's `effort`
+parameter when set; when absent, omit `effort` — the agent's own `effort:` frontmatter applies.
+
+Phase 3 extraction is inline (no subagent), so no model or effort is resolved for it. Phases 4–5
 still dispatch `doc-ingest-digester` and `doc-ingest-synthesizer`.
 
 ## Execution

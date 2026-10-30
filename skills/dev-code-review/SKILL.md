@@ -47,6 +47,8 @@ For `--all`: read `plans-index.md`, pick `done` plans without an existing review
 
 Model: if `agents.code-review-worker` is set in `implr.config.yaml`, pass it as the Agent tool's `model`
 parameter on every dispatch; if absent, omit `model` (the agent's frontmatter `model:` applies).
+Effort: likewise, if `agent_effort.code-review-worker` is set in `implr.config.yaml`, pass it as the Agent tool's
+`effort` parameter on every dispatch; if absent, omit `effort` (the agent's frontmatter `effort:` applies).
 
 Before dispatch, compute `current_source_ref` by running `python scripts/implr_validate
 --source-ref <src_path> <tests_path>` (read `src`/`tests` from `implr.config.yaml` paths) and

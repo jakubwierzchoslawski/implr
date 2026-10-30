@@ -332,7 +332,7 @@ review verdict of `changes-required` or `rejected`, it sets the linked plan's `s
 `in-progress` in both `plans-index.md` and the plan file, and records the blocking finding
 ids in the plan's `## Risks and Notes`.
 
-*In v3.0, plan creation is performed by parallel `plan-worker` subagents (one per requirement per dependency wave). Plan execution is orchestrated by `dev-executor`: it parses each plan into per-task envelopes, dispatches `arch-excerpter` (Sonnet) once per plan, then dispatches `plan-runner` (Opus) per plan in parallel waves. Each plan-runner dispatches one `task-executor` (Opus) per task sequentially, then writes the plan's test-results.md and commits only if `commit_mode: auto`. Plan review is performed by parallel `code-review-worker` subagents (one per plan, receiving `standards-card` inline and applying the test-results staleness rule above).*
+*In v3.0, plan creation is performed by parallel `plan-worker` subagents (one per requirement per dependency wave). Plan execution is orchestrated by `dev-executor`: it parses each plan into per-task envelopes, dispatches `arch-excerpter` (Sonnet) once per plan, then dispatches `plan-runner` (Sonnet) per plan in parallel waves. Each plan-runner dispatches one `task-executor` (Opus) per task sequentially, then writes the plan's test-results.md and commits only if `commit_mode: auto`. Plan review is performed by parallel `code-review-worker` subagents (one per plan, receiving `standards-card` inline and applying the test-results staleness rule above).*
 
 ---
 

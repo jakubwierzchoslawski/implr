@@ -97,6 +97,8 @@ dependencies are already planned.
 
 Model: if `agents.<agent-name>` is set in `implr.config.yaml`, pass it as the Agent tool's `model`
 parameter on every dispatch; if absent, omit `model` (the agent's frontmatter `model:` applies).
+Effort: likewise, if `agent_effort.<agent-name>` is set in `implr.config.yaml`, pass it as the Agent tool's
+`effort` parameter on every dispatch; if absent, omit `effort` (the agent's frontmatter `effort:` applies).
 
 For each wave, dispatch all reqs in parallel (cap 5):
 

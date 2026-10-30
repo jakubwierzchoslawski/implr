@@ -778,7 +778,6 @@ Each subagent declares a default `model:` in its `.claude/agents/<name>.md` fron
 
 ```yaml
 agents:
-  doc-ingest-extractor: haiku       # mechanical text extraction
   doc-ingest-digester: sonnet       # per-doc digest
   doc-ingest-synthesizer: sonnet    # per-domain synthesis
   arch-drafter: sonnet              # architecture draft
@@ -804,6 +803,22 @@ updates.
 - *Downgrade to save cost* — e.g. `task-executor: sonnet` if your tasks are simpler (task-executor is the cost driver; plan-runner can also be downgraded independently)
 - *Upgrade for quality* — e.g. `requirements-domain-worker: opus` on a complex domain
 - *Match your budget* — downgrade everything to Haiku for prototyping; restore defaults for production runs
+
+### Reasoning effort
+
+Each subagent also declares `effort: medium` in its frontmatter. Override per agent with
+`agent_effort:` in `implr.config.yaml`:
+
+```yaml
+agent_effort:
+  task-executor: medium   # main cost driver
+  plan-runner: low
+  arch-excerpter: low
+```
+
+Valid values: `low`, `medium`, `high`, `xhigh`, `max`. Higher effort costs more tokens. Resolution
+order is the same as for models: `agent_effort.<agent-name>` from the config, then the
+agent's frontmatter `effort:`.
 
 ---
 

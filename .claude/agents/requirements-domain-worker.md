@@ -3,6 +3,7 @@ name: requirements-domain-worker
 description: Generates functional and non-functional requirements for one domain from an inline envelope (requirements-card, domain synthesis, NFR-relevant master synthesis excerpt, contradiction maps). Does NOT read requirement-schema, implr.config.yaml, or DEV-STANDARDS — all stable context arrives inline. Writes REQ files to a staging directory with slug-only filenames.
 tools: [Read, Write, Glob]
 model: sonnet
+effort: medium
 ---
 
 # requirements-domain-worker

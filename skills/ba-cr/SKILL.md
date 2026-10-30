@@ -64,6 +64,8 @@ present to the user for review before continuing.
 
 Model: if `agents.<agent-name>` is set in `implr.config.yaml`, pass it as the Agent tool's `model`
 parameter on every dispatch; if absent, omit `model` (the agent's frontmatter `model:` applies).
+Effort: likewise, if `agent_effort.<agent-name>` is set in `implr.config.yaml`, pass it as the Agent tool's
+`effort` parameter on every dispatch; if absent, omit `effort` (the agent's frontmatter `effort:` applies).
 
 Dispatch with scope `{cr_path, requirements_dir, plans_dir}`.
 
@@ -98,7 +100,7 @@ Write the full `confirmed_targets` set to the CR file's `targets:` frontmatter. 
 ### Phase 4 — Dispatch `cr-applier` per applied target (parallel)
 
 For each requirement in `applied_targets` and each plan linked to those requirements:
-- Resolve model
+- Resolve model and effort (same rule as Phase 2)
 - Dispatch `cr-applier` with scope `{cr_path, target_path, target_kind, action, status_change}`,
   adding `change_kind` (from the impact report's per-requirement `change_kind` field) when
   `target_kind: requirement`; omit it for plan targets.

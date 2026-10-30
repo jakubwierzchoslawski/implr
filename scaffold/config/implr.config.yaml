@@ -37,7 +37,6 @@ jira:
 # Values: haiku | sonnet | opus.
 # Uncomment and edit any line to override an agent's default model.
 # agents:
-#   doc-ingest-extractor: haiku       # mechanical text extraction
 #   doc-ingest-digester: sonnet       # per-doc digest
 #   doc-ingest-synthesizer: sonnet    # per-domain synthesis
 #   arch-drafter: sonnet              # architecture draft
@@ -49,3 +48,14 @@ jira:
 #   arch-excerpter: sonnet            # per-plan ARCHITECTURE excerpt
 #   task-executor: opus               # TDD + SOLID enforcement per task (main cost driver)
 #   code-review-worker: sonnet
+
+# Per-agent reasoning effort (v4.1+). Values: low | medium | high | xhigh | max.
+# Every agent defaults to medium (frontmatter `effort:`). Higher effort = more tokens.
+# Uncomment and edit any line to override.
+# agent_effort:
+#   task-executor: medium             # main cost driver; raise for hard plans only
+#   plan-runner: low                  # mechanical dispatch loop
+#   arch-excerpter: low
+#   cr-applier: low
+#   plan-worker: medium
+#   code-review-worker: medium

@@ -3,6 +3,7 @@ name: doc-ingest-synthesizer
 description: Rebuilds the synthesis for one domain by reading all current per-doc digests in that domain. Detects intra-domain contradictions and computes the synthesis checksum.
 tools: [Read, Write, Glob]
 model: sonnet
+effort: medium
 ---
 
 # doc-ingest-synthesizer

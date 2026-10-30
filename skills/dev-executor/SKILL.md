@@ -102,7 +102,9 @@ step f below.
 
 **c. Dispatch arch-excerpter.**
 
-Dispatch `arch-excerpter` (Sonnet) with `{plan_path}`. Capture the `excerpt:` block
+Dispatch `arch-excerpter` with `{plan_path}`, setting the Agent tool's `model` to
+`agents.arch-excerpter` and `effort` to `agent_effort.arch-excerpter` when the config sets them
+(omit each otherwise; the agent's frontmatter applies). Capture the `excerpt:` block
 from the return summary as `arch_excerpt`. If arch-excerpter fails or returns no excerpt:
 fall back to reading the first 200 lines of `docs/ARCHITECTURE.md` and warn.
 
@@ -111,11 +113,13 @@ fall back to reading the first 200 lines of `docs/ARCHITECTURE.md` and warn.
 The content of `docs/implr/config/standards-card.md` (already in memory from "Read
 first") is the `standards_card` value.
 
-**e. Resolve model.**
+**e. Resolve model and effort.**
 
 Read `agents.task-executor` and `agents.plan-runner` from `implr.config.yaml`. Each is the
 Agent tool's `model` parameter for that agent when set; when absent, leave it unset — the
-agent's own `model:` frontmatter applies. Do not hardcode fallbacks here.
+agent's own `model:` frontmatter applies. Do the same with `agent_effort.task-executor` and
+`agent_effort.plan-runner` for the Agent tool's `effort` parameter (frontmatter `effort:` applies
+when absent). Do not hardcode fallbacks here.
 
 **f. Write the work directory.**
 
@@ -162,10 +166,11 @@ multiple Agent calls; cap 5). Each dispatch passes:
 
 ```
 plan_id, plan_path, work_dir (docs/implr/.work/<PLAN-ID>), resume_task (empty unless --task mode),
-task_executor_model (only when set in the config; otherwise omit)
+task_executor_model, task_executor_effort (each only when set in the config; otherwise omit)
 ```
 
-Set the Agent tool's `model` parameter to `agents.plan-runner` when the config sets it; omit it otherwise.
+Set the Agent tool's `model` parameter to `agents.plan-runner` and `effort` to
+`agent_effort.plan-runner` when the config sets them; omit each otherwise.
 
 Nothing else is passed: the work dir files are the envelope. `plan-runner` finalizes the
 plan itself (`implr_validate --finalize-plan`), which removes the work dir on `done`.
