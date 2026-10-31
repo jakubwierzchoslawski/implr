@@ -6,21 +6,7 @@ from implr_validate.checks import check_artefact_file
 
 SCHEMA_DIR = os.path.join(os.path.dirname(__file__), "..", "scaffold", "schemas")
 
-VALID_REQ = """---
-req_id: REQ-F-001
-slug: user-password-reset
-title: "User Password Reset"
-type: functional
-status: approved
-complexity: M
-tdd_required: true
-source_docs:
-  - auth-flow.md
-created_at: 2026-01-01T00:00:00Z
-updated_at: 2026-01-01T00:00:00Z
----
-# body
-"""
+VALID_REQ = """---\nreq_id: REQ-F-001\nslug: user-password-reset\ntitle: "User Password Reset"\ntype: functional\nstatus: approved\ncomplexity: M\ntdd_required: true\nsource_docs:\n  - auth-flow.md\ncreated_at: 2026-01-01T00:00:00Z\nupdated_at: 2026-01-01T00:00:00Z\n---\n# body\n"""
 
 
 def _write(tmp, text):
@@ -61,20 +47,7 @@ class TestCheckArtefact(unittest.TestCase):
 # --- Task 7: workspace / cross-reference / index tests ---
 from implr_validate.checks import check_workspace
 
-VALID_PLAN = """---
-plan_id: PLAN-F-001
-slug: user-password-reset
-title: "Impl"
-linked_requirement: REQ-F-001
-type: functional
-status: ready
-complexity: M
-tdd_required: true
-created_at: 2026-01-01T00:00:00Z
-updated_at: 2026-01-01T00:00:00Z
----
-# body
-"""
+VALID_PLAN = """---\nplan_id: PLAN-F-001\nslug: user-password-reset\ntitle: "Impl"\nlinked_requirement: REQ-F-001\ntype: functional\nstatus: ready\ncomplexity: M\ntdd_required: true\ncreated_at: 2026-01-01T00:00:00Z\nupdated_at: 2026-01-01T00:00:00Z\n---\n# body\n"""
 
 REQ_INDEX = "# Requirements Index\n\n| ID | ... |\n| REQ-F-001 | ok |\n"
 PLAN_INDEX = "# Plans Index\n\n| ID | ... |\n| PLAN-F-001 | ok |\n"
@@ -152,17 +125,7 @@ _FP_FIELDS = {
     "source_b": "login-spec.md §4", "statement_b": "Lockout after 5 failed attempts",
     "type": "Hard conflict",
 }
-_SYNTH = """---
-domain: authentication
-synthesis_checksum: abc
----
-# Domain Synthesis: Authentication
-
-## Contradictions Detected
-| ID | Fingerprint | FP-Ver | Statement A | Source A | Statement B | Source B | Type |
-|----|-------------|--------|------------|---------|------------|---------|------|
-| C-001 | {fp} | {ver} | Lockout after 3 failed attempts | login-spec.md §1 | Lockout after 5 failed attempts | login-spec.md §4 | Hard conflict |
-"""
+_SYNTH = """---\ndomain: authentication\nsynthesis_checksum: abc\n---\n# Domain Synthesis: Authentication\n\n## Contradictions Detected\n| ID | Fingerprint | FP-Ver | Statement A | Source A | Statement B | Source B | Type |\n|----|-------------|--------|------------|---------|------------|---------|------|\n| C-001 | {fp} | {ver} | Lockout after 3 failed attempts | login-spec.md §1 | Lockout after 5 failed attempts | login-spec.md §4 | Hard conflict |\n"""
 
 
 def _write_synth(root, fp, ver):
@@ -238,6 +201,21 @@ class TestRepoProse(unittest.TestCase):
         with open(p, "w", encoding="utf-8") as f:
             f.write(text)
 
+    def test_agent_with_valid_model_and_effort_clean(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, ".claude/agents/a.md", "---\nname: a\nmodel: sonnet\neffort: medium\n---\nbody\n")
+            self.assertEqual(check_repo_prose(root, self.c), [])
+
+    def test_agent_missing_effort_flagged(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, ".claude/agents/a.md", "---\nname: a\nmodel: sonnet\n---\nbody\n")
+            self.assertTrue(any("effort" in f.message for f in check_repo_prose(root, self.c)))
+
+    def test_agent_invalid_model_flagged(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._repo(root, ".claude/agents/a.md", "---\nname: a\nmodel: gpt\neffort: high\n---\nbody\n")
+            self.assertTrue(any("model" in f.message and "gpt" in f.message for f in check_repo_prose(root, self.c)))
+
     def test_banned_token_flagged_in_template(self):
         with tempfile.TemporaryDirectory() as root:
             self._repo(root, "scaffold/templates/plan-template.md", "status: replan_required\n")
@@ -311,21 +289,7 @@ class TestRepoProse(unittest.TestCase):
             self.assertEqual([f for f in check_repo_prose(root, self.c) if "transition" in f.message], [])
 
 
-VALID_PLAN_REWORK = """---
-plan_id: PLAN-F-001
-slug: x
-title: "Impl"
-linked_requirement: REQ-F-001
-type: functional
-status: needs-rework
-complexity: M
-tdd_required: true
-rework_cr: CR-014
-created_at: 2026-01-01T00:00:00Z
-updated_at: 2026-01-01T00:00:00Z
----
-# body
-"""
+VALID_PLAN_REWORK = """---\nplan_id: PLAN-F-001\nslug: x\ntitle: "Impl"\nlinked_requirement: REQ-F-001\ntype: functional\nstatus: needs-rework\ncomplexity: M\ntdd_required: true\nrework_cr: CR-014\ncreated_at: 2026-01-01T00:00:00Z\nupdated_at: 2026-01-01T00:00:00Z\n---\n# body\n"""
 
 
 class TestConditionalRequired(unittest.TestCase):
@@ -349,18 +313,7 @@ class TestConditionalRequired(unittest.TestCase):
             self.assertTrue(any("rework_cr" in f.message for f in findings))
 
 
-CR_WITH_TARGET = """---
-cr_id: CR-001
-slug: x
-title: "A change"
-status: draft
-change_type: correction
-source: cli-direct
-targets: [REQ-F-001]
-created_at: 2026-01-01T00:00:00Z
----
-# CR-001
-"""
+CR_WITH_TARGET = """---\ncr_id: CR-001\nslug: x\ntitle: "A change"\nstatus: draft\nchange_type: correction\nsource: cli-direct\ntargets: [REQ-F-001]\ncreated_at: 2026-01-01T00:00:00Z\n---\n# CR-001\n"""
 
 
 class TestCrTargets(unittest.TestCase):

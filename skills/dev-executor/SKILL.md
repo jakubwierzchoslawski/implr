@@ -2,9 +2,10 @@
 name: dev-executor
 description: >
   Implements ready plans. For each in-wave plan: parses the plan once into per-task
-  envelopes, dispatches arch-excerpter (Sonnet) once per plan for an arch_excerpt, then
+  envelopes, dispatches arch-excerpter once per plan for an arch_excerpt, then
   dispatches plan-runner subagents in parallel waves (cap 5). Each plan-runner dispatches
-  one task-executor per task sequentially. Opus by default. Use when implementing plans.
+  one task-executor per task sequentially. Agent models and effort come from
+  implr.config.yaml, else each agent's frontmatter. Use when implementing plans.
 ---
 
 # dev-executor Skill (v3.0 orchestrator)
@@ -16,7 +17,7 @@ neither plan-runner nor task-executor reads the plan file.
 
 ## Read first
 
-- `docs/implr/config/implr.config.yaml` — for paths and agent model overrides.
+- `docs/implr/config/implr.config.yaml` — for paths and the `agents:` / `agent_effort:` overrides.
 - `docs/implr/config/standards-card.md` — written into `plan-context.md` in each plan's work dir. Halt if
   missing: `❌ docs/implr/config/standards-card.md not found. Run /implr-init (or /implr-init --refresh-card) first.`
 

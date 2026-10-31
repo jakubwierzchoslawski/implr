@@ -219,6 +219,33 @@ def _matches_surface(rel, surfaces):
     return any(rel == s or rel.startswith(s) for s in surfaces)
 
 
+VALID_MODELS = ("haiku", "sonnet", "opus")
+VALID_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+_FM_LINE_RE = re.compile(r"^(model|effort):\s*(\S+)\s*$", re.M)
+
+
+def check_agent_settings(root):
+    """(f) every .claude/agents/*.md declares a valid `model:` and `effort:` in its frontmatter."""
+    findings = []
+    agents_dir = os.path.join(root, ".claude", "agents")
+    if not os.path.isdir(agents_dir):
+        return findings
+    for name in sorted(os.listdir(agents_dir)):
+        if not name.endswith(".md"):
+            continue
+        rel = ".claude/agents/" + name
+        with open(os.path.join(agents_dir, name), encoding="utf-8") as f:
+            text = f.read()
+        m = re.match(r"---\n(.*?)\n---", text, re.S)
+        found = dict(_FM_LINE_RE.findall(m.group(1))) if m else {}
+        for key, valid in (("model", VALID_MODELS), ("effort", VALID_EFFORTS)):
+            if key not in found:
+                findings.append(Finding("error", rel, "frontmatter missing `%s:`" % key))
+            elif found[key] not in valid:
+                findings.append(Finding("error", rel, "frontmatter %s %r not one of %s" % (key, found[key], "|".join(valid))))
+    return findings
+
+
 def check_repo_prose(root, contracts):
     cfg = contracts.repo_prose_checks
     findings = []
@@ -289,4 +316,6 @@ def check_repo_prose(root, contracts):
         for fmt in canonical:
             if not re.search(r"\b%s\b" % re.escape(fmt), text):
                 findings.append(Finding("error", rel, "canonical format %r not mentioned on this surface" % fmt))
+
+    findings.extend(check_agent_settings(root))
     return findings

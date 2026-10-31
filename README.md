@@ -820,6 +820,24 @@ Valid values: `low`, `medium`, `high`, `xhigh`, `max`. Higher effort costs more 
 order is the same as for models: `agent_effort.<agent-name>` from the config, then the
 agent's frontmatter `effort:`.
 
+### Session `/model` and `/effort` do not apply to subagents
+
+The `/model` and `/effort` commands change only the **main session**: the model and effort
+your own conversation (and the skills, which run inline in it) use. They do **not** propagate
+to subagents. Every implr agent declares both `model:` and `effort:` in its frontmatter, and
+those explicit values win over whatever the session uses. So with `/model` set to Sonnet and
+`/effort` set to high, `task-executor` still runs on Opus at `medium`.
+
+To change a subagent, use the config (the only per-agent knob):
+
+- `agents.<agent-name>` — model
+- `agent_effort.<agent-name>` — effort
+
+Raising effort on a subagent costs more tokens, so do it per agent and only where it pays off
+(for example `agent_effort.task-executor: high` for a hard plan). The built-in `Explore`
+subagent used by `dev-planner` and `ba-requirements-gen` is not configurable here.
+`python scripts/implr_validate --repo` checks that every agent declares a valid `model:` and `effort:`.
+
 ---
 
 ## Performance & Token Efficiency

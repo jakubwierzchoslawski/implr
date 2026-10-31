@@ -88,6 +88,10 @@ Users override per agent in `docs/implr/config/implr.config.yaml` under the `age
 key. Values: `haiku`, `sonnet`, `opus`. Resolution: config value wins; falls back to the
 agent's `model:` declared in `.claude/agents/<name>.md`.
 
+Reasoning effort works the same way: `agent_effort:` in the config (`low` | `medium` | `high` |
+`xhigh` | `max`), falling back to the agent's `effort:` frontmatter. The session's `/model` and
+`/effort` only affect the main conversation and skills, never subagents.
+
 ### Dispatch payload contract
 
 Each dispatch carries a small scope payload (file path, requirement id, domain name —

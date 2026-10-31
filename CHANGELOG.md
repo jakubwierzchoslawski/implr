@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - **Configurable reasoning effort.** Every agent declares `effort: medium` in its frontmatter.
   New `agent_effort:` section in `implr.config.yaml` overrides it per agent; skills pass it as
   the Agent tool's `effort` parameter, and `plan-runner` forwards `task_executor_effort`.
+- `ba-cr` Phase 4.5 now resolves model/effort for `requirements-domain-worker` (previously skipped).
+- README/WORKFLOW document that session `/model` and `/effort` do not apply to subagents.
+- `implr_validate --repo` checks that every agent declares a valid `model:` and `effort:`.
+- `dev-executor` description no longer hardcodes model names.
 - `dev-executor` now honours `agents.arch-excerpter` (previously hardcoded to Sonnet).
 - Removed the stale `doc-ingest-extractor` entry from the config template and README.
 
