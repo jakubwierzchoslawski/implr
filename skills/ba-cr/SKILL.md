@@ -114,7 +114,11 @@ If impact analysis reported new requirements are needed (not just amendments):
    use `root`).
 2. Create the staging dir `docs/implr/requirements/.staging/<domain>/` (delete first if present,
    per the ba-requirements-gen Windows/Unix rules).
-3. Dispatch `requirements-domain-worker` with a **complete** `domain_envelope` that satisfies its
+3. Resolve model and effort for `requirements-domain-worker` (same rule as Phase 2): pass
+   `agents.requirements-domain-worker` as the Agent tool's `model` and
+   `agent_effort.requirements-domain-worker` as its `effort` when set in `implr.config.yaml`;
+   omit each otherwise (the agent's frontmatter applies).
+4. Dispatch `requirements-domain-worker` with a **complete** `domain_envelope` that satisfies its
    contract. Because there is no domain synthesis for a CR-originated requirement, synthesize the
    inputs from the CR (the worker treats `domain_synthesis` as authoritative source material):
 
@@ -144,11 +148,11 @@ If impact analysis reported new requirements are needed (not just amendments):
      resolved_contradictions: {}
      deferred_contradictions: []
    ```
-4. After the worker returns, assign the next sequential `REQ-F-NNN`/`REQ-N-NNN` (continue from
+5. After the worker returns, assign the next sequential `REQ-F-NNN`/`REQ-N-NNN` (continue from
    `requirements-index.md`), move the staged file into `functional/` or `non-functional/`, set
    `status: draft`, add the CR filename to `source_docs`, and add the new id to
    `requirements-index.md`.
-5. Report the new REQ IDs and that they require human approval before planning.
+6. Report the new REQ IDs and that they require human approval before planning.
 
 ### Phase 5 — Handle replan markers
 
