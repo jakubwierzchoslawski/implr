@@ -66,7 +66,12 @@ echo   installed agents
 
 if exist "%AGENTS_DEST%\executor-worker.md" (
     del /Q "%AGENTS_DEST%\executor-worker.md"
-    echo   removed deprecated agent: executor-worker.md (replaced by plan-runner.md in v3)
+    echo   removed deprecated agent: executor-worker.md ^(replaced by plan-runner.md in v3^)
+)
+
+if exist "%AGENTS_DEST%\doc-ingest-extractor.md" (
+    del /Q "%AGENTS_DEST%\doc-ingest-extractor.md"
+    echo   removed deprecated agent: doc-ingest-extractor.md ^(replaced by inline extraction in v3.1^)
 )
 
 REM Workspace scaffolding always targets the current project (CWD), regardless of --global.
@@ -122,6 +127,9 @@ if not exist "docs\implr\config\DEV-STANDARDS.md" (
 ) else (
     echo   kept existing docs\implr\config\DEV-STANDARDS.md
 )
+
+findstr /r /c:"^ *plan-runner: *opus" "docs\implr\config\implr.config.yaml" >nul 2>&1 && echo   WARNING: agents.plan-runner is set to opus in implr.config.yaml; v4 defaults it to sonnet. Remove that line to save tokens.
+findstr /c:"agent_effort" "docs\implr\config\implr.config.yaml" >nul 2>&1 || echo   NOTE: implr.config.yaml has no agent_effort section (new in v4.1, optional). See scaffold\config\implr.config.yaml.
 
 if not exist "CLAUDE.md" (
     copy /y "%SCAFFOLD_SRC%\templates\CLAUDE-template.md" "CLAUDE.md" >nul

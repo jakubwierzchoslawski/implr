@@ -69,6 +69,13 @@ scaffold_workspace() {
     fi
   done
 
+  # Warn about stale model/effort settings in a kept config
+  CFG="docs/implr/config/implr.config.yaml"
+  if [ -f "$CFG" ]; then
+    grep -Eq "^ *plan-runner: *opus" "$CFG" && echo "  WARNING: agents.plan-runner is set to opus in implr.config.yaml; v4 defaults it to sonnet. Remove that line to save tokens."
+    grep -q "agent_effort" "$CFG" || echo "  NOTE: implr.config.yaml has no agent_effort section (new in v4.1, optional). See scaffold/config/implr.config.yaml."
+  fi
+
   # Skip if exists: CLAUDE.md at project root
   if [ ! -f "CLAUDE.md" ]; then
     cp "$SCAFFOLD_SRC/templates/CLAUDE-template.md" "CLAUDE.md"
@@ -136,6 +143,12 @@ echo "  installed agents"
 if [ -f "$AGENTS_DEST/executor-worker.md" ]; then
     rm -f "$AGENTS_DEST/executor-worker.md"
     echo "  removed deprecated agent: executor-worker.md (replaced by plan-runner.md in v3)"
+fi
+
+# Remove deprecated doc-ingest-extractor.md if present (replaced by inline extraction in v3.1)
+if [ -f "$AGENTS_DEST/doc-ingest-extractor.md" ]; then
+    rm -f "$AGENTS_DEST/doc-ingest-extractor.md"
+    echo "  removed deprecated agent: doc-ingest-extractor.md (replaced by inline extraction in v3.1)"
 fi
 
 # Workspace scaffolding always targets the current project (CWD), regardless of --global.

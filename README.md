@@ -227,13 +227,38 @@ C:\path\to\implr\install.bat
 
 | What | Action |
 |------|--------|
-| Skills (`.claude/skills/`) and agents (`.claude/agents/`) | Always replaced with the new version |
+| Skills (`.claude/skills/`) and agents (`.claude/agents/`) | Always replaced with the new version; retired agents (`executor-worker`, `doc-ingest-extractor`) are removed |
+| `docs/implr/schemas/`, `docs/implr/templates/`, `scripts/implr_validate/` | Always replaced (plugin-owned) |
 | `docs/implr/config/implr.config.yaml` | **Never touched** — your config is preserved |
 | `docs/implr/config/DEV-STANDARDS.md` | **Never touched** — your standards are preserved |
 | `CLAUDE.md` | **Never touched** — your file is preserved |
 | Everything in `docs/kb/` | **Never touched** — your documents are preserved |
 
 > **Upgrading to v3.0?** See [Migrating from v2.0 to v3.0](#migrating-from-v20-to-v30). Re-run the installer, generate `standards-card.md`, and optionally update config. **Upgrading from v1.x to v2.0?** See the dedicated [Migrating from v1.x to v2.0](#migrating-from-v1x-to-v20) section. Two flags were removed and one default was flipped — the migration is two commands and a re-install.
+
+### Checklist: updating a project that already has implr
+
+1. **Pull implr:** `cd C:\path\to\implr` and `git pull`.
+2. **Re-run the installer from the project root** (CMD: `C:\path\to\implr\install.bat`).
+   Read the output — it ends the `docs\implr\config\implr.config.yaml` step with a
+   `WARNING` or `NOTE` when your kept config needs attention:
+   - `WARNING: agents.plan-runner is set to opus` — an override left over from v3. v4's
+     `plan-runner` is a thin dispatch loop and defaults to Sonnet; the old line silently
+     forces Opus and cancels the saving. Delete it (or set `plan-runner: sonnet`).
+   - `NOTE: ... no agent_effort section` — optional. Copy the commented `agent_effort:` block
+     from `scaffold\config\implr.config.yaml` if you want per-agent effort (otherwise every
+     agent uses `effort: medium` from its frontmatter).
+3. **Coming from before v3.0?** Run `/implr-init --refresh-card` once to generate
+   `docs/implr/config/standards-card.md` (required by `dev-executor` and `dev-code-review`).
+4. **Check the install:** `python scripts\implr_validate --workspace .` should print
+   `implr-validate: OK`.
+5. **Global installs:** `install.bat --global` updates `~\.claude`, but a project's own
+   `.claude\skills` and `.claude\agents` take precedence over the global ones. If a project
+   has a local copy, re-run the installer inside that project too.
+
+Your config, `DEV-STANDARDS.md`, `CLAUDE.md`, KB and all generated requirements/plans are kept.
+Plans left `in-progress` by an older version can be resumed with `/dev-executor --task`;
+the v4 work directory (`docs/implr/.work/`) is created per plan and ignores itself in git.
 
 ### After updating
 

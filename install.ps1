@@ -75,6 +75,17 @@ function Scaffold-Workspace {
         }
     }
 
+    # Warn about stale model/effort settings in a kept config
+    $cfg = "docs\implr\config\implr.config.yaml"
+    if (Test-Path $cfg) {
+        if (Select-String -Path $cfg -Pattern "^ *plan-runner: *opus" -Quiet) {
+            Write-Host "  WARNING: agents.plan-runner is set to opus in implr.config.yaml; v4 defaults it to sonnet. Remove that line to save tokens."
+        }
+        if (-not (Select-String -Path $cfg -Pattern "agent_effort" -Quiet)) {
+            Write-Host "  NOTE: implr.config.yaml has no agent_effort section (new in v4.1, optional). See scaffold/config/implr.config.yaml."
+        }
+    }
+
     # Skip if exists: CLAUDE.md at project root
     if (-not (Test-Path "CLAUDE.md")) {
         Copy-Item (Join-Path $ScaffoldSrc "templates\CLAUDE-template.md") "CLAUDE.md"
@@ -147,6 +158,13 @@ Write-Host "  installed $agentCount agents"
         Remove-Item -Force $oldAgent
         Write-Host "  removed deprecated agent: executor-worker.md (replaced by plan-runner.md in v3)"
     }
+
+# Remove deprecated doc-ingest-extractor.md if present (replaced by inline extraction in v3.1)
+$oldExtractor = Join-Path $AgentsDest "doc-ingest-extractor.md"
+if (Test-Path $oldExtractor) {
+    Remove-Item -Force $oldExtractor
+    Write-Host "  removed deprecated agent: doc-ingest-extractor.md (replaced by inline extraction in v3.1)"
+}
 
 # Workspace scaffolding always targets the current project (CWD), regardless of -Global.
 Scaffold-Workspace

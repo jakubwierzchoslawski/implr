@@ -8,6 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - **Configurable reasoning effort.** Every agent declares `effort: medium` in its frontmatter.
   New `agent_effort:` section in `implr.config.yaml` overrides it per agent; skills pass it as
   the Agent tool's `effort` parameter, and `plan-runner` forwards `task_executor_effort`.
+- Installers (`install.bat`, `install.ps1`, `install.sh`) now remove the retired
+  `doc-ingest-extractor` agent (previously only claimed), print a `WARNING` when a kept config
+  still pins `plan-runner: opus`, and a `NOTE` when it has no `agent_effort` section.
+  Fixed the truncated `executor-worker` removal message in `install.bat`.
+- README: "Checklist: updating a project that already has implr".
 - `ba-cr` Phase 4.5 now resolves model/effort for `requirements-domain-worker` (previously skipped).
 - README/WORKFLOW document that session `/model` and `/effort` do not apply to subagents.
 - `implr_validate --repo` checks that every agent declares a valid `model:` and `effort:`.
