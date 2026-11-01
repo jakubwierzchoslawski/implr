@@ -3,7 +3,7 @@ name: doc-ingest-digester
 description: Produces one per-document digest from a cached text file. Extracts business rules, system behaviours, entities, integration points, NFR signals, ambiguities, and arch signals per the kb-index schema.
 tools: [Read, Write]
 model: sonnet
-effort: medium
+effort: low
 ---
 
 # doc-ingest-digester

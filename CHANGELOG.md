@@ -3,7 +3,19 @@
 All notable changes to implr are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
-## Unreleased
+## v5.0.0 — 2026-11-01
+
+- **Agent frontmatter aligned with the config template.** `model:` and `effort:` in each
+  `.claude/agents/*.md` equal the defaults in `scaffold/config/implr.config.yaml`. Changed:
+  `task-executor` opus → sonnet; `arch-drafter`, `code-review-worker` sonnet → opus;
+  `plan-runner`, `arch-excerpter` sonnet → haiku; effort of `plan-runner`, `arch-excerpter`,
+  `cr-applier`, `doc-ingest-digester` → low; `cr-impact-analyzer`, `plan-worker` → high.
+- README and `docs/WORKFLOW.md` model tables updated to the new defaults; `CONTRIBUTING.md`
+  frontmatter contract now documents `model:` and `effort:` (was `default_model:`).
+- Removed the v1.x → v2.0 and v2.0 → v3.0 migration guides from README. Older CHANGELOG entries
+  that point to them are historical.
+- Config template: the `agents:` block is active (values = defaults); `agent_effort:` block added.
+- Installers: warning text now says `plan-runner` defaults to haiku; `agent_effort` note says v5.0.
 
 - **Configurable reasoning effort.** Every agent declares `effort: medium` in its frontmatter.
   New `agent_effort:` section in `implr.config.yaml` overrides it per agent; skills pass it as

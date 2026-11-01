@@ -72,8 +72,8 @@ scaffold_workspace() {
   # Warn about stale model/effort settings in a kept config
   CFG="docs/implr/config/implr.config.yaml"
   if [ -f "$CFG" ]; then
-    grep -Eq "^ *plan-runner: *opus" "$CFG" && echo "  WARNING: agents.plan-runner is set to opus in implr.config.yaml; v4 defaults it to sonnet. Remove that line to save tokens."
-    grep -q "agent_effort" "$CFG" || echo "  NOTE: implr.config.yaml has no agent_effort section (new in v4.1, optional). See scaffold/config/implr.config.yaml."
+    grep -Eq "^ *plan-runner: *opus" "$CFG" && echo "  WARNING: agents.plan-runner is set to opus in implr.config.yaml; v5 defaults it to haiku. Remove that line to save tokens."
+    grep -q "agent_effort" "$CFG" || echo "  NOTE: implr.config.yaml has no agent_effort section (new in v5.0, optional). See scaffold/config/implr.config.yaml."
   fi
 
   # Skip if exists: CLAUDE.md at project root

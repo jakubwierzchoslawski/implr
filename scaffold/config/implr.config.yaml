@@ -33,21 +33,24 @@ jira:
     implr_req_id: customfield_10001
     story_points: customfield_10016
 
+# Per-agent model (v5.0+). Values: haiku | sonnet | opus.
+# The values below equal each agent's `model:` in .claude/agents/<name>.md (the defaults).
+# Edit a line to override; remove it to fall back to the frontmatter default.
 agents:
-  doc-ingest-digester: sonnet       # per-doc digest
-  doc-ingest-synthesizer: sonnet    # per-domain synthesis
-  arch-drafter: opus              # architecture draft
+  doc-ingest-digester: sonnet          # per-doc digest
+  doc-ingest-synthesizer: sonnet       # per-domain synthesis
+  arch-drafter: opus                   # architecture draft
   requirements-domain-worker: sonnet
   cr-impact-analyzer: sonnet
   cr-applier: sonnet
   plan-worker: sonnet
-  plan-runner: haiku               # per-plan dispatcher (no stable reads)
-  arch-excerpter: haiku            # per-plan ARCHITECTURE excerpt
-  task-executor: sonnet             # TDD + SOLID enforcement per task (main cost driver)
+  plan-runner: haiku                   # per-plan dispatcher (no stable reads)
+  arch-excerpter: haiku                # per-plan ARCHITECTURE excerpt
+  task-executor: sonnet                # TDD + SOLID enforcement per task (main cost driver)
   code-review-worker: opus
 
-# Per-agent reasoning effort (v4.1+). Values: low | medium | high | xhigh | max.
-# Every agent defaults to medium (frontmatter `effort:`). Higher effort = more tokens.
+# Per-agent reasoning effort (v5.0+). Values: low | medium | high | xhigh | max.
+# The values below equal each agent's `effort:` in its frontmatter (the defaults). Higher effort = more tokens.
 # Remove a line to fall back to the frontmatter default.
 agent_effort:
   doc-ingest-digester: low

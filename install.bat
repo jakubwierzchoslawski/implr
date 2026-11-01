@@ -128,8 +128,8 @@ if not exist "docs\implr\config\DEV-STANDARDS.md" (
     echo   kept existing docs\implr\config\DEV-STANDARDS.md
 )
 
-findstr /r /c:"^ *plan-runner: *opus" "docs\implr\config\implr.config.yaml" >nul 2>&1 && echo   WARNING: agents.plan-runner is set to opus in implr.config.yaml; v4 defaults it to sonnet. Remove that line to save tokens.
-findstr /c:"agent_effort" "docs\implr\config\implr.config.yaml" >nul 2>&1 || echo   NOTE: implr.config.yaml has no agent_effort section (new in v4.1, optional). See scaffold\config\implr.config.yaml.
+findstr /r /c:"^ *plan-runner: *opus" "docs\implr\config\implr.config.yaml" >nul 2>&1 && echo   WARNING: agents.plan-runner is set to opus in implr.config.yaml; v5 defaults it to haiku. Remove that line to save tokens.
+findstr /c:"agent_effort" "docs\implr\config\implr.config.yaml" >nul 2>&1 || echo   NOTE: implr.config.yaml has no agent_effort section (new in v5.0, optional). See scaffold\config\implr.config.yaml.
 
 if not exist "CLAUDE.md" (
     copy /y "%SCAFFOLD_SRC%\templates\CLAUDE-template.md" "CLAUDE.md" >nul

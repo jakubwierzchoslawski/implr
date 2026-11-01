@@ -79,10 +79,10 @@ function Scaffold-Workspace {
     $cfg = "docs\implr\config\implr.config.yaml"
     if (Test-Path $cfg) {
         if (Select-String -Path $cfg -Pattern "^ *plan-runner: *opus" -Quiet) {
-            Write-Host "  WARNING: agents.plan-runner is set to opus in implr.config.yaml; v4 defaults it to sonnet. Remove that line to save tokens."
+            Write-Host "  WARNING: agents.plan-runner is set to opus in implr.config.yaml; v5 defaults it to haiku. Remove that line to save tokens."
         }
         if (-not (Select-String -Path $cfg -Pattern "agent_effort" -Quiet)) {
-            Write-Host "  NOTE: implr.config.yaml has no agent_effort section (new in v4.1, optional). See scaffold/config/implr.config.yaml."
+            Write-Host "  NOTE: implr.config.yaml has no agent_effort section (new in v5.0, optional). See scaffold/config/implr.config.yaml."
         }
     }
 

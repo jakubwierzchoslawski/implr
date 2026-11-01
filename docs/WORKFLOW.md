@@ -59,17 +59,17 @@ restricted tool allowlist, and a tier-appropriate model.
 | doc-ingest | Phase 3 (extract) | doc-ingest skill (inline) | shell-only: cp / pdftotext / python; no LLM token cost | — |
 | doc-ingest | Phase 4 (digest) | doc-ingest-digester | sonnet | Yes (cap 5) |
 | doc-ingest | Phase 5 (domain synthesis) | doc-ingest-synthesizer | sonnet | Yes (cap 5) |
-| arch-gen | Phase 4 (draft) | arch-drafter | sonnet | No (single dispatch) |
+| arch-gen | Phase 4 (draft) | arch-drafter | opus | No (single dispatch) |
 | ba-requirements-gen | Phase 3 (per-domain) | requirements-domain-worker | sonnet | Yes (cap 5) |
 | ba-requirements-gen | Phase 9 (coherence) | Explore (built-in) | n/a | No |
 | ba-cr | Phase 2 (impact) | cr-impact-analyzer | sonnet | No |
 | ba-cr | Phase 4 (apply) | cr-applier | sonnet | Yes (cap 5) |
 | dev-planner | Phase 5 (plan-one) | plan-worker | sonnet | Yes per wave (cap 5) |
 | dev-planner | Phase 6 (coherence) | Explore (built-in) | n/a | No |
-| dev-executor | Phase 4 (arch excerpt) | arch-excerpter | sonnet | One per plan, before dispatch |
-| dev-executor | Phase 5 (plan execute) | plan-runner | **sonnet** | Yes per wave (cap 5) |
-| dev-executor | Phase 5 (per-task) | task-executor | **opus** | Sequential within each plan-runner |
-| dev-code-review | Phase 2 (review) | code-review-worker | sonnet | Yes (cap 5) |
+| dev-executor | Phase 4 (arch excerpt) | arch-excerpter | haiku | One per plan, before dispatch |
+| dev-executor | Phase 5 (plan execute) | plan-runner | **haiku** | Yes per wave (cap 5) |
+| dev-executor | Phase 5 (per-task) | task-executor | **sonnet** | Sequential within each plan-runner |
+| dev-code-review | Phase 2 (review) | code-review-worker | opus | Yes (cap 5) |
 
 > **v3.1:** Text extraction is now inline in the `doc-ingest` skill (direct shell calls).
 > The `doc-ingest-extractor` subagent has been removed — file content no longer enters an
@@ -112,7 +112,7 @@ across dispatches within a session.
 - Envelopes are files in `docs/implr/.work/<PLAN-ID>/` (plan context once, one file per task) instead of N inline copies; plan finalization is deterministic code (`implr_validate --finalize-plan`).
 - plan-runner has no stable reads — replaces v2's per-plan dispatcher (~30k stable prefix gone).
 - standards-card (~55 lines auto-generated) replaces DEV-STANDARDS.md reads in task-executor and code-review-worker.
-- arch-excerpter runs once per plan (Sonnet); amortises over all tasks in that plan.
+- arch-excerpter runs once per plan (Haiku); amortises over all tasks in that plan.
 - Independent units still dispatch in parallel — same wall-clock, lower per-token spend.
 
 Typical end-to-end runs cost 6–10× fewer tokens than v1.x.
@@ -336,7 +336,7 @@ review verdict of `changes-required` or `rejected`, it sets the linked plan's `s
 `in-progress` in both `plans-index.md` and the plan file, and records the blocking finding
 ids in the plan's `## Risks and Notes`.
 
-*In v3.0, plan creation is performed by parallel `plan-worker` subagents (one per requirement per dependency wave). Plan execution is orchestrated by `dev-executor`: it parses each plan into per-task envelopes, dispatches `arch-excerpter` (Sonnet) once per plan, then dispatches `plan-runner` (Sonnet) per plan in parallel waves. Each plan-runner dispatches one `task-executor` (Opus) per task sequentially, then writes the plan's test-results.md and commits only if `commit_mode: auto`. Plan review is performed by parallel `code-review-worker` subagents (one per plan, receiving `standards-card` inline and applying the test-results staleness rule above).*
+*In v3.0, plan creation is performed by parallel `plan-worker` subagents (one per requirement per dependency wave). Plan execution is orchestrated by `dev-executor`: it parses each plan into per-task envelopes, dispatches `arch-excerpter` (Haiku) once per plan, then dispatches `plan-runner` (Haiku) per plan in parallel waves. Each plan-runner dispatches one `task-executor` (Sonnet) per task sequentially, then writes the plan's test-results.md and commits only if `commit_mode: auto`. Plan review is performed by parallel `code-review-worker` subagents (one per plan, receiving `standards-card` inline and applying the test-results staleness rule above).*
 
 ---
 

@@ -64,7 +64,8 @@ YAML frontmatter (the contract) and a Markdown body (the agent's system prompt).
 name: <agent-name>                   # MUST match filename without .md extension
 description: <one-line role>         # Used by the Agent tool catalogue
 tools: [Read, Write, Bash, ...]      # Allowlist of tools the agent may call
-default_model: haiku|sonnet|opus     # Used when implr.config.yaml does not override
+model: haiku|sonnet|opus             # Default model; implr.config.yaml `agents:` overrides it
+effort: low|medium|high|xhigh|max    # Default effort; implr.config.yaml `agent_effort:` overrides it
 ---
 ```
 

@@ -39,7 +39,6 @@ In v3.0, the cost model is rebuilt further: `dev-executor` parses plans into inl
 - [Performance & Token Efficiency](#performance--token-efficiency)
 - [Schemas](#schemas)
 - [Auto-Managed Files](#auto-managed-files)
-- [Migrating from v1.x to v2.0](#migrating-from-v1x-to-v20)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [License](#license)
@@ -47,6 +46,21 @@ In v3.0, the cost model is rebuilt further: `dev-executor` parses plans into inl
 ---
 
 ## Release Notes
+
+### v5.0.0 — 2026-11-01
+
+- **Agent model and effort defaults now match `implr.config.yaml`.** Each agent's frontmatter
+  `model:` and `effort:` equal the values in the config template. Changed model defaults:
+  `task-executor` Opus → Sonnet; `arch-drafter` and `code-review-worker` Sonnet → Opus;
+  `plan-runner` and `arch-excerpter` Sonnet → Haiku. Changed effort defaults: `plan-runner`,
+  `arch-excerpter`, `cr-applier`, `doc-ingest-digester` → `low`; `cr-impact-analyzer`,
+  `plan-worker` → `high`.
+- **Configurable reasoning effort.** `agent_effort:` in `implr.config.yaml` overrides each
+  agent's `effort:` frontmatter. See [Reasoning effort](#reasoning-effort).
+- **Config template ships an active `agents:` block** with the defaults above.
+- **Installers** remove the retired `doc-ingest-extractor` agent, warn when a kept config pins
+  `plan-runner: opus`, and note a missing `agent_effort` section.
+- **Removed** the v1.x → v2.0 and v2.0 → v3.0 migration guides from the README.
 
 ### v3.1 — Cost reduction Wave 2
 
@@ -98,7 +112,7 @@ Key properties:
 | `ba-requirements-gen` | Generates functional and non-functional requirements (parallel per-domain workers) | `/ba-requirements-gen` |
 | `ba-cr` | Creates and applies Change Requests (impact + parallel appliers) | `/ba-cr` |
 | `dev-planner` | Creates implementation plans (wave-based parallel plan workers) | `/dev-planner` |
-| `dev-executor` | Implements plans (parallel plan-runner per plan → task-executor per task, Opus by default; envelope-based dispatch) | `/dev-executor` |
+| `dev-executor` | Implements plans (parallel plan-runner per plan → task-executor per task, Sonnet by default; envelope-based dispatch) | `/dev-executor` |
 | `dev-code-review` | Reviews produced code (parallel review workers, fresh context per plan) | `/dev-code-review` |
 
 A future `ba-jira-populate` skill will push approved requirements into Jira; its data contract is
@@ -234,20 +248,18 @@ C:\path\to\implr\install.bat
 | `CLAUDE.md` | **Never touched** — your file is preserved |
 | Everything in `docs/kb/` | **Never touched** — your documents are preserved |
 
-> **Upgrading to v3.0?** See [Migrating from v2.0 to v3.0](#migrating-from-v20-to-v30). Re-run the installer, generate `standards-card.md`, and optionally update config. **Upgrading from v1.x to v2.0?** See the dedicated [Migrating from v1.x to v2.0](#migrating-from-v1x-to-v20) section. Two flags were removed and one default was flipped — the migration is two commands and a re-install.
-
 ### Checklist: updating a project that already has implr
 
 1. **Pull implr:** `cd C:\path\to\implr` and `git pull`.
 2. **Re-run the installer from the project root** (CMD: `C:\path\to\implr\install.bat`).
    Read the output — it ends the `docs\implr\config\implr.config.yaml` step with a
    `WARNING` or `NOTE` when your kept config needs attention:
-   - `WARNING: agents.plan-runner is set to opus` — an override left over from v3. v4's
-     `plan-runner` is a thin dispatch loop and defaults to Sonnet; the old line silently
-     forces Opus and cancels the saving. Delete it (or set `plan-runner: sonnet`).
+   - `WARNING: agents.plan-runner is set to opus` — an override left over from v3/v4. `plan-runner`
+     is a thin dispatch loop and defaults to Haiku; the old line silently forces Opus and cancels
+     the saving. Delete it (or set `plan-runner: haiku`).
    - `NOTE: ... no agent_effort section` — optional. Copy the commented `agent_effort:` block
      from `scaffold\config\implr.config.yaml` if you want per-agent effort (otherwise every
-     agent uses `effort: medium` from its frontmatter).
+     agent uses its own `effort:` from its frontmatter).
 3. **Coming from before v3.0?** Run `/implr-init --refresh-card` once to generate
    `docs/implr/config/standards-card.md` (required by `dev-executor` and `dev-code-review`).
 4. **Check the install:** `python scripts\implr_validate --workspace .` should print
@@ -389,11 +401,11 @@ cp ~/specs/*.md docs/kb/
    sweep via the built-in Explore subagent. Writes PLAN-F-* with task-level TDD flags.
 
 8. IMPLEMENT         /dev-executor
-   Dispatches arch-excerpter (Sonnet, once per plan) then plan-runner (Sonnet) per plan in
+   Dispatches arch-excerpter (Haiku, once per plan) then plan-runner (Haiku) per plan in
    parallel waves. Each plan-runner dispatches one task-executor per task (sequential).
    task-executor writes production code and tests, enforcing TDD for M/L/XL tasks and
-   SOLID throughout. Notes manual actions it cannot perform. Opus by default — TDD + SOLID
-   need a strong model. Envelopes are passed as files in `docs/implr/.work/<PLAN-ID>/` (plan context once, one file per task); `implr_validate --finalize-plan` — run by plan-runner — writes each plan's test-results.md and updates its status. Commits are
+   SOLID throughout. Notes manual actions it cannot perform. Sonnet by default — TDD + SOLID
+   need a capable model; set `agents.task-executor: opus` for hard plans. Envelopes are passed as files in `docs/implr/.work/<PLAN-ID>/` (plan context once, one file per task); `implr_validate --finalize-plan` — run by plan-runner — writes each plan's test-results.md and updates its status. Commits are
    off by default (commit_mode: defer — no git side effects at all); pass --commit to opt
    plan-runner into an auto-commit per plan once it reaches done.
 
@@ -646,7 +658,7 @@ Creates implementation plans from approved requirements.
 
 ### dev-executor
 Implements plans. Per-plan dispatch to `plan-runner` (via inline task envelopes); each plan-runner dispatches
-one `task-executor` per task (Opus default — TDD + SOLID need a strong model).
+one `task-executor` per task (Sonnet default — TDD + SOLID need a capable model; `opus` for hard plans).
 
 ```
 - `/dev-executor PLAN-F-001` — execute one plan
@@ -801,19 +813,21 @@ sections are marked `[FILL IN]`.
 Each subagent declares a default `model:` in its `.claude/agents/<name>.md` frontmatter. Override per agent in
 `docs/implr/config/implr.config.yaml`:
 
+The defaults (the same values as the config template and each agent's frontmatter) are:
+
 ```yaml
 agents:
   doc-ingest-digester: sonnet       # per-doc digest
   doc-ingest-synthesizer: sonnet    # per-domain synthesis
-  arch-drafter: sonnet              # architecture draft
+  arch-drafter: opus                # architecture draft
   requirements-domain-worker: sonnet
   cr-impact-analyzer: sonnet
   cr-applier: sonnet
   plan-worker: sonnet
-  plan-runner: sonnet               # per-plan dispatcher (no stable reads)
-  arch-excerpter: sonnet            # per-plan ARCHITECTURE excerpt
-  task-executor: opus               # TDD + SOLID enforcement per task
-  code-review-worker: sonnet
+  plan-runner: haiku                # per-plan dispatcher (no stable reads)
+  arch-excerpter: haiku             # per-plan ARCHITECTURE excerpt
+  task-executor: sonnet             # TDD + SOLID enforcement per task
+  code-review-worker: opus
 ```
 
 Valid values: `haiku`, `sonnet`, `opus`. Omit a line to use the agent's built-in default.
@@ -825,13 +839,15 @@ updates.
 2. `model:` declared in `.claude/agents/<agent-name>.md` (applies when no `model` is passed at dispatch)
 
 **When to override:**
-- *Downgrade to save cost* — e.g. `task-executor: sonnet` if your tasks are simpler (task-executor is the cost driver; plan-runner can also be downgraded independently)
-- *Upgrade for quality* — e.g. `requirements-domain-worker: opus` on a complex domain
+- *Downgrade to save cost* — e.g. `task-executor: haiku` only for trivial, mechanical tasks (TDD and SOLID need Sonnet or Opus); task-executor is the cost driver
+- *Upgrade for quality* — e.g. `task-executor: opus` for hard plans, or `requirements-domain-worker: opus` on a complex domain
 - *Match your budget* — downgrade everything to Haiku for prototyping; restore defaults for production runs
 
 ### Reasoning effort
 
-Each subagent also declares `effort: medium` in its frontmatter. Override per agent with
+Each subagent declares its own `effort:` in its frontmatter (defaults: `low` for `doc-ingest-digester`,
+`cr-applier`, `plan-runner`, `arch-excerpter`; `high` for `cr-impact-analyzer` and `plan-worker`; `medium`
+for the rest). Override per agent with
 `agent_effort:` in `implr.config.yaml`:
 
 ```yaml
@@ -851,7 +867,7 @@ The `/model` and `/effort` commands change only the **main session**: the model 
 your own conversation (and the skills, which run inline in it) use. They do **not** propagate
 to subagents. Every implr agent declares both `model:` and `effort:` in its frontmatter, and
 those explicit values win over whatever the session uses. So with `/model` set to Sonnet and
-`/effort` set to high, `task-executor` still runs on Opus at `medium`.
+`/effort` set to high, `task-executor` still runs on Sonnet at `medium`.
 
 To change a subagent, use the config (the only per-agent knob):
 
@@ -875,7 +891,7 @@ implr v3.0 takes the orchestrator-+-subagent model further:
 - **Standards card** — a compact (~55-line) auto-generated subset of DEV-STANDARDS.md
   passed inline to `task-executor` and `code-review-worker`; the full standards stay for
   `dev-planner`.
-- **Per-plan ARCHITECTURE excerpt** — `arch-excerpter` (Sonnet, one call per plan)
+- **Per-plan ARCHITECTURE excerpt** — `arch-excerpter` (Haiku, one call per plan)
   extracts only the sections each plan touches, plus Cross-Cutting Concerns verbatim.
 - **plan-runner replaces executor-worker** — feather-weight per-plan agent with NO stable
   reads; the 30k+ stable prefix of the v2.0 per-plan dispatcher is gone.
@@ -943,56 +959,6 @@ them; doc-ingest detects them and prompts you to run `/ba-cr --file`.
 
 To change a requirement after generation, use `/ba-cr` rather than editing the generated
 requirement file directly. See [Changing Requirements](#changing-requirements).
-
----
-
-## Migrating from v2.0 to v3.0
-
-1. **Re-run the installer** from your project root. It:
-   - Copies new agents: `plan-runner.md`, `arch-excerpter.md`.
-   - Removes deprecated `executor-worker.md` from `.claude/agents/`.
-   - Seeds `docs/implr/DOD.md` (canonical Definition of Done).
-   - Refreshes schemas and templates with compact v3 formats.
-
-2. **Generate `standards-card.md`:** run `/implr-init --refresh-card`. Reads your current
-   `DEV-STANDARDS.md` stack and versioning values; writes
-   `docs/implr/config/standards-card.md`. This file is required by `dev-executor` and
-   `dev-code-review` — both halt with a clear error if it's missing.
-
-3. **Existing plans:** still execute. If `### TASK-NNN:` headers don't match the new
-   compact format (`title · complexity/TDD · files`), `dev-executor` detects the parse
-   failure, skips that plan with an error message, and continues. Re-generate with
-   `/dev-planner --replan <REQ-ID>` for the new format.
-
-4. **Existing requirements:** continue to work. Inline DoD sections are inert — skills
-   now use `docs/implr/DOD.md` plus per-REQ `## Acceptance Notes`.
-
-5. **Flag changes:**
-   - `/doc-ingest` runs the full pipeline by default. Use `--registry-only` for v2's fast scan. `--digest` is accepted but deprecated.
-   - `/dev-planner` coherence sweep is now opt-in (`--coherence-check`) or auto-on for ≥3 plans.
-   - `/dev-executor` and `/dev-code-review` default reports are compact one-screen; use `--verbose` for detail.
-   - `/dev-executor --review` chains code-review automatically.
-
-6. **Config:** in `implr.config.yaml`, remove `executor-worker:` under `agents:`. Optionally add `plan-runner: opus` and `arch-excerpter: sonnet`.
-
----
-
-## Migrating from v1.x to v2.0
-
-1. **Pull the latest implr:** `git pull` in your local implr checkout.
-2. **Re-run the installer from your project root.** It will copy `.claude/agents/` alongside
-   `.claude/skills/` and refresh schemas/templates. Your `implr.config.yaml`, `DEV-STANDARDS.md`,
-   `CLAUDE.md`, and `docs/kb/` are untouched.
-3. **Replace `/ba-requirements-gen --ingest`** invocations with two steps:
-   `/doc-ingest --digest` then `/ba-requirements-gen`.
-4. **Replace `/ba-requirements-gen --ingest-file <path>`** with
-   `/doc-ingest --file <path> --digest` then `/ba-requirements-gen`.
-5. **Add `--digest`** to any `/doc-ingest` invocation where you actually want digests +
-   syntheses. Without `--digest`, the command now only refreshes the registry.
-6. **(Optional)** Edit `docs/implr/config/implr.config.yaml` and uncomment any line in the
-   `agents:` block to override model tiers (see [Customising Model Tiers](#customising-model-tiers)).
-
-Removed flags emit clear error messages pointing to the replacement command. No silent breakage.
 
 ---
 
