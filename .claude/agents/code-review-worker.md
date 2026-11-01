@@ -2,7 +2,7 @@
 name: code-review-worker
 description: Reviews one plan's output in a fresh context. Verifies acceptance criteria, checks architecture/SOLID/security, audits tests, issues a verdict.
 tools: [Read, Grep, Glob, Write]
-model: sonnet
+model: opus
 effort: medium
 ---
 

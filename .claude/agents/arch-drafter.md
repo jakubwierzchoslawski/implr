@@ -2,7 +2,7 @@
 name: arch-drafter
 description: Drafts the ARCHITECTURE.md document from the master synthesis and a list of human-confirmed architectural decisions.
 tools: [Read, Write]
-model: sonnet
+model: opus
 effort: medium
 ---
 

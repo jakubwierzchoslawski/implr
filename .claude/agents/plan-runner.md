@@ -2,8 +2,8 @@
 name: plan-runner
 description: Per-plan dispatcher. Receives a work directory prepared by dev-executor and dispatches one task-executor per scheduled task sequentially, recording each return as a file. Accumulates prior_decisions_summary between dispatches. Finalizes the plan (status, fingerprints, optional commit, test-results.md) with one `implr_validate --finalize-plan` call. Does NOT parse the plan, read schemas, ARCHITECTURE.md, DEV-STANDARDS.md, or config.
 tools: [Read, Write, Bash, Agent]
-model: sonnet
-effort: medium
+model: haiku
+effort: low
 ---
 
 # plan-runner
