@@ -779,27 +779,67 @@ docs/kb/
 
 ```yaml
 project:
-  name: stokai
-  stack_hint: "TypeScript, NestJS, PostgreSQL, Vitest"
+  name: REPLACE_ME                 # your project name, e.g. stokai
+  stack_hint: "REPLACE_ME"         # e.g. "TypeScript, NestJS, PostgreSQL, Vitest"
+                                   # used to fill gaps when DEV-STANDARDS.md is incomplete
 
 paths:
-  kb: docs/kb
+  kb: docs/kb                      # knowledge base root (user-managed source docs)
   architecture: docs/ARCHITECTURE.md
   dev_standards: docs/implr/config/DEV-STANDARDS.md
-  src: src
-  tests: tests
+  src: src                         # where dev-executor writes implementation code
+  tests: tests                     # where dev-executor writes tests
 
 behaviour:
-  default_tdd_threshold: M        # complexity at/above which TDD is enforced
-  require_approved_status: true   # dev-planner only processes approved requirements
-  contradictions_block: false     # false = open questions; true = halt on conflict
+  default_tdd_threshold: M         # complexity at/above which TDD is enforced (XS/S skip)
+  require_approved_status: true    # dev-planner only processes approved requirements
+  contradictions_block: false      # false = generate with open questions; true = halt on conflict
   kb_supported_formats: [md, pdf, docx, xlsx, pptx, odp, odt, ods, csv, txt, vtt, png, jpg, jpeg, gif, webp, tiff, bmp]
 
 jira:
+  # Used by the future ba-jira-populate skill. Safe to leave as-is until then.
   base_url: https://your-org.atlassian.net
-  project_key: STOK
-  api_token_env: JIRA_API_TOKEN   # env var name only; never the token itself
-  # ... (used by the future ba-jira-populate skill)
+  project_key: REPLACE_ME
+  api_token_env: JIRA_API_TOKEN    # env var name only; never put the token here
+  api_email_env: JIRA_API_EMAIL
+  default_issue_type: Story
+  default_priority: Medium
+  subtask_strategy: subtask        # subtask | linked_task
+  custom_fields:
+    implr_req_id: customfield_10001
+    story_points: customfield_10016
+
+# Per-agent model (v5.0+). Values: haiku | sonnet | opus.
+# The values below equal each agent's `model:` in .claude/agents/<name>.md (the defaults).
+# Edit a line to override; remove it to fall back to the frontmatter default.
+agents:
+  doc-ingest-digester: sonnet          # per-doc digest
+  doc-ingest-synthesizer: sonnet       # per-domain synthesis
+  arch-drafter: opus                   # architecture draft
+  requirements-domain-worker: sonnet
+  cr-impact-analyzer: sonnet
+  cr-applier: sonnet
+  plan-worker: sonnet
+  plan-runner: haiku                   # per-plan dispatcher (no stable reads)
+  arch-excerpter: haiku                # per-plan ARCHITECTURE excerpt
+  task-executor: sonnet                # TDD + SOLID enforcement per task (main cost driver)
+  code-review-worker: opus
+
+# Per-agent reasoning effort (v5.0+). Values: low | medium | high | xhigh | max.
+# The values below equal each agent's `effort:` in its frontmatter (the defaults). Higher effort = more tokens.
+# Remove a line to fall back to the frontmatter default.
+agent_effort:
+  doc-ingest-digester: low
+  doc-ingest-synthesizer: medium
+  arch-drafter: medium
+  requirements-domain-worker: medium
+  cr-impact-analyzer: high
+  cr-applier: low                   # applies a pre-specified diff
+  plan-worker: high
+  plan-runner: low                  # mechanical dispatch loop
+  arch-excerpter: low               # extraction from ARCHITECTURE.md
+  task-executor: medium             # main cost driver; raise for hard plans only
+  code-review-worker: medium
 ```
 
 `docs/implr/config/DEV-STANDARDS.md` defines your development standards. SOLID, a testing
@@ -852,7 +892,7 @@ for the rest). Override per agent with
 
 ```yaml
 agent_effort:
-  task-executor: medium   # main cost driver
+  task-executor: high     # e.g. for a hard plan; default is medium
   plan-runner: low
   arch-excerpter: low
 ```
